@@ -10,5 +10,12 @@
     ./git.nix
   ];
 
+  home.packages = with pkgs; [
+    foot
+    cosmic-term
+    cosmic-files
+    cosmic-edit
+  ];
+
   home.stateVersion = "25.11";
 }

@@ -4,7 +4,7 @@
     ./hardware-configuration.nix
     ./secrets.nix
     ./users.nix
-    ../../modules/sway.nix
+    ../../modules/cosmic.nix
     ../../modules/ssh.nix
     ../../modules/tailscale.nix
   ];
