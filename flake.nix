@@ -48,6 +48,17 @@
           disko = false;
         };
       };
+      randy-big-nixos = mkHost {
+        hostname = "randy-big-nixos";
+        system = "x86_64-linux";
+
+        features = {
+          home-manager = true;
+          sops = true;
+          nix-bitcoin = false;
+          disko = false;
+        };
+      };
     };
   };
 }
