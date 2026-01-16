@@ -4,6 +4,7 @@
     ./hardware-configuration.nix
     ./secrets.nix
     ./users.nix
+    ./wireguard.nix
     ../../modules/cosmic.nix
     ../../modules/ssh.nix
     ../../modules/tailscale.nix
