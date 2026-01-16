@@ -12,13 +12,13 @@
       alan-big-nixos = {
         vpnIP = "10.100.0.1";
         endpoint = "66.219.235.87:51820";
-        publicKey = "JgKqp30jK1Gl3+A0KM98zUTpgzyqXVRAoNlSUBXL4S4=";
+        publicKey = "19Kloz2N3r2ksivuyLNtSplbDxS1kneNzVNRFhnQoCA=";
       };
 
       randy-big-nixos = {
         vpnIP = "10.100.0.2";
         endpoint = "97.230.189.132:51820";
-        publicKey = "Sfn2P9gOyUgCqo7eewz7XwZYoH+a3EbTivO2bwxM6h0=";
+        publicKey = "YD/m4D7uTGFnWBEACTkc7MnY7yG0yvRVAEJKqOQ91UE=";
       };
     };
   };
