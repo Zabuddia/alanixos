@@ -4,6 +4,7 @@
     ./hardware-configuration.nix
     ./secrets.nix
     ./users.nix
+    ./wireguard.nix
     ../../modules/cosmic.nix
     ../../modules/ssh.nix
     ../../modules/tailscale.nix
@@ -39,6 +40,7 @@
   environment.systemPackages = with pkgs; [
     age
     sops
+    wireguard-tools
     git
     curl
     wget

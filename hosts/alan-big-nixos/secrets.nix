@@ -11,4 +11,11 @@
     group = "root";
     mode = "0400";
   };
+
+  sops.secrets."wireguard-private-keys/alan-big-nixos" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
 }
