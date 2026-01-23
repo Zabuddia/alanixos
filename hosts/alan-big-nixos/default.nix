@@ -46,5 +46,6 @@
     wget
     htop
     nano
+    tree
   ];
 }
