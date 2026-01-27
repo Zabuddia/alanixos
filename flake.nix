@@ -44,7 +44,7 @@
         features = {
           home-manager = true;
           sops = true;
-          nix-bitcoin = false;
+          nix-bitcoin = true;
           disko = false;
         };
       };
