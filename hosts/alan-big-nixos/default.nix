@@ -8,6 +8,7 @@
     ../../modules/cosmic.nix
     ../../modules/ssh.nix
     ../../modules/tailscale.nix
+    ../../modules/bitcoin.nix
   ];
 
   # Identity
