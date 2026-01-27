@@ -8,6 +8,7 @@
 
   imports = [
     ./git.nix
+    ./sh.nix
   ];
 
   home.packages = with pkgs; [

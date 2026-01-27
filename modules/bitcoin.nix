@@ -8,11 +8,13 @@
 
   nix-bitcoin.generateSecrets = true;
 
+  # Not necessary, fulcrum enables these options
   services.bitcoind = {
     enable = true;
     txindex = true;
   };
 
+  # Not necessary, mempool enables this
   services.fulcrum.enable = true;
 
   services.mempool = {
