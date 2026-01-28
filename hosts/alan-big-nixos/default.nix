@@ -1,4 +1,4 @@
-{ pkgs, hostname, ... }:
+{ pkgs, hostname, config, ... }:
 {
   imports = [
     ./hardware-configuration.nix
@@ -9,6 +9,7 @@
     ../../modules/ssh.nix
     ../../modules/tailscale.nix
     ../../modules/bitcoin.nix
+    ../../modules/filebrowser.nix
   ];
 
   # Identity
@@ -49,4 +50,24 @@
     nano
     tree
   ];
+
+  # File browser
+  alanix.filebrowser = {
+    enable = true;
+    listenAddress = "0.0.0.0";
+    root = "/srv/filebrowser";
+    database = "/var/lib/filebrowser/filebrowser.db";
+    users = {
+      admin = {
+        passwordSecret = "filebrowser-passwords/admin";
+        admin = true;
+        scope = ".";
+      };
+      buddia = {
+        passwordSecret = "filebrowser-passwords/buddia";
+        admin = false;
+        scope = "users/buddia";
+      };
+    };
+  };
 }
