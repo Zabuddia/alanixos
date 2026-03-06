@@ -245,12 +245,13 @@ in
         User = "root";
         Group = "root";
       };
-      path = [ pkgs.rsync pkgs.openssh pkgs.coreutils ];
+      path = [ pkgs.rsync pkgs.openssh pkgs.coreutils pkgs.iputils pkgs.netcat-openbsd ];
       script = ''
         set -euo pipefail
 
         STATE_DIR=${lib.escapeShellArg cfg.stateDir}
         ACTIVE_MARKER=${lib.escapeShellArg cfg.activeMarkerPath}
+        HEALTH_PORT=${toString cfg.serviceHealthPort}
         KNOWN_HOSTS="$STATE_DIR/known_hosts"
         SSH_KEY=${lib.escapeShellArg config.sops.secrets.${cfg.sync.sshKeySecret}.path}
         SYNC_PATHS=(${syncPathsEscaped})
@@ -271,10 +272,16 @@ in
         }
 
         node_is_active() {
-          local target="$1"
-          ssh_cmd "$target" \
+          local ip="$1"
+          local target="$2"
+          if ssh_cmd "$target" \
             "test -f '$ACTIVE_MARKER' && systemctl -q is-active filebrowser.service && systemctl -q is-active caddy.service" \
-            >/dev/null 2>&1
+            >/dev/null 2>&1; then
+            return 0
+          fi
+
+          # Fallback: treat an openly serving node on expected health port as active.
+          ping -q -c1 -W2 "$ip" >/dev/null 2>&1 && nc -z -w2 "$ip" "$HEALTH_PORT" >/dev/null 2>&1
         }
 
         sync_from_target() {
@@ -289,14 +296,15 @@ in
         }
 
         for node in "''${REMOTE_NODES[@]}"; do
-          IFS='|' read -r _name _ip ssh_target <<< "$node"
-          if node_is_active "$ssh_target"; then
+          IFS='|' read -r _name ip ssh_target <<< "$node"
+          if node_is_active "$ip" "$ssh_target"; then
             sync_from_target "$ssh_target"
             exit 0
           fi
         done
 
-        exit 0
+        echo "No active remote node detected for filebrowser sync" >&2
+        exit 1
       '';
     };
 
@@ -328,6 +336,7 @@ in
         FAIL_FILE="$STATE_DIR/fail-count"
         UNHEALTHY_FAIL_FILE="$STATE_DIR/higher-unhealthy-count"
         KNOWN_HOSTS="$STATE_DIR/known_hosts"
+        HEALTH_PORT=${toString cfg.serviceHealthPort}
 
         HIGHER_NODES=()
         ${lib.concatStringsSep "\n" (map (tuple: ''HIGHER_NODES+=(${lib.escapeShellArg tuple})'') higherNodeTuples)}
@@ -352,17 +361,22 @@ in
           }
 
           node_reachable() {
-            local _ip="$1"
-            local target="$2"
-            ssh_cmd "$target" true >/dev/null 2>&1
+            local ip="$1"
+            local _target="$2"
+            ping -q -c1 -W2 "$ip" >/dev/null 2>&1
           }
 
           node_is_active() {
-            local _ip="$1"
+            local ip="$1"
             local target="$2"
-            ssh_cmd "$target" \
+            if ssh_cmd "$target" \
               "test -f '$ACTIVE_MARKER' && systemctl -q is-active filebrowser.service && systemctl -q is-active caddy.service" \
-              >/dev/null 2>&1
+              >/dev/null 2>&1; then
+              return 0
+            fi
+
+            # Fallback: if SSH control checks are unavailable, use service health over WG.
+            ping -q -c1 -W2 "$ip" >/dev/null 2>&1 && nc -z -w2 "$ip" "$HEALTH_PORT" >/dev/null 2>&1
           }
 
           sync_from_target() {
@@ -387,8 +401,6 @@ in
             return 0
           }
         '' else ''
-          HEALTH_PORT=${toString cfg.serviceHealthPort}
-
           node_reachable() {
             local ip="$1"
             local _target="$2"
@@ -416,6 +428,13 @@ in
           systemctl start filebrowser.service
           systemctl start caddy.service
           touch "$ACTIVE_MARKER"
+          ${lib.optionalString cfg.dns.enable ''
+            systemctl start alanix-dns-updater-filebrowser-failover.service || true
+          ''}
+        }
+
+        local_is_serving() {
+          systemctl -q is-active filebrowser.service && systemctl -q is-active caddy.service
         }
 
         higher_healthy=0
@@ -434,7 +453,7 @@ in
         if [ "$higher_healthy" -eq 1 ]; then
           echo 0 > "$FAIL_FILE"
           echo 0 > "$UNHEALTHY_FAIL_FILE"
-          if [ -f "$ACTIVE_MARKER" ]; then
+          if [ -f "$ACTIVE_MARKER" ] || local_is_serving; then
             stop_local
           fi
           exit 0
