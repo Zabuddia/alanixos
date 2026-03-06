@@ -280,6 +280,11 @@ in
           DB=${lib.escapeShellArg dbPath}
           DECLARED=${lib.escapeShellArg declaredUsersList}
 
+          if [ ! -f "$DB" ]; then
+            # First run on a standby/empty node: initialize DB so user reconciliation can proceed.
+            filebrowser config init --database "$DB" >/dev/null
+          fi
+
           have_user() {
             filebrowser users ls --database "$DB" | awk 'NR>1 {print $2}' | grep -qx "$1"
           }
