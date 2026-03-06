@@ -31,7 +31,7 @@
       backendPort = 8088;
       reverseProxyOpenFirewall = true;
       wireguardAccess = {
-        enable = false;
+        enable = true;
         port = 8089;
       };
       syncPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJqPS32ILVnc3Xyp23eo17esKfhOExuMNfKHikQXjtZc filebrowser-failover-sync";
