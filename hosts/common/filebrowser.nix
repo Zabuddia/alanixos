@@ -17,6 +17,8 @@ in
     openFirewall = false;
     root = "/srv/filebrowser";
     database = "/var/lib/filebrowser/filebrowser.db";
+    uid = cluster.services.filebrowser.uid;
+    gid = cluster.services.filebrowser.gid;
     reverseProxy = {
       enable = true;
       domain = cluster.services.filebrowser.domain;

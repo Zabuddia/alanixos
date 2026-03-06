@@ -55,6 +55,18 @@ in
       default = "/var/lib/filebrowser/filebrowser.db";
     };
 
+    uid = lib.mkOption {
+      type = lib.types.nullOr lib.types.ints.positive;
+      default = null;
+      description = "Pinned UID for the filebrowser system user. Set with gid for multi-node consistency.";
+    };
+
+    gid = lib.mkOption {
+      type = lib.types.nullOr lib.types.ints.positive;
+      default = null;
+      description = "Pinned GID for the filebrowser system group. Set with uid for multi-node consistency.";
+    };
+
     users = lib.mkOption {
       type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
         options = {
@@ -168,6 +180,10 @@ in
           message = "alanix.filebrowser.reverseProxy.domain must be set when reverse proxy is enabled.";
         }
         {
+          assertion = (cfg.uid == null) == (cfg.gid == null);
+          message = "alanix.filebrowser.uid and alanix.filebrowser.gid must either both be set or both be null.";
+        }
+        {
           assertion = !(cfg.wireguardAccess.enable && cfg.wireguardAccess.listenAddress == null);
           message = "alanix.filebrowser.wireguardAccess.listenAddress must be set when wireguardAccess is enabled.";
         }
@@ -205,12 +221,17 @@ in
 
     systemd.services.filebrowser.wantedBy = lib.mkIf (!cfg.active) (lib.mkForce []);
 
-    users.groups.filebrowser = {};
+    users.groups.filebrowser = lib.mkMerge [
+      {}
+      (lib.mkIf (cfg.gid != null) { gid = cfg.gid; })
+    ];
     users.users.filebrowser = {
       isSystemUser = true;
       group = "filebrowser";
       home = "/var/lib/filebrowser";
       createHome = true;
+    } // lib.optionalAttrs (cfg.uid != null) {
+      uid = cfg.uid;
     };
 
     # Base + per-user directories (owned by filebrowser so uploads work)

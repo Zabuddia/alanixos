@@ -291,7 +291,7 @@ in
 
           for p in "''${SYNC_PATHS[@]}"; do
             mkdir -p "$p"
-            rsync -aHAX --numeric-ids --delete -e "$rsync_ssh" "$target:$p/" "$p/"
+            rsync -aHAX --delete -e "$rsync_ssh" "$target:$p/" "$p/"
           done
         }
 
@@ -386,7 +386,7 @@ in
 
             for p in "''${SYNC_PATHS[@]}"; do
               mkdir -p "$p"
-              rsync -aHAX --numeric-ids --delete -e "$rsync_ssh" "$target:$p/" "$p/"
+              rsync -aHAX --delete -e "$rsync_ssh" "$target:$p/" "$p/"
             done
           }
 

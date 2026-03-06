@@ -29,6 +29,8 @@
     services.filebrowser = {
       domain = "filebrowser.fifefin.com";
       backendPort = 8088;
+      uid = 45000;
+      gid = 45000;
       reverseProxyOpenFirewall = true;
       wireguardAccess = {
         enable = true;

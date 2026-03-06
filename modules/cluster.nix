@@ -79,6 +79,18 @@
         default = 8088;
       };
 
+      uid = lib.mkOption {
+        type = lib.types.nullOr lib.types.ints.positive;
+        default = null;
+        description = "Pinned UID for filebrowser service user/group across nodes.";
+      };
+
+      gid = lib.mkOption {
+        type = lib.types.nullOr lib.types.ints.positive;
+        default = null;
+        description = "Pinned GID for filebrowser service user/group across nodes.";
+      };
+
       dataPaths = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [
