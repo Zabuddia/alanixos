@@ -92,6 +92,20 @@
         default = true;
       };
 
+      wireguardAccess = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable a WireGuard-only access endpoint for filebrowser.";
+        };
+
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 8089;
+          description = "WireGuard-only access port exposed by Caddy.";
+        };
+      };
+
       syncPublicKey = lib.mkOption {
         type = lib.types.str;
         description = "Public SSH key allowed for failover sync/control.";

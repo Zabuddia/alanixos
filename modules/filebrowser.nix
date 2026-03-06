@@ -109,6 +109,28 @@ in
         description = "Open TCP 80/443 for Caddy when reverse proxy is enabled.";
       };
     };
+
+    wireguardAccess = {
+      enable = lib.mkEnableOption "WireGuard-only access path for File Browser";
+
+      listenAddress = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "WireGuard-side address to bind for internal access (for example 10.100.0.2).";
+      };
+
+      port = lib.mkOption {
+        type = lib.types.port;
+        default = 8089;
+        description = "WireGuard-only Caddy listener port.";
+      };
+
+      interface = lib.mkOption {
+        type = lib.types.str;
+        default = "wg0";
+        description = "Firewall interface for WireGuard-only access.";
+      };
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -145,6 +167,10 @@ in
           assertion = !(cfg.reverseProxy.enable && cfg.reverseProxy.domain == null);
           message = "alanix.filebrowser.reverseProxy.domain must be set when reverse proxy is enabled.";
         }
+        {
+          assertion = !(cfg.wireguardAccess.enable && cfg.wireguardAccess.listenAddress == null);
+          message = "alanix.filebrowser.wireguardAccess.listenAddress must be set when wireguardAccess is enabled.";
+        }
       ];
 
     networking.firewall = lib.mkMerge [
@@ -157,6 +183,10 @@ in
       })
       (lib.mkIf (cfg.reverseProxy.enable && cfg.reverseProxy.openFirewall) {
         allowedTCPPorts = [ 80 443 ];
+      })
+      (lib.mkIf cfg.wireguardAccess.enable {
+        interfaces =
+          lib.genAttrs [ cfg.wireguardAccess.interface ] (_: { allowedTCPPorts = [ cfg.wireguardAccess.port ]; });
       })
     ];
 
@@ -321,14 +351,25 @@ in
       (builtins.toJSON cfg.users)
     ];
 
-    services.caddy = lib.mkIf cfg.reverseProxy.enable {
+    services.caddy = lib.mkIf (cfg.reverseProxy.enable || cfg.wireguardAccess.enable) {
       enable = true;
-      virtualHosts.${cfg.reverseProxy.domain}.extraConfig = ''
-        encode zstd gzip
-        reverse_proxy 127.0.0.1:${toString cfg.port}
-      '';
+      virtualHosts = lib.mkMerge [
+        (lib.mkIf cfg.reverseProxy.enable {
+          "${cfg.reverseProxy.domain}".extraConfig = ''
+            encode zstd gzip
+            reverse_proxy 127.0.0.1:${toString cfg.port}
+          '';
+        })
+        (lib.mkIf cfg.wireguardAccess.enable {
+          "http://${cfg.wireguardAccess.listenAddress}:${toString cfg.wireguardAccess.port}".extraConfig = ''
+            encode zstd gzip
+            reverse_proxy 127.0.0.1:${toString cfg.port}
+          '';
+        })
+      ];
     };
-    systemd.services.caddy.wantedBy = lib.mkIf (cfg.reverseProxy.enable && !cfg.active) (lib.mkForce []);
+    systemd.services.caddy.wantedBy =
+      lib.mkIf ((cfg.reverseProxy.enable || cfg.wireguardAccess.enable) && !cfg.active) (lib.mkForce []);
 
   };
 }

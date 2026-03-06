@@ -1,4 +1,4 @@
-{ config, lib, ... }:
+{ config, lib, hostname, ... }:
 let
   cluster = config.alanix.cluster;
 in
@@ -21,6 +21,13 @@ in
       enable = true;
       domain = cluster.services.filebrowser.domain;
       openFirewall = cluster.services.filebrowser.reverseProxyOpenFirewall;
+    };
+
+    wireguardAccess = {
+      enable = cluster.services.filebrowser.wireguardAccess.enable;
+      listenAddress = cluster.nodes.${hostname}.vpnIP;
+      port = cluster.services.filebrowser.wireguardAccess.port;
+      interface = "wg0";
     };
 
     users = {
