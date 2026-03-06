@@ -2,9 +2,13 @@
 {
   imports = [
     ./hardware-configuration.nix
-    ./secrets.nix
-    ./users.nix
-    ./wireguard.nix
+    ../common/secrets.nix
+    ../common/users.nix
+    ../common/wireguard.nix
+    ../common/filebrowser.nix
+    ../common/dynamic-dns.nix
+    ../common/filebrowser-failover.nix
+    ../common/filebrowser-backups.nix
     ../../modules/cosmic.nix
     ../../modules/ssh.nix
     ../../modules/tailscale.nix

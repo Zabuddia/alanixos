@@ -2,14 +2,17 @@
 {
   imports = [
     ./hardware-configuration.nix
-    ./secrets.nix
-    ./users.nix
-    ./wireguard.nix
+    ../common/secrets.nix
+    ../common/users.nix
+    ../common/wireguard.nix
+    ../common/filebrowser.nix
+    ../common/dynamic-dns.nix
+    ../common/filebrowser-failover.nix
+    ../common/filebrowser-backups.nix
     ../../modules/cosmic.nix
     ../../modules/ssh.nix
     ../../modules/tailscale.nix
     ../../modules/bitcoin.nix
-    ../../modules/filebrowser.nix
   ];
 
   # Identity
@@ -50,24 +53,4 @@
     nano
     tree
   ];
-
-  # File browser
-  alanix.filebrowser = {
-    enable = true;
-    listenAddress = "0.0.0.0";
-    root = "/srv/filebrowser";
-    database = "/var/lib/filebrowser/filebrowser.db";
-    users = {
-      admin = {
-        passwordSecret = "filebrowser-passwords/admin";
-        admin = true;
-        scope = ".";
-      };
-      buddia = {
-        passwordSecret = "filebrowser-passwords/buddia";
-        admin = false;
-        scope = "users/buddia";
-      };
-    };
-  };
 }

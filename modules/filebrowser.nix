@@ -3,6 +3,7 @@ let
   cfg = config.alanix.filebrowser;
 
   dbPath = cfg.database;
+  hasSopsSecrets = lib.hasAttrByPath [ "sops" "secrets" ] config;
 
   declaredUsernames = builtins.attrNames cfg.users;
 
@@ -13,6 +14,12 @@ in
   options.alanix.filebrowser = {
     enable = lib.mkEnableOption "File Browser (Alanix)";
 
+    active = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Whether this node actively runs the File Browser service.";
+    };
+
     listenAddress = lib.mkOption {
       type = lib.types.str;
       default = "0.0.0.0";
@@ -21,6 +28,21 @@ in
     port = lib.mkOption {
       type = lib.types.port;
       default = 8088;
+    };
+
+    openFirewall = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Open the filebrowser port in the firewall.";
+    };
+
+    firewallInterfaces = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      description = ''
+        Optional interface allowlist for the filebrowser port.
+        Empty means open globally via networking.firewall.allowedTCPPorts.
+      '';
     };
 
     root = lib.mkOption {
@@ -71,12 +93,28 @@ in
       default = {};
       description = "Declarative File Browser users. Users get separate directories via per-user scope under root.";
     };
+
+    reverseProxy = {
+      enable = lib.mkEnableOption "Caddy reverse proxy for File Browser";
+
+      domain = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Public DNS name served by Caddy for File Browser (for example filebrowser.example.com).";
+      };
+
+      openFirewall = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Open TCP 80/443 for Caddy when reverse proxy is enabled.";
+      };
+    };
   };
 
   config = lib.mkIf cfg.enable {
     # Validate that each user has exactly one password source.
     assertions =
-      lib.flatten (lib.mapAttrsToList (uname: u:
+      (lib.flatten (lib.mapAttrsToList (uname: u:
         let
           chosen = lib.filter (x: x) [
             (u.password != null)
@@ -88,8 +126,39 @@ in
             assertion = (builtins.length chosen) == 1;
             message = "alanix.filebrowser.users.${uname}: set exactly one of password, passwordFile, or passwordSecret.";
           }
+          {
+            assertion = !(lib.hasPrefix "/" u.scope);
+            message = "alanix.filebrowser.users.${uname}.scope must be relative to alanix.filebrowser.root.";
+          }
+          {
+            assertion = !(lib.hasInfix ".." u.scope);
+            message = "alanix.filebrowser.users.${uname}.scope must not contain '..'.";
+          }
         ]
-      ) cfg.users);
+      ) cfg.users))
+      ++ [
+        {
+          assertion = dbPath != "";
+          message = "alanix.filebrowser.database must not be empty.";
+        }
+        {
+          assertion = !(cfg.reverseProxy.enable && cfg.reverseProxy.domain == null);
+          message = "alanix.filebrowser.reverseProxy.domain must be set when reverse proxy is enabled.";
+        }
+      ];
+
+    networking.firewall = lib.mkMerge [
+      (lib.mkIf (cfg.active && cfg.openFirewall && cfg.firewallInterfaces == []) {
+        allowedTCPPorts = [ cfg.port ];
+      })
+      (lib.mkIf (cfg.active && cfg.openFirewall && cfg.firewallInterfaces != []) {
+        interfaces =
+          lib.genAttrs cfg.firewallInterfaces (_: { allowedTCPPorts = [ cfg.port ]; });
+      })
+      (lib.mkIf (cfg.reverseProxy.enable && cfg.reverseProxy.openFirewall) {
+        allowedTCPPorts = [ 80 443 ];
+      })
+    ];
 
     services.filebrowser = {
       enable = true;
@@ -103,6 +172,8 @@ in
         database = dbPath;
       };
     };
+
+    systemd.services.filebrowser.wantedBy = lib.mkIf (!cfg.active) (lib.mkForce []);
 
     users.groups.filebrowser = {};
     users.users.filebrowser = {
@@ -131,8 +202,8 @@ in
       before = [ "filebrowser.service" ];
       requiredBy = [ "filebrowser.service" ];
 
-      after = [ "systemd-tmpfiles-setup.service" "sops-nix.service" ];
-      wants = [ "systemd-tmpfiles-setup.service" "sops-nix.service" ];
+      after = [ "systemd-tmpfiles-setup.service" ] ++ lib.optional hasSopsSecrets "sops-install-secrets.service";
+      wants = [ "systemd-tmpfiles-setup.service" ] ++ lib.optional hasSopsSecrets "sops-install-secrets.service";
 
       serviceConfig = {
         Type = "oneshot";
@@ -158,7 +229,7 @@ in
                 else if u.passwordSecret != null then
                   ''${var}=${lib.escapeShellArg config.sops.secrets.${u.passwordSecret}.path}''
                 else
-                  ''${var}="$RUNTIME_DIRECTORY/${lib.escapeShellArg uname}.pass"; ensure_runtime_passfile "${"$"}${var}" ${lib.escapeShellArg u.password}''
+                  ''${var}="$RUNTIME_DIRECTORY/${uname}.pass"; ensure_runtime_passfile "${"$"}${var}" ${lib.escapeShellArg u.password}''
               ) cfg.users);
 
           # Ensure user exists with scope + admin flag.
@@ -249,6 +320,15 @@ in
     systemd.services.filebrowser.restartTriggers = [
       (builtins.toJSON cfg.users)
     ];
+
+    services.caddy = lib.mkIf cfg.reverseProxy.enable {
+      enable = true;
+      virtualHosts.${cfg.reverseProxy.domain}.extraConfig = ''
+        encode zstd gzip
+        reverse_proxy 127.0.0.1:${toString cfg.port}
+      '';
+    };
+    systemd.services.caddy.wantedBy = lib.mkIf (cfg.reverseProxy.enable && !cfg.active) (lib.mkForce []);
 
   };
 }

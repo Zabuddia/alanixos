@@ -15,6 +15,7 @@ let
           allowedIPs = [ "${node.vpnIP}/32" ];
           endpoint = node.endpoint;
           persistentKeepalive = 25;
+          dynamicEndpointRefreshSeconds = cfg.dynamicEndpointRefreshSeconds;
         }
       )
       nodes;
@@ -31,6 +32,12 @@ in
     listenPort = lib.mkOption {
       type = lib.types.port;
       default = 51820;
+    };
+
+    dynamicEndpointRefreshSeconds = lib.mkOption {
+      type = lib.types.ints.unsigned;
+      default = 120;
+      description = "How often to re-resolve peer endpoints in seconds.";
     };
 
     privateKeyFile = lib.mkOption {

@@ -1,4 +1,4 @@
-{ config, ...}:
+{ hostname, ... }:
 {
   sops = {
     defaultSopsFile = ../../secrets/secrets.yaml;
@@ -12,7 +12,28 @@
     mode = "0400";
   };
 
-  sops.secrets."wireguard-private-keys/alan-big-nixos" = {
+  sops.secrets."wireguard-private-keys/${hostname}" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."cloudflare/api-token" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."filebrowser-failover/sync-private-key" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."restic/filebrowser-password" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
     group = "root";
