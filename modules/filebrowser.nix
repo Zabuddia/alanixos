@@ -279,10 +279,28 @@ in
 
           DB=${lib.escapeShellArg dbPath}
           DECLARED=${lib.escapeShellArg declaredUsersList}
+          ROOT=${lib.escapeShellArg cfg.root}
+          ADDRESS=${lib.escapeShellArg cfg.listenAddress}
+          PORT=${lib.escapeShellArg (toString cfg.port)}
 
           if [ ! -f "$DB" ]; then
-            # First run on a standby/empty node: initialize DB so user reconciliation can proceed.
-            filebrowser config init --database "$DB" >/dev/null
+            # First run on a standby/empty node: initialize DB with declarative server paths.
+            filebrowser config init \
+              --database "$DB" \
+              --root "$ROOT" \
+              --address "$ADDRESS" \
+              --port "$PORT" \
+              --create-user-dir=false \
+              >/dev/null
+          else
+            # Keep DB config converged to declarative values if it was created manually/older config.
+            filebrowser config set \
+              --database "$DB" \
+              --root "$ROOT" \
+              --address "$ADDRESS" \
+              --port "$PORT" \
+              --create-user-dir=false \
+              >/dev/null
           fi
 
           have_user() {
@@ -323,11 +341,25 @@ in
               return 0
             fi
 
-            # Create user if missing
+            # Create user if missing first, then converge full state via update.
             if [ "$is_admin" = "1" ]; then
-              filebrowser users add "$name" "$pw" --database "$DB" --scope "$scope" --perm.admin
+              filebrowser users add "$name" "$pw" --database "$DB" --perm.admin
             else
-              filebrowser users add "$name" "$pw" --database "$DB" --scope "$scope"
+              filebrowser users add "$name" "$pw" --database "$DB"
+            fi
+
+            if [ "$is_admin" = "1" ]; then
+              filebrowser users update "$name" \
+                --database "$DB" \
+                --scope "$scope" \
+                --perm.admin \
+                --password "$pw"
+            else
+              filebrowser users update "$name" \
+                --database "$DB" \
+                --scope "$scope" \
+                --perm.admin=false \
+                --password "$pw"
             fi
           }
 
