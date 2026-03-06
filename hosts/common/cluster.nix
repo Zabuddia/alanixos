@@ -34,7 +34,7 @@
         enable = true;
         port = 8089;
       };
-      syncPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJqPS32ILVnc3Xyp23eo17esKfhOExuMNfKHikQXjtZc filebrowser-failover-sync";
+      syncPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMU3Ht4CVcc20p0U/twxj2YO9eqXz8MDglZedlN4TT4v filebrowser-sync";
     };
   };
 }
