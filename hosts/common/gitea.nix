@@ -23,6 +23,7 @@ in
       enable = cluster.services.gitea.wanAccess.enable;
       domain = cluster.services.gitea.wanAccess.domain;
       openFirewall = cluster.services.gitea.wanAccess.openFirewall;
+      canonicalRootUrl = cluster.services.gitea.wanAccess.canonicalRootUrl;
     };
 
     wireguardAccess = {

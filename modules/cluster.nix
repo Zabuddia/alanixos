@@ -272,6 +272,12 @@
           default = true;
           description = "Open TCP 80/443 for gitea WAN access.";
         };
+
+        canonicalRootUrl = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Optional canonical ROOT_URL for gitea (for example https://gitea.example.com/).";
+        };
       };
 
       wireguardAccess = {

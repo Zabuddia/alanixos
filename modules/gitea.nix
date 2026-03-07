@@ -10,6 +10,8 @@ let
   declaredUsernames = builtins.attrNames cfg.users;
   declaredUsersList = lib.concatStringsSep " " declaredUsernames;
   anySopsPassword = lib.any (u: u.passwordSecret != null) (lib.attrValues cfg.users);
+  passwordSecretNames =
+    lib.unique (lib.filter (x: x != null) (map (u: u.passwordSecret) (lib.attrValues cfg.users)));
 in
 {
   options.alanix.gitea = {
@@ -77,6 +79,15 @@ in
         type = lib.types.bool;
         default = true;
         description = "Open TCP 80/443 for Caddy when WAN access is enabled.";
+      };
+
+      canonicalRootUrl = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Optional canonical ROOT_URL written to Gitea server config.
+          Leave null to allow mixed WAN/WireGuard/Tor access without forced https scheme warnings.
+        '';
       };
     };
 
@@ -231,6 +242,10 @@ in
           message = "alanix.gitea.wanAccess.domain must be set when wanAccess is enabled.";
         }
         {
+          assertion = !(cfg.wanAccess.canonicalRootUrl != null && !lib.hasPrefix "http" cfg.wanAccess.canonicalRootUrl);
+          message = "alanix.gitea.wanAccess.canonicalRootUrl must start with http:// or https:// when set.";
+        }
+        {
           assertion = !(cfg.wireguardAccess.enable && cfg.wireguardAccess.listenAddress == null);
           message = "alanix.gitea.wireguardAccess.listenAddress must be set when wireguardAccess is enabled.";
         }
@@ -281,12 +296,18 @@ in
           START_SSH_SERVER = false;
           DISABLE_SSH = true;
         }
-        // lib.optionalAttrs (cfg.wanAccess.enable && cfg.wanAccess.domain != null) {
-          DOMAIN = cfg.wanAccess.domain;
-          ROOT_URL = "https://${cfg.wanAccess.domain}/";
+        // lib.optionalAttrs (cfg.wanAccess.canonicalRootUrl != null) {
+          ROOT_URL = cfg.wanAccess.canonicalRootUrl;
         };
       } cfg.settings;
     };
+
+    sops.secrets = lib.mkIf (hasSopsSecrets && passwordSecretNames != []) (
+      builtins.listToAttrs (map (secretName: {
+        name = secretName;
+        value.restartUnits = [ "gitea-reconcile-users.service" ];
+      }) passwordSecretNames)
+    );
 
     systemd.services.gitea.wantedBy = lib.mkIf (!cfg.active) (lib.mkForce []);
     systemd.services.gitea.restartTriggers = [
@@ -443,7 +464,7 @@ in
 
             [ -r "$passfile" ] || { echo "Missing password file for $name: $passfile" >&2; exit 1; }
             local pw
-            pw="$(tr -d '\n' < "$passfile")"
+            pw="$(tr -d '\r\n' < "$passfile")"
             [ -n "$pw" ] || { echo "Empty password for $name (from $passfile)" >&2; exit 1; }
 
             if user_exists "$name"; then

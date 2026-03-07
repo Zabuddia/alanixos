@@ -78,6 +78,7 @@
         enable = true;
         domain = "gitea.fifefin.com";
         openFirewall = true;
+        canonicalRootUrl = null;
       };
       wireguardAccess = {
         enable = true;
