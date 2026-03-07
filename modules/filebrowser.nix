@@ -258,13 +258,13 @@ in
 
       serviceConfig = {
         Type = "oneshot";
-        User = "filebrowser";
-        Group = "filebrowser";
+        User = "root";
+        Group = "root";
         RuntimeDirectory = "alanix-filebrowser";
         RuntimeDirectoryMode = "0700";
       };
 
-      path = [ pkgs.filebrowser pkgs.coreutils pkgs.gnugrep pkgs.gawk ];
+      path = [ pkgs.filebrowser pkgs.coreutils pkgs.gnugrep pkgs.gawk pkgs.util-linux ];
 
       script =
         let
@@ -304,9 +304,13 @@ in
           ADDRESS=${lib.escapeShellArg cfg.listenAddress}
           PORT=${lib.escapeShellArg (toString cfg.port)}
 
+          run_as_filebrowser() {
+            runuser -u filebrowser -- filebrowser "$@"
+          }
+
           if [ ! -f "$DB" ]; then
             # First run on a standby/empty node: initialize DB with declarative server paths.
-            filebrowser config init \
+            run_as_filebrowser config init \
               --database "$DB" \
               --root "$ROOT" \
               --address "$ADDRESS" \
@@ -315,7 +319,7 @@ in
               >/dev/null
           else
             # Keep DB config converged to declarative values if it was created manually/older config.
-            filebrowser config set \
+            run_as_filebrowser config set \
               --database "$DB" \
               --root "$ROOT" \
               --address "$ADDRESS" \
@@ -325,7 +329,7 @@ in
           fi
 
           have_user() {
-            filebrowser users ls --database "$DB" | awk 'NR>1 {print $2}' | grep -qx "$1"
+            run_as_filebrowser users ls --database "$DB" | awk 'NR>1 {print $2}' | grep -qx "$1"
           }
 
           ensure_runtime_passfile() {
@@ -347,13 +351,13 @@ in
             if have_user "$name"; then
               # Update user to match declared state (including scope/admin/password)
               if [ "$is_admin" = "1" ]; then
-                filebrowser users update "$name" \
+                run_as_filebrowser users update "$name" \
                   --database "$DB" \
                   --scope "$scope" \
                   --perm.admin \
                   --password "$pw"
               else
-                filebrowser users update "$name" \
+                run_as_filebrowser users update "$name" \
                   --database "$DB" \
                   --scope "$scope" \
                   --perm.admin=false \
@@ -364,19 +368,19 @@ in
 
             # Create user if missing first, then converge full state via update.
             if [ "$is_admin" = "1" ]; then
-              filebrowser users add "$name" "$pw" --database "$DB" --perm.admin
+              run_as_filebrowser users add "$name" "$pw" --database "$DB" --perm.admin
             else
-              filebrowser users add "$name" "$pw" --database "$DB"
+              run_as_filebrowser users add "$name" "$pw" --database "$DB"
             fi
 
             if [ "$is_admin" = "1" ]; then
-              filebrowser users update "$name" \
+              run_as_filebrowser users update "$name" \
                 --database "$DB" \
                 --scope "$scope" \
                 --perm.admin \
                 --password "$pw"
             else
-              filebrowser users update "$name" \
+              run_as_filebrowser users update "$name" \
                 --database "$DB" \
                 --scope "$scope" \
                 --perm.admin=false \
@@ -389,14 +393,14 @@ in
           ${ensureLines}
 
           # Remove undeclared users (best-effort; File Browser may refuse deleting the first user)
-          filebrowser users ls --database "$DB" | awk 'NR>1 {print $2}' | while read -r u; do
+          run_as_filebrowser users ls --database "$DB" | awk 'NR>1 {print $2}' | while read -r u; do
             keep=0
             for d in $DECLARED; do
               if [ "$u" = "$d" ]; then keep=1; fi
             done
             if [ "$keep" -eq 0 ]; then
               echo "Removing undeclared user: $u"
-              if ! filebrowser users rm "$u" --database "$DB"; then
+              if ! run_as_filebrowser users rm "$u" --database "$DB"; then
                 echo "Could not remove undeclared user: $u (File Browser may refuse deleting the first user). Leaving it."
               fi
             fi
