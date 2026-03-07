@@ -34,6 +34,10 @@
       backendPort = 8088;
       uid = 45000;
       gid = 45000;
+      priorityOverrides = {
+        randy-big-nixos = 10;
+        alan-big-nixos = 20;
+      };
       backups = {
         enable = true;
         passwordSecret = "restic/cluster-password";
@@ -67,13 +71,17 @@
       syncPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFqBvDH10XQLN1srCL3U92KUZcXn0f+PkYPKhWfQehf7 filebrowser-failover-sync";
     };
 
-    services.gitea = {
+    services.forgejo = {
       enable = true;
       backendPort = 3000;
-      stateDir = "/var/lib/gitea";
+      stateDir = "/var/lib/forgejo";
       uid = 45010;
       gid = 45010;
-      dataPaths = [ "/var/lib/gitea" ];
+      priorityOverrides = {
+        alan-big-nixos = 10;
+        randy-big-nixos = 20;
+      };
+      dataPaths = [ "/var/lib/forgejo" ];
       wanAccess = {
         enable = true;
         domain = "gitea.fifefin.com";
@@ -86,7 +94,7 @@
       };
       torAccess = {
         enable = true;
-        onionServiceName = "gitea";
+        onionServiceName = "forgejo";
         localPort = 13000;
         virtualPort = 80;
         version = 3;
@@ -96,7 +104,7 @@
       backups = {
         enable = true;
         passwordSecret = "restic/cluster-password";
-        repositoryBasePath = "/var/backups/restic/gitea";
+        repositoryBasePath = "/var/backups/restic/forgejo";
         schedule = "hourly";
         randomizedDelaySec = "10m";
         pruneOpts = [

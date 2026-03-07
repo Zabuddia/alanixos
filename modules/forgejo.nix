@@ -1,6 +1,6 @@
 { config, lib, pkgs, ... }:
 let
-  cfg = config.alanix.gitea;
+  cfg = config.alanix.forgejo;
   hasSopsSecrets = lib.hasAttrByPath [ "sops" "secrets" ] config;
   torSecretKeyPath =
     if cfg.torAccess.secretKeySecret == null then
@@ -14,13 +14,13 @@ let
     lib.unique (lib.filter (x: x != null) (map (u: u.passwordSecret) (lib.attrValues cfg.users)));
 in
 {
-  options.alanix.gitea = {
-    enable = lib.mkEnableOption "Gitea (Alanix)";
+  options.alanix.forgejo = {
+    enable = lib.mkEnableOption "Forgejo (Alanix)";
 
     active = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "Whether this node actively runs the Gitea service.";
+      description = "Whether this node actively runs the Forgejo service.";
     };
 
     listenAddress = lib.mkOption {
@@ -36,43 +36,43 @@ in
     openFirewall = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = "Open the direct Gitea backend port in the firewall.";
+      description = "Open the direct Forgejo backend port in the firewall.";
     };
 
     firewallInterfaces = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [];
       description = ''
-        Optional interface allowlist for the direct Gitea backend port.
+        Optional interface allowlist for the direct Forgejo backend port.
         Empty means open globally via networking.firewall.allowedTCPPorts.
       '';
     };
 
     stateDir = lib.mkOption {
       type = lib.types.str;
-      default = "/var/lib/gitea";
+      default = "/var/lib/forgejo";
       description = "State directory containing repositories and sqlite database.";
     };
 
     uid = lib.mkOption {
       type = lib.types.nullOr lib.types.ints.positive;
       default = null;
-      description = "Pinned UID for the gitea system user. Set with gid for multi-node consistency.";
+      description = "Pinned UID for the forgejo system user. Set with gid for multi-node consistency.";
     };
 
     gid = lib.mkOption {
       type = lib.types.nullOr lib.types.ints.positive;
       default = null;
-      description = "Pinned GID for the gitea system group. Set with uid for multi-node consistency.";
+      description = "Pinned GID for the forgejo system group. Set with uid for multi-node consistency.";
     };
 
     wanAccess = {
-      enable = lib.mkEnableOption "WAN/public access path for Gitea via Caddy";
+      enable = lib.mkEnableOption "WAN/public access path for Forgejo via Caddy";
 
       domain = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
-        description = "Public DNS name served by Caddy for Gitea (for example git.example.com).";
+        description = "Public DNS name served by Caddy for Forgejo (for example git.example.com).";
       };
 
       openFirewall = lib.mkOption {
@@ -85,14 +85,14 @@ in
         type = lib.types.nullOr lib.types.str;
         default = null;
         description = ''
-          Optional canonical ROOT_URL written to Gitea server config.
+          Optional canonical ROOT_URL written to Forgejo server config.
           Leave null to allow mixed WAN/WireGuard/Tor access without forced https scheme warnings.
         '';
       };
     };
 
     wireguardAccess = {
-      enable = lib.mkEnableOption "WireGuard-only access path for Gitea";
+      enable = lib.mkEnableOption "WireGuard-only access path for Forgejo";
 
       listenAddress = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
@@ -114,11 +114,11 @@ in
     };
 
     torAccess = {
-      enable = lib.mkEnableOption "Tor onion-service access path for Gitea";
+      enable = lib.mkEnableOption "Tor onion-service access path for Forgejo";
 
       serviceName = lib.mkOption {
         type = lib.types.str;
-        default = "gitea";
+        default = "forgejo";
         description = "Tor onion service name key under services.tor.relay.onionServices.";
       };
 
@@ -150,7 +150,7 @@ in
     settings = lib.mkOption {
       type = lib.types.attrs;
       default = {};
-      description = "Additional Gitea app.ini settings merged over sane defaults.";
+      description = "Additional Forgejo app.ini settings merged over sane defaults.";
     };
 
     allowRegistration = lib.mkOption {
@@ -212,7 +212,7 @@ in
         };
       }));
       default = {};
-      description = "Declarative Gitea users.";
+      description = "Declarative Forgejo users.";
     };
   };
 
@@ -228,38 +228,38 @@ in
         in [
           {
             assertion = (builtins.length chosen) == 1;
-            message = "alanix.gitea.users.${uname}: set exactly one of password, passwordFile, or passwordSecret.";
+            message = "alanix.forgejo.users.${uname}: set exactly one of password, passwordFile, or passwordSecret.";
           }
           {
             assertion = lib.match "^[A-Za-z0-9][A-Za-z0-9._-]{0,38}$" uname != null;
-            message = "alanix.gitea.users.${uname}: username must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,38}$.";
+            message = "alanix.forgejo.users.${uname}: username must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,38}$.";
           }
         ]
       ) cfg.users))
       ++ [
         {
           assertion = !(cfg.wanAccess.enable && cfg.wanAccess.domain == null);
-          message = "alanix.gitea.wanAccess.domain must be set when wanAccess is enabled.";
+          message = "alanix.forgejo.wanAccess.domain must be set when wanAccess is enabled.";
         }
         {
           assertion = !(cfg.wanAccess.canonicalRootUrl != null && !lib.hasPrefix "http" cfg.wanAccess.canonicalRootUrl);
-          message = "alanix.gitea.wanAccess.canonicalRootUrl must start with http:// or https:// when set.";
+          message = "alanix.forgejo.wanAccess.canonicalRootUrl must start with http:// or https:// when set.";
         }
         {
           assertion = !(cfg.wireguardAccess.enable && cfg.wireguardAccess.listenAddress == null);
-          message = "alanix.gitea.wireguardAccess.listenAddress must be set when wireguardAccess is enabled.";
+          message = "alanix.forgejo.wireguardAccess.listenAddress must be set when wireguardAccess is enabled.";
         }
         {
           assertion = !(cfg.torAccess.enable && cfg.torAccess.secretKeySecret != null && !hasSopsSecrets);
-          message = "alanix.gitea.torAccess.secretKeySecret requires sops-nix configuration.";
+          message = "alanix.forgejo.torAccess.secretKeySecret requires sops-nix configuration.";
         }
         {
           assertion = (cfg.uid == null) == (cfg.gid == null);
-          message = "alanix.gitea.uid and alanix.gitea.gid must either both be set or both be null.";
+          message = "alanix.forgejo.uid and alanix.forgejo.gid must either both be set or both be null.";
         }
         {
           assertion = !(anySopsPassword && !hasSopsSecrets);
-          message = "alanix.gitea.users.*.passwordSecret requires sops-nix configuration.";
+          message = "alanix.forgejo.users.*.passwordSecret requires sops-nix configuration.";
         }
       ];
 
@@ -280,10 +280,10 @@ in
       })
     ];
 
-    services.gitea = {
+    services.forgejo = {
       enable = true;
-      user = "gitea";
-      group = "gitea";
+      user = "forgejo";
+      group = "forgejo";
       stateDir = cfg.stateDir;
       database.type = "sqlite3";
       settings = lib.recursiveUpdate {
@@ -305,22 +305,22 @@ in
     sops.secrets = lib.mkIf (hasSopsSecrets && passwordSecretNames != []) (
       builtins.listToAttrs (map (secretName: {
         name = secretName;
-        value.restartUnits = [ "gitea-reconcile-users.service" ];
+        value.restartUnits = [ "forgejo-reconcile-users.service" ];
       }) passwordSecretNames)
     );
 
-    systemd.services.gitea.wantedBy = lib.mkIf (!cfg.active) (lib.mkForce []);
-    systemd.services.gitea.restartTriggers = [
+    systemd.services.forgejo.wantedBy = lib.mkIf (!cfg.active) (lib.mkForce []);
+    systemd.services.forgejo.restartTriggers = [
       (builtins.toJSON cfg.users)
     ];
 
-    users.groups.gitea = lib.mkMerge [
+    users.groups.forgejo = lib.mkMerge [
       {}
       (lib.mkIf (cfg.gid != null) { gid = cfg.gid; })
     ];
-    users.users.gitea = {
+    users.users.forgejo = {
       isSystemUser = true;
-      group = "gitea";
+      group = "forgejo";
       home = cfg.stateDir;
       createHome = true;
     } // lib.optionalAttrs (cfg.uid != null) {
@@ -328,15 +328,15 @@ in
     };
 
     systemd.tmpfiles.rules = [
-      "d ${cfg.stateDir} 0750 gitea gitea - -"
+      "d ${cfg.stateDir} 0750 forgejo forgejo - -"
     ];
 
-    systemd.services.gitea-reconcile-users = lib.mkIf (cfg.users != {}) {
-      description = "Reconcile Gitea users (create/update declared users)";
-      wantedBy = [ "gitea.service" ];
-      after = [ "gitea.service" ] ++ lib.optional anySopsPassword "sops-install-secrets.service";
+    systemd.services.forgejo-reconcile-users = lib.mkIf (cfg.users != {}) {
+      description = "Reconcile Forgejo users (create/update declared users)";
+      wantedBy = [ "forgejo.service" ];
+      after = [ "forgejo.service" ] ++ lib.optional anySopsPassword "sops-install-secrets.service";
       wants = lib.optional anySopsPassword "sops-install-secrets.service";
-      partOf = [ "gitea.service" ];
+      partOf = [ "forgejo.service" ];
 
       serviceConfig = {
         Type = "oneshot";
@@ -344,7 +344,7 @@ in
         Group = "root";
       };
 
-      path = [ pkgs.gitea pkgs.coreutils pkgs.gnugrep pkgs.gawk pkgs.util-linux pkgs.sqlite ];
+      path = [ pkgs.forgejo pkgs.coreutils pkgs.gnugrep pkgs.gawk pkgs.util-linux pkgs.sqlite ];
 
       script =
         let
@@ -360,7 +360,7 @@ in
                   ''${var}=${lib.escapeShellArg config.sops.secrets.${u.passwordSecret}.path}''
                 else
                   let
-                    pwFile = "/run/gitea-reconcile-users/" + uname + ".pw";
+                    pwFile = "/run/forgejo-reconcile-users/" + uname + ".pw";
                   in
                   ''${var}=${lib.escapeShellArg pwFile}''
               ) cfg.users);
@@ -372,7 +372,7 @@ in
                   ""
                 else
                   let
-                    pwFile = "/run/gitea-reconcile-users/" + uname + ".pw";
+                    pwFile = "/run/forgejo-reconcile-users/" + uname + ".pw";
                   in
                   ''
                     cat > ${lib.escapeShellArg pwFile} <<'EOF'
@@ -406,12 +406,12 @@ in
           set -euo pipefail
 
           APP_INI=${lib.escapeShellArg "${cfg.stateDir}/custom/conf/app.ini"}
-          DB_PATH_DEFAULT=${lib.escapeShellArg "${cfg.stateDir}/data/gitea.db"}
-          GITEA_HOME=${lib.escapeShellArg cfg.stateDir}
-          GITEA_CUSTOM=${lib.escapeShellArg "${cfg.stateDir}/custom"}
+          DB_PATH_DEFAULT=${lib.escapeShellArg "${cfg.stateDir}/data/forgejo.db"}
+          FORGEJO_HOME=${lib.escapeShellArg cfg.stateDir}
+          FORGEJO_CUSTOM=${lib.escapeShellArg "${cfg.stateDir}/custom"}
           DECLARED=${lib.escapeShellArg declaredUsersList}
 
-          mkdir -p /run/gitea-reconcile-users
+          mkdir -p /run/forgejo-reconcile-users
 
           ${passfileLines}
           ${plainWriteLines}
@@ -425,9 +425,12 @@ in
             DB_PATH="$DB_PATH_DEFAULT"
           fi
 
-          run_as_gitea() {
-            env HOME="$GITEA_HOME" GITEA_WORK_DIR="$GITEA_HOME" GITEA_CUSTOM="$GITEA_CUSTOM" \
-              runuser -u gitea -- gitea "$@"
+          run_as_forgejo() {
+            runuser -u forgejo -- forgejo \
+              --work-path "$FORGEJO_HOME" \
+              --custom-path "$FORGEJO_CUSTOM" \
+              --config "$APP_INI" \
+              "$@"
           }
 
           sql_quote() {
@@ -468,7 +471,7 @@ in
             [ -n "$pw" ] || { echo "Empty password for $name (from $passfile)" >&2; exit 1; }
 
             if user_exists "$name"; then
-              run_as_gitea admin user change-password \
+              run_as_forgejo admin user change-password \
                 --username "$name" \
                 --password "$pw" \
                 --must-change-password="$must_change"
@@ -477,13 +480,12 @@ in
                 --username "$name"
                 --email "$email"
                 --password "$pw"
-                --user-type "$usertype"
                 --must-change-password="$must_change"
               )
               [ "$admin" = "true" ] && args+=(--admin)
               [ "$restricted" = "true" ] && args+=(--restricted)
               [ -n "$fullname" ] && args+=(--fullname "$fullname")
-              run_as_gitea "''${args[@]}"
+              run_as_forgejo "''${args[@]}"
             fi
 
             # Enforce declared profile/admin/type/restriction declaratively for sqlite backend.

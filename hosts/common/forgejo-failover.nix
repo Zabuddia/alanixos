@@ -1,22 +1,24 @@
 { config, lib, hostname, ... }:
 let
   cluster = config.alanix.cluster;
+  mkPrioritizedServiceNodes = import ./mk-prioritized-service-nodes.nix;
 in
 {
   imports = [ ./cluster.nix ];
 
-  alanix.serviceFailover.instances.gitea =
+  alanix.serviceFailover.instances.forgejo =
     let
-      nodes = lib.mapAttrs (_: node: {
-        inherit (node) priority vpnIP sshTarget;
-      }) cluster.nodes;
+      nodes = mkPrioritizedServiceNodes {
+        inherit lib cluster;
+        priorityOverrides = cluster.services.forgejo.priorityOverrides;
+      };
     in
     {
-      enable = cluster.services.gitea.enable;
+      enable = cluster.services.forgejo.enable;
       nodeName = hostname;
-      serviceUnit = "gitea.service";
+      serviceUnit = "forgejo.service";
       edgeUnit = null;
-      requireServiceEnableOptionPath = [ "alanix" "gitea" "enable" ];
+      requireServiceEnableOptionPath = [ "alanix" "forgejo" "enable" ];
 
       checkInterval = "15s";
       failureThreshold = 4;
@@ -26,20 +28,20 @@ in
       sync = {
         enable = true;
         interval = "2min";
-        paths = cluster.services.gitea.dataPaths;
+        paths = cluster.services.forgejo.dataPaths;
         sshKeySecret = cluster.syncSshKeySecret;
-        authorizedPublicKey = cluster.services.gitea.syncPublicKey;
+        authorizedPublicKey = cluster.services.forgejo.syncPublicKey;
         allowedFromCIDR = cluster.wgSubnetCIDR;
         openFirewallOnWg = true;
       };
 
       dns = {
         enable = true;
-        jobName = "gitea-failover";
+        jobName = "forgejo-failover";
         provider = cluster.dns.provider;
         interval = "2min";
         zone = cluster.domain;
-        record = cluster.services.gitea.wanAccess.domain;
+        record = cluster.services.forgejo.wanAccess.domain;
         tokenSecret = cluster.dns.apiTokenSecret;
         proxied = false;
         ttl = 60;

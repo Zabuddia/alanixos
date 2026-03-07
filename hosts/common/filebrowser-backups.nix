@@ -1,15 +1,17 @@
 { config, lib, hostname, ... }:
 let
   cluster = config.alanix.cluster;
+  mkPrioritizedServiceNodes = import ./mk-prioritized-service-nodes.nix;
 in
 {
   imports = [ ./cluster.nix ];
 
   alanix.serviceBackups.instances.filebrowser =
     let
-      nodes = lib.mapAttrs (_: node: {
-        inherit (node) priority vpnIP sshTarget;
-      }) cluster.nodes;
+      nodes = mkPrioritizedServiceNodes {
+        inherit lib cluster;
+        priorityOverrides = cluster.services.filebrowser.priorityOverrides;
+      };
     in
     {
       enable = cluster.services.filebrowser.backups.enable;

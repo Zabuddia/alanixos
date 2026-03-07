@@ -1,4 +1,9 @@
-{ lib, ... }:
+{ config, lib, ... }:
+let
+  cluster = config.alanix.cluster;
+  unknownOverrideKeys = overrides:
+    builtins.filter (nodeName: !(builtins.hasAttr nodeName cluster.nodes)) (builtins.attrNames overrides);
+in
 {
   options.alanix.cluster = {
     domain = lib.mkOption {
@@ -176,6 +181,16 @@
         description = "Public SSH key allowed for failover sync/control.";
       };
 
+      priorityOverrides = lib.mkOption {
+        type = lib.types.attrsOf lib.types.int;
+        default = {};
+        description = ''
+          Optional per-node priority overrides for filebrowser failover/backups.
+          Lower number means higher priority. Keys must match alanix.cluster.nodes.
+          Nodes not listed here use alanix.cluster.nodes.<name>.priority.
+        '';
+      };
+
       backups = {
         enable = lib.mkOption {
           type = lib.types.bool;
@@ -219,11 +234,11 @@
       };
     };
 
-    services.gitea = {
+    services.forgejo = {
       enable = lib.mkOption {
         type = lib.types.bool;
         default = false;
-        description = "Enable cluster-managed gitea service, failover, and DNS control.";
+        description = "Enable cluster-managed forgejo service, failover, and DNS control.";
       };
 
       backendPort = lib.mkOption {
@@ -233,25 +248,25 @@
 
       stateDir = lib.mkOption {
         type = lib.types.str;
-        default = "/var/lib/gitea";
+        default = "/var/lib/forgejo";
       };
 
       uid = lib.mkOption {
         type = lib.types.nullOr lib.types.ints.positive;
         default = null;
-        description = "Pinned UID for gitea service user/group across nodes.";
+        description = "Pinned UID for forgejo service user/group across nodes.";
       };
 
       gid = lib.mkOption {
         type = lib.types.nullOr lib.types.ints.positive;
         default = null;
-        description = "Pinned GID for gitea service user/group across nodes.";
+        description = "Pinned GID for forgejo service user/group across nodes.";
       };
 
       dataPaths = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [
-          "/var/lib/gitea"
+          "/var/lib/forgejo"
         ];
       };
 
@@ -259,24 +274,24 @@
         enable = lib.mkOption {
           type = lib.types.bool;
           default = true;
-          description = "Enable WAN/public access endpoint for gitea.";
+          description = "Enable WAN/public access endpoint for forgejo.";
         };
 
         domain = lib.mkOption {
           type = lib.types.str;
-          description = "Public FQDN for gitea WAN access.";
+          description = "Public FQDN for forgejo WAN access.";
         };
 
         openFirewall = lib.mkOption {
           type = lib.types.bool;
           default = true;
-          description = "Open TCP 80/443 for gitea WAN access.";
+          description = "Open TCP 80/443 for forgejo WAN access.";
         };
 
         canonicalRootUrl = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "Optional canonical ROOT_URL for gitea (for example https://gitea.example.com/).";
+          description = "Optional canonical ROOT_URL for forgejo (for example https://forgejo.example.com/).";
         };
       };
 
@@ -284,7 +299,7 @@
         enable = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Enable a WireGuard-only access endpoint for gitea.";
+          description = "Enable a WireGuard-only access endpoint for forgejo.";
         };
 
         port = lib.mkOption {
@@ -298,12 +313,12 @@
         enable = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Enable a Tor onion-service access endpoint for gitea.";
+          description = "Enable a Tor onion-service access endpoint for forgejo.";
         };
 
         onionServiceName = lib.mkOption {
           type = lib.types.str;
-          default = "gitea";
+          default = "forgejo";
           description = "Service key name under services.tor.relay.onionServices.";
         };
 
@@ -334,32 +349,42 @@
 
       syncPublicKey = lib.mkOption {
         type = lib.types.str;
-        description = "Public SSH key allowed for gitea failover sync/control.";
+        description = "Public SSH key allowed for forgejo failover sync/control.";
+      };
+
+      priorityOverrides = lib.mkOption {
+        type = lib.types.attrsOf lib.types.int;
+        default = {};
+        description = ''
+          Optional per-node priority overrides for forgejo failover/backups.
+          Lower number means higher priority. Keys must match alanix.cluster.nodes.
+          Nodes not listed here use alanix.cluster.nodes.<name>.priority.
+        '';
       };
 
       backups = {
         enable = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Enable restic backups for gitea data.";
+          description = "Enable restic backups for forgejo data.";
         };
 
         passwordSecret = lib.mkOption {
           type = lib.types.str;
           default = "restic/cluster-password";
-          description = "sops secret containing the restic password used for gitea backup repositories.";
+          description = "sops secret containing the restic password used for forgejo backup repositories.";
         };
 
         repositoryBasePath = lib.mkOption {
           type = lib.types.str;
-          default = "/var/backups/restic/gitea";
-          description = "Base directory on each node used for incoming gitea restic repositories.";
+          default = "/var/backups/restic/forgejo";
+          description = "Base directory on each node used for incoming forgejo restic repositories.";
         };
 
         schedule = lib.mkOption {
           type = lib.types.str;
           default = "hourly";
-          description = "Systemd OnCalendar schedule used for gitea restic jobs.";
+          description = "Systemd OnCalendar schedule used for forgejo restic jobs.";
         };
 
         randomizedDelaySec = lib.mkOption {
@@ -375,9 +400,24 @@
             "--keep-weekly 4"
             "--keep-monthly 6"
           ];
-          description = "Retention policy for gitea restic snapshots.";
+          description = "Retention policy for forgejo restic snapshots.";
         };
       };
     };
   };
+
+  config.assertions = [
+    {
+      assertion = (unknownOverrideKeys cluster.services.filebrowser.priorityOverrides) == [];
+      message =
+        "alanix.cluster.services.filebrowser.priorityOverrides contains unknown nodes: "
+        + lib.concatStringsSep ", " (unknownOverrideKeys cluster.services.filebrowser.priorityOverrides);
+    }
+    {
+      assertion = (unknownOverrideKeys cluster.services.forgejo.priorityOverrides) == [];
+      message =
+        "alanix.cluster.services.forgejo.priorityOverrides contains unknown nodes: "
+        + lib.concatStringsSep ", " (unknownOverrideKeys cluster.services.forgejo.priorityOverrides);
+    }
+  ];
 }
