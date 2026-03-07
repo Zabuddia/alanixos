@@ -84,7 +84,7 @@
       dataPaths = [ "/var/lib/forgejo" ];
       wanAccess = {
         enable = true;
-        domain = "gitea.fifefin.com";
+        domain = "forgejo.fifefin.com";
         openFirewall = true;
         canonicalRootUrl = null;
       };

@@ -86,7 +86,7 @@ in
         default = null;
         description = ''
           Optional canonical ROOT_URL written to Forgejo server config.
-          Leave null to allow mixed WAN/WireGuard/Tor access without forced https scheme warnings.
+          Leave null to let Forgejo use its own ROOT_URL default behavior.
         '';
       };
     };
