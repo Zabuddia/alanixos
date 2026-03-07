@@ -26,6 +26,12 @@
       description = "WireGuard subnet CIDR used for inter-node traffic.";
     };
 
+    syncSshKeySecret = lib.mkOption {
+      type = lib.types.str;
+      default = "cluster/sync-private-key";
+      description = "sops secret containing the shared inter-node SSH private key for sync/control traffic.";
+    };
+
     nodes = lib.mkOption {
       type = lib.types.attrsOf (lib.types.submodule ({ config, ... }: {
         options = {
@@ -130,6 +136,12 @@
           description = "Enable restic backups for filebrowser.";
         };
 
+        passwordSecret = lib.mkOption {
+          type = lib.types.str;
+          default = "restic/cluster-password";
+          description = "sops secret containing the restic password used for filebrowser backup repositories.";
+        };
+
         repositoryBasePath = lib.mkOption {
           type = lib.types.str;
           default = "/var/backups/restic/filebrowser";
@@ -156,6 +168,114 @@
             "--keep-monthly 6"
           ];
           description = "Retention policy for filebrowser restic snapshots.";
+        };
+      };
+    };
+
+    services.gitea = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Enable cluster-managed gitea service, failover, and DNS control.";
+      };
+
+      domain = lib.mkOption {
+        type = lib.types.str;
+        description = "Public FQDN for gitea.";
+      };
+
+      backendPort = lib.mkOption {
+        type = lib.types.port;
+        default = 3000;
+      };
+
+      stateDir = lib.mkOption {
+        type = lib.types.str;
+        default = "/var/lib/gitea";
+      };
+
+      uid = lib.mkOption {
+        type = lib.types.nullOr lib.types.ints.positive;
+        default = null;
+        description = "Pinned UID for gitea service user/group across nodes.";
+      };
+
+      gid = lib.mkOption {
+        type = lib.types.nullOr lib.types.ints.positive;
+        default = null;
+        description = "Pinned GID for gitea service user/group across nodes.";
+      };
+
+      dataPaths = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [
+          "/var/lib/gitea"
+        ];
+      };
+
+      reverseProxyOpenFirewall = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+      };
+
+      wireguardAccess = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable a WireGuard-only access endpoint for gitea.";
+        };
+
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 8090;
+          description = "WireGuard-only access port exposed by Caddy.";
+        };
+      };
+
+      syncPublicKey = lib.mkOption {
+        type = lib.types.str;
+        description = "Public SSH key allowed for gitea failover sync/control.";
+      };
+
+      backups = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable restic backups for gitea data.";
+        };
+
+        passwordSecret = lib.mkOption {
+          type = lib.types.str;
+          default = "restic/cluster-password";
+          description = "sops secret containing the restic password used for gitea backup repositories.";
+        };
+
+        repositoryBasePath = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/backups/restic/gitea";
+          description = "Base directory on each node used for incoming gitea restic repositories.";
+        };
+
+        schedule = lib.mkOption {
+          type = lib.types.str;
+          default = "hourly";
+          description = "Systemd OnCalendar schedule used for gitea restic jobs.";
+        };
+
+        randomizedDelaySec = lib.mkOption {
+          type = lib.types.str;
+          default = "10m";
+        };
+
+        pruneOpts = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [
+            "--keep-hourly 24"
+            "--keep-daily 7"
+            "--keep-weekly 4"
+            "--keep-monthly 6"
+          ];
+          description = "Retention policy for gitea restic snapshots.";
         };
       };
     };

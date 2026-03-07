@@ -6,9 +6,12 @@
     ../common/users.nix
     ../common/wireguard.nix
     ../common/filebrowser.nix
+    ../common/gitea.nix
     ../common/dynamic-dns.nix
     ../common/filebrowser-failover.nix
+    ../common/gitea-failover.nix
     ../common/filebrowser-backups.nix
+    ../common/gitea-backups.nix
     ../../modules/cosmic.nix
     ../../modules/ssh.nix
     ../../modules/tailscale.nix

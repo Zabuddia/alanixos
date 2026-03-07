@@ -426,8 +426,6 @@ in
         })
       ];
     };
-    systemd.services.caddy.wantedBy =
-      lib.mkIf ((cfg.reverseProxy.enable || cfg.wireguardAccess.enable) && !cfg.active) (lib.mkForce []);
 
   };
 }

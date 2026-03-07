@@ -26,31 +26,31 @@
     mode = "0400";
   };
 
-  sops.secrets."filebrowser-failover/sync-private-key" = {
+  sops.secrets."cluster/sync-private-key" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
     group = "root";
     mode = "0400";
   };
 
-  sops.secrets."restic/filebrowser-password" = {
+  sops.secrets."restic/cluster-password" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
     group = "root";
     mode = "0400";
   };
 
-  sops.secrets."filebrowser-passwords/admin" = {
+  sops.secrets."service-passwords/admin" = {
     sopsFile = ../../secrets/secrets.yaml;
-    owner = "filebrowser";
-    group = "filebrowser";
+    owner = "root";
+    group = "root";
     mode = "0400";
   };
 
-  sops.secrets."filebrowser-passwords/buddia" = {
+  sops.secrets."service-passwords/buddia" = {
     sopsFile = ../../secrets/secrets.yaml;
-    owner = "filebrowser";
-    group = "filebrowser";
+    owner = "root";
+    group = "root";
     mode = "0400";
   };
 }

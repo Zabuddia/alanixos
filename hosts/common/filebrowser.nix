@@ -34,13 +34,13 @@ in
 
     users = {
       admin = {
-        passwordSecret = "filebrowser-passwords/admin";
+        passwordSecret = "service-passwords/admin";
         admin = true;
         scope = ".";
       };
 
       buddia = {
-        passwordSecret = "filebrowser-passwords/buddia";
+        passwordSecret = "service-passwords/buddia";
         admin = false;
         scope = "users/buddia";
       };

@@ -5,18 +5,18 @@ in
 {
   imports = [ ./cluster.nix ];
 
-  alanix.serviceFailover.instances.filebrowser =
+  alanix.serviceFailover.instances.gitea =
     let
       nodes = lib.mapAttrs (_: node: {
         inherit (node) priority vpnIP sshTarget;
       }) cluster.nodes;
     in
     {
-      enable = true;
+      enable = cluster.services.gitea.enable;
       nodeName = hostname;
-      serviceUnit = "filebrowser.service";
+      serviceUnit = "gitea.service";
       edgeUnit = null;
-      requireServiceEnableOptionPath = [ "alanix" "filebrowser" "enable" ];
+      requireServiceEnableOptionPath = [ "alanix" "gitea" "enable" ];
 
       checkInterval = "15s";
       failureThreshold = 4;
@@ -26,20 +26,20 @@ in
       sync = {
         enable = true;
         interval = "2min";
-        paths = cluster.services.filebrowser.dataPaths;
+        paths = cluster.services.gitea.dataPaths;
         sshKeySecret = cluster.syncSshKeySecret;
-        authorizedPublicKey = cluster.services.filebrowser.syncPublicKey;
+        authorizedPublicKey = cluster.services.gitea.syncPublicKey;
         allowedFromCIDR = cluster.wgSubnetCIDR;
         openFirewallOnWg = true;
       };
 
       dns = {
         enable = true;
-        jobName = "filebrowser-failover";
+        jobName = "gitea-failover";
         provider = cluster.dns.provider;
         interval = "2min";
         zone = cluster.domain;
-        record = cluster.services.filebrowser.domain;
+        record = cluster.services.gitea.domain;
         tokenSecret = cluster.dns.apiTokenSecret;
         proxied = false;
         ttl = 60;
