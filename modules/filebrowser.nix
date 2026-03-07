@@ -4,6 +4,11 @@ let
 
   dbPath = cfg.database;
   hasSopsSecrets = lib.hasAttrByPath [ "sops" "secrets" ] config;
+  torSecretKeyPath =
+    if cfg.torAccess.secretKeySecret == null then
+      null
+    else
+      config.sops.secrets.${cfg.torAccess.secretKeySecret}.path;
 
   declaredUsernames = builtins.attrNames cfg.users;
 
@@ -106,8 +111,8 @@ in
       description = "Declarative File Browser users. Users get separate directories via per-user scope under root.";
     };
 
-    reverseProxy = {
-      enable = lib.mkEnableOption "Caddy reverse proxy for File Browser";
+    wanAccess = {
+      enable = lib.mkEnableOption "WAN/public access path for File Browser via Caddy";
 
       domain = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
@@ -118,7 +123,7 @@ in
       openFirewall = lib.mkOption {
         type = lib.types.bool;
         default = true;
-        description = "Open TCP 80/443 for Caddy when reverse proxy is enabled.";
+        description = "Open TCP 80/443 for Caddy when WAN access is enabled.";
       };
     };
 
@@ -141,6 +146,40 @@ in
         type = lib.types.str;
         default = "wg0";
         description = "Firewall interface for WireGuard-only access.";
+      };
+    };
+
+    torAccess = {
+      enable = lib.mkEnableOption "Tor onion-service access path for File Browser";
+
+      serviceName = lib.mkOption {
+        type = lib.types.str;
+        default = "filebrowser";
+        description = "Tor onion service name key under services.tor.relay.onionServices.";
+      };
+
+      localPort = lib.mkOption {
+        type = lib.types.port;
+        default = 18088;
+        description = "Local Caddy listener used as Tor hidden-service backend.";
+      };
+
+      virtualPort = lib.mkOption {
+        type = lib.types.port;
+        default = 80;
+        description = "Virtual onion service port exposed to Tor clients.";
+      };
+
+      version = lib.mkOption {
+        type = lib.types.enum [ 2 3 ];
+        default = 3;
+        description = "Tor hidden-service version.";
+      };
+
+      secretKeySecret = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Optional sops secret containing a Tor hidden-service secret key for stable onion address.";
       };
     };
   };
@@ -176,8 +215,8 @@ in
           message = "alanix.filebrowser.database must not be empty.";
         }
         {
-          assertion = !(cfg.reverseProxy.enable && cfg.reverseProxy.domain == null);
-          message = "alanix.filebrowser.reverseProxy.domain must be set when reverse proxy is enabled.";
+          assertion = !(cfg.wanAccess.enable && cfg.wanAccess.domain == null);
+          message = "alanix.filebrowser.wanAccess.domain must be set when wanAccess is enabled.";
         }
         {
           assertion = (cfg.uid == null) == (cfg.gid == null);
@@ -186,6 +225,10 @@ in
         {
           assertion = !(cfg.wireguardAccess.enable && cfg.wireguardAccess.listenAddress == null);
           message = "alanix.filebrowser.wireguardAccess.listenAddress must be set when wireguardAccess is enabled.";
+        }
+        {
+          assertion = !(cfg.torAccess.enable && cfg.torAccess.secretKeySecret != null && !hasSopsSecrets);
+          message = "alanix.filebrowser.torAccess.secretKeySecret requires sops-nix configuration.";
         }
       ];
 
@@ -197,7 +240,7 @@ in
         interfaces =
           lib.genAttrs cfg.firewallInterfaces (_: { allowedTCPPorts = [ cfg.port ]; });
       })
-      (lib.mkIf (cfg.reverseProxy.enable && cfg.reverseProxy.openFirewall) {
+      (lib.mkIf (cfg.wanAccess.enable && cfg.wanAccess.openFirewall) {
         allowedTCPPorts = [ 80 443 ];
       })
       (lib.mkIf cfg.wireguardAccess.enable {
@@ -413,11 +456,11 @@ in
       (builtins.toJSON cfg.users)
     ];
 
-    services.caddy = lib.mkIf (cfg.reverseProxy.enable || cfg.wireguardAccess.enable) {
+    services.caddy = lib.mkIf (cfg.wanAccess.enable || cfg.wireguardAccess.enable || cfg.torAccess.enable) {
       enable = true;
       virtualHosts = lib.mkMerge [
-        (lib.mkIf cfg.reverseProxy.enable {
-          "${cfg.reverseProxy.domain}".extraConfig = ''
+        (lib.mkIf cfg.wanAccess.enable {
+          "${cfg.wanAccess.domain}".extraConfig = ''
             encode zstd gzip
             reverse_proxy 127.0.0.1:${toString cfg.port}
           '';
@@ -428,7 +471,33 @@ in
             reverse_proxy 127.0.0.1:${toString cfg.port}
           '';
         })
+        (lib.mkIf cfg.torAccess.enable {
+          "http://127.0.0.1:${toString cfg.torAccess.localPort}".extraConfig = ''
+            encode zstd gzip
+            reverse_proxy 127.0.0.1:${toString cfg.port}
+          '';
+        })
       ];
+    };
+
+    services.tor = lib.mkIf cfg.torAccess.enable {
+      enable = true;
+      relay.onionServices.${cfg.torAccess.serviceName} =
+        {
+          version = cfg.torAccess.version;
+          map = [
+            {
+              port = cfg.torAccess.virtualPort;
+              target = {
+                addr = "127.0.0.1";
+                port = cfg.torAccess.localPort;
+              };
+            }
+          ];
+        }
+        // lib.optionalAttrs (torSecretKeyPath != null) {
+          secretKey = torSecretKeyPath;
+        };
     };
 
   };

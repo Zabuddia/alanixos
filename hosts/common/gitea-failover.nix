@@ -39,7 +39,7 @@ in
         provider = cluster.dns.provider;
         interval = "2min";
         zone = cluster.domain;
-        record = cluster.services.gitea.domain;
+        record = cluster.services.gitea.wanAccess.domain;
         tokenSecret = cluster.dns.apiTokenSecret;
         proxied = false;
         ttl = 60;

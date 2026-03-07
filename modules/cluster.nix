@@ -75,11 +75,6 @@
     };
 
     services.filebrowser = {
-      domain = lib.mkOption {
-        type = lib.types.str;
-        description = "Public FQDN for filebrowser.";
-      };
-
       backendPort = lib.mkOption {
         type = lib.types.port;
         default = 8088;
@@ -105,9 +100,23 @@
         ];
       };
 
-      reverseProxyOpenFirewall = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
+      wanAccess = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable WAN/public access endpoint for filebrowser.";
+        };
+
+        domain = lib.mkOption {
+          type = lib.types.str;
+          description = "Public FQDN for filebrowser WAN access.";
+        };
+
+        openFirewall = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Open TCP 80/443 for filebrowser WAN access.";
+        };
       };
 
       wireguardAccess = {
@@ -121,6 +130,44 @@
           type = lib.types.port;
           default = 8089;
           description = "WireGuard-only access port exposed by Caddy.";
+        };
+      };
+
+      torAccess = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable a Tor onion-service access endpoint for filebrowser.";
+        };
+
+        onionServiceName = lib.mkOption {
+          type = lib.types.str;
+          default = "filebrowser";
+          description = "Service key name under services.tor.relay.onionServices.";
+        };
+
+        localPort = lib.mkOption {
+          type = lib.types.port;
+          default = 18088;
+          description = "Local Caddy listener port used as hidden-service backend.";
+        };
+
+        virtualPort = lib.mkOption {
+          type = lib.types.port;
+          default = 80;
+          description = "Virtual Tor hidden-service port exposed to clients.";
+        };
+
+        version = lib.mkOption {
+          type = lib.types.enum [ 2 3 ];
+          default = 3;
+          description = "Tor hidden-service version.";
+        };
+
+        secretKeySecret = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Optional sops secret containing hidden-service private key for stable onion address.";
         };
       };
 
@@ -179,11 +226,6 @@
         description = "Enable cluster-managed gitea service, failover, and DNS control.";
       };
 
-      domain = lib.mkOption {
-        type = lib.types.str;
-        description = "Public FQDN for gitea.";
-      };
-
       backendPort = lib.mkOption {
         type = lib.types.port;
         default = 3000;
@@ -213,9 +255,23 @@
         ];
       };
 
-      reverseProxyOpenFirewall = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
+      wanAccess = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable WAN/public access endpoint for gitea.";
+        };
+
+        domain = lib.mkOption {
+          type = lib.types.str;
+          description = "Public FQDN for gitea WAN access.";
+        };
+
+        openFirewall = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Open TCP 80/443 for gitea WAN access.";
+        };
       };
 
       wireguardAccess = {
@@ -229,6 +285,44 @@
           type = lib.types.port;
           default = 8090;
           description = "WireGuard-only access port exposed by Caddy.";
+        };
+      };
+
+      torAccess = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable a Tor onion-service access endpoint for gitea.";
+        };
+
+        onionServiceName = lib.mkOption {
+          type = lib.types.str;
+          default = "gitea";
+          description = "Service key name under services.tor.relay.onionServices.";
+        };
+
+        localPort = lib.mkOption {
+          type = lib.types.port;
+          default = 13000;
+          description = "Local Caddy listener port used as hidden-service backend.";
+        };
+
+        virtualPort = lib.mkOption {
+          type = lib.types.port;
+          default = 80;
+          description = "Virtual Tor hidden-service port exposed to clients.";
+        };
+
+        version = lib.mkOption {
+          type = lib.types.enum [ 2 3 ];
+          default = 3;
+          description = "Tor hidden-service version.";
+        };
+
+        secretKeySecret = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Optional sops secret containing hidden-service private key for stable onion address.";
         };
       };
 

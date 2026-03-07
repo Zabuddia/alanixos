@@ -19,10 +19,10 @@ in
     uid = cluster.services.gitea.uid;
     gid = cluster.services.gitea.gid;
 
-    reverseProxy = {
-      enable = true;
-      domain = cluster.services.gitea.domain;
-      openFirewall = cluster.services.gitea.reverseProxyOpenFirewall;
+    wanAccess = {
+      enable = cluster.services.gitea.wanAccess.enable;
+      domain = cluster.services.gitea.wanAccess.domain;
+      openFirewall = cluster.services.gitea.wanAccess.openFirewall;
     };
 
     wireguardAccess = {
@@ -30,6 +30,15 @@ in
       listenAddress = cluster.nodes.${hostname}.vpnIP;
       port = cluster.services.gitea.wireguardAccess.port;
       interface = "wg0";
+    };
+
+    torAccess = {
+      enable = cluster.services.gitea.torAccess.enable;
+      serviceName = cluster.services.gitea.torAccess.onionServiceName;
+      localPort = cluster.services.gitea.torAccess.localPort;
+      virtualPort = cluster.services.gitea.torAccess.virtualPort;
+      version = cluster.services.gitea.torAccess.version;
+      secretKeySecret = cluster.services.gitea.torAccess.secretKeySecret;
     };
 
     users = {

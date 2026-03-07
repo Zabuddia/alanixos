@@ -31,7 +31,6 @@
     };
 
     services.filebrowser = {
-      domain = "filebrowser.fifefin.com";
       backendPort = 8088;
       uid = 45000;
       gid = 45000;
@@ -48,26 +47,49 @@
           "--keep-monthly 6"
         ];
       };
-      reverseProxyOpenFirewall = true;
+      wanAccess = {
+        enable = true;
+        domain = "filebrowser.fifefin.com";
+        openFirewall = true;
+      };
       wireguardAccess = {
         enable = true;
         port = 8089;
+      };
+      torAccess = {
+        enable = true;
+        onionServiceName = "filebrowser";
+        localPort = 18088;
+        virtualPort = 80;
+        version = 3;
+        secretKeySecret = null;
       };
       syncPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFqBvDH10XQLN1srCL3U92KUZcXn0f+PkYPKhWfQehf7 filebrowser-failover-sync";
     };
 
     services.gitea = {
       enable = true;
-      domain = "gitea.fifefin.com";
       backendPort = 3000;
       stateDir = "/var/lib/gitea";
       uid = 45010;
       gid = 45010;
       dataPaths = [ "/var/lib/gitea" ];
-      reverseProxyOpenFirewall = true;
+      wanAccess = {
+        enable = true;
+        domain = "gitea.fifefin.com";
+        openFirewall = true;
+      };
       wireguardAccess = {
         enable = true;
         port = 8090;
+      };
+      torAccess = {
+        enable = true;
+        onionServiceName = "gitea";
+        localPort = 13000;
+        virtualPort = 80;
+        version = 3;
+        secretKeySecret = null;
       };
       syncPublicKey = config.alanix.cluster.services.filebrowser.syncPublicKey;
       backups = {
