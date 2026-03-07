@@ -395,7 +395,7 @@ in
                     ${lib.escapeShellArg u.email} \
                     ${fullNameArg} \
                     ${lib.boolToString u.admin} \
-                    "$${var}" \
+                    "${"$"}${var}" \
                     ${lib.escapeShellArg u.userType} \
                     ${lib.boolToString u.restricted} \
                     ${lib.boolToString u.mustChangePassword}
