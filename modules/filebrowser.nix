@@ -472,7 +472,8 @@ in
           '';
         })
         (lib.mkIf cfg.torAccess.enable {
-          "http://127.0.0.1:${toString cfg.torAccess.localPort}".extraConfig = ''
+          ":${toString cfg.torAccess.localPort}".extraConfig = ''
+            bind 127.0.0.1
             encode zstd gzip
             reverse_proxy 127.0.0.1:${toString cfg.port}
           '';
