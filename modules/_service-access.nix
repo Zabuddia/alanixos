@@ -202,14 +202,14 @@
           '';
         })
         (lib.mkIf (cfg.torAccess.enable && cfg.torAccess.enableHttp) {
-          ":${toString cfg.torAccess.httpLocalPort}".extraConfig = ''
+          "http://*.onion:${toString cfg.torAccess.httpLocalPort}".extraConfig = ''
             bind 127.0.0.1
             encode zstd gzip
             reverse_proxy 127.0.0.1:${toString upstreamPort}
           '';
         })
         (lib.mkIf (cfg.torAccess.enable && cfg.torAccess.enableHttps) {
-          ":${toString cfg.torAccess.httpsLocalPort}".extraConfig = ''
+          "https://*.onion:${toString cfg.torAccess.httpsLocalPort}".extraConfig = ''
             bind 127.0.0.1
             tls internal
             encode zstd gzip
