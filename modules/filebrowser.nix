@@ -1,6 +1,7 @@
 { config, lib, pkgs, ... }:
 let
   cfg = config.alanix.filebrowser;
+  serviceAccess = import ./_service-access.nix { inherit lib; };
 
   dbPath = cfg.database;
   hasSopsSecrets = lib.hasAttrByPath [ "sops" "secrets" ] config;
@@ -35,20 +36,12 @@ in
       default = 8088;
     };
 
-    openFirewall = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = "Open the filebrowser port in the firewall.";
-    };
-
-    firewallInterfaces = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [];
-      description = ''
-        Optional interface allowlist for the filebrowser port.
-        Empty means open globally via networking.firewall.allowedTCPPorts.
-      '';
-    };
+    inherit (serviceAccess.mkBackendFirewallOptions {
+      serviceTitle = "File Browser";
+      defaultOpenFirewall = true;
+    })
+      openFirewall
+      firewallInterfaces;
 
     root = lib.mkOption {
       type = lib.types.str;
@@ -111,76 +104,19 @@ in
       description = "Declarative File Browser users. Users get separate directories via per-user scope under root.";
     };
 
-    wanAccess = {
-      enable = lib.mkEnableOption "WAN/public access path for File Browser via Caddy";
+    wanAccess = serviceAccess.mkWanAccessOptions { serviceTitle = "File Browser"; };
 
-      domain = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = "Public DNS name served by Caddy for File Browser (for example filebrowser.example.com).";
-      };
-
-      openFirewall = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
-        description = "Open TCP 80/443 for Caddy when WAN access is enabled.";
-      };
+    wireguardAccess = serviceAccess.mkWireguardAccessOptions {
+      serviceTitle = "File Browser";
+      defaultPort = 8089;
+      defaultInterface = "wg0";
     };
 
-    wireguardAccess = {
-      enable = lib.mkEnableOption "WireGuard-only access path for File Browser";
-
-      listenAddress = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = "WireGuard-side address to bind for internal access (for example 10.100.0.2).";
-      };
-
-      port = lib.mkOption {
-        type = lib.types.port;
-        default = 8089;
-        description = "WireGuard-only Caddy listener port.";
-      };
-
-      interface = lib.mkOption {
-        type = lib.types.str;
-        default = "wg0";
-        description = "Firewall interface for WireGuard-only access.";
-      };
-    };
-
-    torAccess = {
-      enable = lib.mkEnableOption "Tor onion-service access path for File Browser";
-
-      serviceName = lib.mkOption {
-        type = lib.types.str;
-        default = "filebrowser";
-        description = "Tor onion service name key under services.tor.relay.onionServices.";
-      };
-
-      localPort = lib.mkOption {
-        type = lib.types.port;
-        default = 18088;
-        description = "Local Caddy listener used as Tor hidden-service backend.";
-      };
-
-      virtualPort = lib.mkOption {
-        type = lib.types.port;
-        default = 80;
-        description = "Virtual onion service port exposed to Tor clients.";
-      };
-
-      version = lib.mkOption {
-        type = lib.types.enum [ 2 3 ];
-        default = 3;
-        description = "Tor hidden-service version.";
-      };
-
-      secretKeySecret = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = "Optional sops secret containing a Tor hidden-service secret key for stable onion address.";
-      };
+    torAccess = serviceAccess.mkTorAccessOptions {
+      serviceTitle = "File Browser";
+      defaultServiceName = "filebrowser";
+      defaultHttpLocalPort = 18088;
+      defaultHttpsLocalPort = 18443;
     };
   };
 
@@ -215,39 +151,16 @@ in
           message = "alanix.filebrowser.database must not be empty.";
         }
         {
-          assertion = !(cfg.wanAccess.enable && cfg.wanAccess.domain == null);
-          message = "alanix.filebrowser.wanAccess.domain must be set when wanAccess is enabled.";
-        }
-        {
           assertion = (cfg.uid == null) == (cfg.gid == null);
           message = "alanix.filebrowser.uid and alanix.filebrowser.gid must either both be set or both be null.";
         }
-        {
-          assertion = !(cfg.wireguardAccess.enable && cfg.wireguardAccess.listenAddress == null);
-          message = "alanix.filebrowser.wireguardAccess.listenAddress must be set when wireguardAccess is enabled.";
-        }
-        {
-          assertion = !(cfg.torAccess.enable && cfg.torAccess.secretKeySecret != null && !hasSopsSecrets);
-          message = "alanix.filebrowser.torAccess.secretKeySecret requires sops-nix configuration.";
-        }
-      ];
+      ]
+      ++ serviceAccess.mkAccessAssertions {
+        inherit cfg hasSopsSecrets;
+        modulePathPrefix = "alanix.filebrowser";
+      };
 
-    networking.firewall = lib.mkMerge [
-      (lib.mkIf (cfg.active && cfg.openFirewall && cfg.firewallInterfaces == []) {
-        allowedTCPPorts = [ cfg.port ];
-      })
-      (lib.mkIf (cfg.active && cfg.openFirewall && cfg.firewallInterfaces != []) {
-        interfaces =
-          lib.genAttrs cfg.firewallInterfaces (_: { allowedTCPPorts = [ cfg.port ]; });
-      })
-      (lib.mkIf (cfg.wanAccess.enable && cfg.wanAccess.openFirewall) {
-        allowedTCPPorts = [ 80 443 ];
-      })
-      (lib.mkIf cfg.wireguardAccess.enable {
-        interfaces =
-          lib.genAttrs [ cfg.wireguardAccess.interface ] (_: { allowedTCPPorts = [ cfg.wireguardAccess.port ]; });
-      })
-    ];
+    networking.firewall = serviceAccess.mkAccessFirewallConfig { inherit cfg; };
 
     services.filebrowser = {
       enable = true;
@@ -456,49 +369,13 @@ in
       (builtins.toJSON cfg.users)
     ];
 
-    services.caddy = lib.mkIf (cfg.wanAccess.enable || cfg.wireguardAccess.enable || cfg.torAccess.enable) {
-      enable = true;
-      virtualHosts = lib.mkMerge [
-        (lib.mkIf cfg.wanAccess.enable {
-          "${cfg.wanAccess.domain}".extraConfig = ''
-            encode zstd gzip
-            reverse_proxy 127.0.0.1:${toString cfg.port}
-          '';
-        })
-        (lib.mkIf cfg.wireguardAccess.enable {
-          "http://${cfg.wireguardAccess.listenAddress}:${toString cfg.wireguardAccess.port}".extraConfig = ''
-            encode zstd gzip
-            reverse_proxy 127.0.0.1:${toString cfg.port}
-          '';
-        })
-        (lib.mkIf cfg.torAccess.enable {
-          ":${toString cfg.torAccess.localPort}".extraConfig = ''
-            bind 127.0.0.1
-            encode zstd gzip
-            reverse_proxy 127.0.0.1:${toString cfg.port}
-          '';
-        })
-      ];
+    services.caddy = serviceAccess.mkAccessCaddyConfig {
+      inherit cfg;
+      upstreamPort = cfg.port;
     };
 
-    services.tor = lib.mkIf cfg.torAccess.enable {
-      enable = true;
-      relay.onionServices.${cfg.torAccess.serviceName} =
-        {
-          version = cfg.torAccess.version;
-          map = [
-            {
-              port = cfg.torAccess.virtualPort;
-              target = {
-                addr = "127.0.0.1";
-                port = cfg.torAccess.localPort;
-              };
-            }
-          ];
-        }
-        // lib.optionalAttrs (torSecretKeyPath != null) {
-          secretKey = torSecretKeyPath;
-        };
+    services.tor = serviceAccess.mkTorConfig {
+      inherit cfg torSecretKeyPath;
     };
 
   };

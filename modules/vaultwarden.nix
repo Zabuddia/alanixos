@@ -1,6 +1,7 @@
 { config, lib, pkgs, ... }:
 let
   cfg = config.alanix.vaultwarden;
+  serviceAccess = import ./_service-access.nix { inherit lib; };
   hasSopsSecrets = lib.hasAttrByPath [ "sops" "secrets" ] config;
   torSecretKeyPath =
     if cfg.torAccess.secretKeySecret == null then
@@ -39,20 +40,12 @@ in
       default = 8222;
     };
 
-    openFirewall = lib.mkOption {
-      type = lib.types.bool;
-      default = false;
-      description = "Open the direct Vaultwarden backend port in the firewall.";
-    };
-
-    firewallInterfaces = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [];
-      description = ''
-        Optional interface allowlist for the direct Vaultwarden backend port.
-        Empty means open globally via networking.firewall.allowedTCPPorts.
-      '';
-    };
+    inherit (serviceAccess.mkBackendFirewallOptions {
+      serviceTitle = "Vaultwarden";
+      defaultOpenFirewall = false;
+    })
+      openFirewall
+      firewallInterfaces;
 
     stateDir = lib.mkOption {
       type = lib.types.str;
@@ -96,93 +89,24 @@ in
       '';
     };
 
-    wanAccess = {
-      enable = lib.mkEnableOption "WAN/public access path for Vaultwarden via Caddy";
+    wanAccess = serviceAccess.mkWanAccessOptions { serviceTitle = "Vaultwarden"; };
 
-      domain = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = "Public DNS name served by Caddy for Vaultwarden (for example vault.example.com).";
-      };
-
-      openFirewall = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
-        description = "Open TCP 80/443 for Caddy when WAN access is enabled.";
-      };
+    wireguardAccess = serviceAccess.mkWireguardAccessOptions {
+      serviceTitle = "Vaultwarden";
+      defaultPort = 8091;
+      defaultInterface = "wg0";
     };
 
-    wireguardAccess = {
-      enable = lib.mkEnableOption "WireGuard-only access path for Vaultwarden";
-
-      listenAddress = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = "WireGuard-side address to bind for internal access (for example 10.100.0.2).";
-      };
-
-      port = lib.mkOption {
-        type = lib.types.port;
-        default = 8091;
-        description = "WireGuard-only Caddy listener port.";
-      };
-
-      interface = lib.mkOption {
-        type = lib.types.str;
-        default = "wg0";
-        description = "Firewall interface for WireGuard-only access.";
-      };
-    };
-
-    torAccess = {
-      enable = lib.mkEnableOption "Tor onion-service access path for Vaultwarden";
-
-      serviceName = lib.mkOption {
-        type = lib.types.str;
-        default = "vaultwarden";
-        description = "Tor onion service name key under services.tor.relay.onionServices.";
-      };
-
-      localPort = lib.mkOption {
-        type = lib.types.port;
-        default = 18222;
-        description = "Local Caddy listener used as Tor hidden-service backend.";
-      };
-
-      virtualPort = lib.mkOption {
-        type = lib.types.port;
-        default = 80;
-        description = "Virtual onion service port exposed to Tor clients.";
-      };
-
-      version = lib.mkOption {
-        type = lib.types.enum [ 2 3 ];
-        default = 3;
-        description = "Tor hidden-service version.";
-      };
-
-      secretKeySecret = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = "Optional sops secret containing a Tor hidden-service secret key for stable onion address.";
-      };
+    torAccess = serviceAccess.mkTorAccessOptions {
+      serviceTitle = "Vaultwarden";
+      defaultServiceName = "vaultwarden";
+      defaultHttpLocalPort = 18222;
+      defaultHttpsLocalPort = 18643;
     };
   };
 
   config = lib.mkIf cfg.enable {
     assertions = [
-      {
-        assertion = !(cfg.wanAccess.enable && cfg.wanAccess.domain == null);
-        message = "alanix.vaultwarden.wanAccess.domain must be set when wanAccess is enabled.";
-      }
-      {
-        assertion = !(cfg.wireguardAccess.enable && cfg.wireguardAccess.listenAddress == null);
-        message = "alanix.vaultwarden.wireguardAccess.listenAddress must be set when wireguardAccess is enabled.";
-      }
-      {
-        assertion = !(cfg.torAccess.enable && cfg.torAccess.secretKeySecret != null && !hasSopsSecrets);
-        message = "alanix.vaultwarden.torAccess.secretKeySecret requires sops-nix configuration.";
-      }
       {
         assertion = hasSopsSecrets;
         message = "alanix.vaultwarden.adminTokenSecret requires sops-nix configuration.";
@@ -199,24 +123,12 @@ in
         assertion = lib.hasPrefix "/var/lib/" cfg.stateDir;
         message = "alanix.vaultwarden.stateDir must be under /var/lib/ so systemd StateDirectory protections keep working.";
       }
-    ];
+    ] ++ serviceAccess.mkAccessAssertions {
+      inherit cfg hasSopsSecrets;
+      modulePathPrefix = "alanix.vaultwarden";
+    };
 
-    networking.firewall = lib.mkMerge [
-      (lib.mkIf (cfg.active && cfg.openFirewall && cfg.firewallInterfaces == []) {
-        allowedTCPPorts = [ cfg.port ];
-      })
-      (lib.mkIf (cfg.active && cfg.openFirewall && cfg.firewallInterfaces != []) {
-        interfaces =
-          lib.genAttrs cfg.firewallInterfaces (_: { allowedTCPPorts = [ cfg.port ]; });
-      })
-      (lib.mkIf (cfg.wanAccess.enable && cfg.wanAccess.openFirewall) {
-        allowedTCPPorts = [ 80 443 ];
-      })
-      (lib.mkIf cfg.wireguardAccess.enable {
-        interfaces =
-          lib.genAttrs [ cfg.wireguardAccess.interface ] (_: { allowedTCPPorts = [ cfg.wireguardAccess.port ]; });
-      })
-    ];
+    networking.firewall = serviceAccess.mkAccessFirewallConfig { inherit cfg; };
 
     services.vaultwarden = {
       enable = true;
@@ -283,49 +195,13 @@ in
       "d ${cfg.stateDir} 0700 vaultwarden vaultwarden - -"
     ];
 
-    services.caddy = lib.mkIf (cfg.wanAccess.enable || cfg.wireguardAccess.enable || cfg.torAccess.enable) {
-      enable = true;
-      virtualHosts = lib.mkMerge [
-        (lib.mkIf cfg.wanAccess.enable {
-          "${cfg.wanAccess.domain}".extraConfig = ''
-            encode zstd gzip
-            reverse_proxy 127.0.0.1:${toString cfg.port}
-          '';
-        })
-        (lib.mkIf cfg.wireguardAccess.enable {
-          "http://${cfg.wireguardAccess.listenAddress}:${toString cfg.wireguardAccess.port}".extraConfig = ''
-            encode zstd gzip
-            reverse_proxy 127.0.0.1:${toString cfg.port}
-          '';
-        })
-        (lib.mkIf cfg.torAccess.enable {
-          ":${toString cfg.torAccess.localPort}".extraConfig = ''
-            bind 127.0.0.1
-            encode zstd gzip
-            reverse_proxy 127.0.0.1:${toString cfg.port}
-          '';
-        })
-      ];
+    services.caddy = serviceAccess.mkAccessCaddyConfig {
+      inherit cfg;
+      upstreamPort = cfg.port;
     };
 
-    services.tor = lib.mkIf cfg.torAccess.enable {
-      enable = true;
-      relay.onionServices.${cfg.torAccess.serviceName} =
-        {
-          version = cfg.torAccess.version;
-          map = [
-            {
-              port = cfg.torAccess.virtualPort;
-              target = {
-                addr = "127.0.0.1";
-                port = cfg.torAccess.localPort;
-              };
-            }
-          ];
-        }
-        // lib.optionalAttrs (torSecretKeyPath != null) {
-          secretKey = torSecretKeyPath;
-        };
+    services.tor = serviceAccess.mkTorConfig {
+      inherit cfg torSecretKeyPath;
     };
   };
 }

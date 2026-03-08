@@ -9,7 +9,7 @@ in
   ];
 
   alanix.filebrowser = {
-    enable = true;
+    enable = cluster.services.filebrowser.enable;
     # Role controller starts/stops filebrowser declaratively; do not auto-start by default.
     active = lib.mkDefault false;
     listenAddress = "127.0.0.1";
@@ -35,8 +35,12 @@ in
     torAccess = {
       enable = cluster.services.filebrowser.torAccess.enable;
       serviceName = cluster.services.filebrowser.torAccess.onionServiceName;
-      localPort = cluster.services.filebrowser.torAccess.localPort;
-      virtualPort = cluster.services.filebrowser.torAccess.virtualPort;
+      enableHttp = cluster.services.filebrowser.torAccess.enableHttp;
+      httpLocalPort = cluster.services.filebrowser.torAccess.httpLocalPort;
+      httpVirtualPort = cluster.services.filebrowser.torAccess.httpVirtualPort;
+      enableHttps = cluster.services.filebrowser.torAccess.enableHttps;
+      httpsLocalPort = cluster.services.filebrowser.torAccess.httpsLocalPort;
+      httpsVirtualPort = cluster.services.filebrowser.torAccess.httpsVirtualPort;
       version = cluster.services.filebrowser.torAccess.version;
       secretKeySecret = cluster.services.filebrowser.torAccess.secretKeySecret;
     };

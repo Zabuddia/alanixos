@@ -37,6 +37,11 @@ in
       description = "sops secret containing the shared inter-node SSH private key for sync/control traffic.";
     };
 
+    syncPublicKey = lib.mkOption {
+      type = lib.types.str;
+      description = "Public SSH key shared by all service failover/sync controllers.";
+    };
+
     nodes = lib.mkOption {
       type = lib.types.attrsOf (lib.types.submodule ({ config, ... }: {
         options = {
@@ -80,6 +85,12 @@ in
     };
 
     services.filebrowser = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Enable cluster-managed filebrowser service, failover, and DNS control.";
+      };
+
       backendPort = lib.mkOption {
         type = lib.types.port;
         default = 8088;
@@ -151,16 +162,40 @@ in
           description = "Service key name under services.tor.relay.onionServices.";
         };
 
-        localPort = lib.mkOption {
-          type = lib.types.port;
-          default = 18088;
-          description = "Local Caddy listener port used as hidden-service backend.";
+        enableHttp = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Expose plaintext HTTP over Tor for filebrowser.";
         };
 
-        virtualPort = lib.mkOption {
+        httpLocalPort = lib.mkOption {
+          type = lib.types.port;
+          default = 18088;
+          description = "Local Caddy HTTP listener port used as hidden-service backend.";
+        };
+
+        httpVirtualPort = lib.mkOption {
           type = lib.types.port;
           default = 80;
-          description = "Virtual Tor hidden-service port exposed to clients.";
+          description = "Virtual Tor hidden-service HTTP port exposed to clients.";
+        };
+
+        enableHttps = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Expose HTTPS over Tor for filebrowser.";
+        };
+
+        httpsLocalPort = lib.mkOption {
+          type = lib.types.port;
+          default = 18443;
+          description = "Local Caddy HTTPS listener port used as hidden-service backend.";
+        };
+
+        httpsVirtualPort = lib.mkOption {
+          type = lib.types.port;
+          default = 443;
+          description = "Virtual Tor hidden-service HTTPS port exposed to clients.";
         };
 
         version = lib.mkOption {
@@ -174,11 +209,6 @@ in
           default = null;
           description = "Optional sops secret containing hidden-service private key for stable onion address.";
         };
-      };
-
-      syncPublicKey = lib.mkOption {
-        type = lib.types.str;
-        description = "Public SSH key allowed for failover sync/control.";
       };
 
       priorityOverrides = lib.mkOption {
@@ -322,16 +352,40 @@ in
           description = "Service key name under services.tor.relay.onionServices.";
         };
 
-        localPort = lib.mkOption {
-          type = lib.types.port;
-          default = 13000;
-          description = "Local Caddy listener port used as hidden-service backend.";
+        enableHttp = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Expose plaintext HTTP over Tor for forgejo.";
         };
 
-        virtualPort = lib.mkOption {
+        httpLocalPort = lib.mkOption {
+          type = lib.types.port;
+          default = 13000;
+          description = "Local Caddy HTTP listener port used as hidden-service backend.";
+        };
+
+        httpVirtualPort = lib.mkOption {
           type = lib.types.port;
           default = 80;
-          description = "Virtual Tor hidden-service port exposed to clients.";
+          description = "Virtual Tor hidden-service HTTP port exposed to clients.";
+        };
+
+        enableHttps = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Expose HTTPS over Tor for forgejo.";
+        };
+
+        httpsLocalPort = lib.mkOption {
+          type = lib.types.port;
+          default = 13443;
+          description = "Local Caddy HTTPS listener port used as hidden-service backend.";
+        };
+
+        httpsVirtualPort = lib.mkOption {
+          type = lib.types.port;
+          default = 443;
+          description = "Virtual Tor hidden-service HTTPS port exposed to clients.";
         };
 
         version = lib.mkOption {
@@ -345,11 +399,6 @@ in
           default = null;
           description = "Optional sops secret containing hidden-service private key for stable onion address.";
         };
-      };
-
-      syncPublicKey = lib.mkOption {
-        type = lib.types.str;
-        description = "Public SSH key allowed for forgejo failover sync/control.";
       };
 
       priorityOverrides = lib.mkOption {
@@ -521,16 +570,40 @@ in
           description = "Service key name under services.tor.relay.onionServices.";
         };
 
-        localPort = lib.mkOption {
-          type = lib.types.port;
-          default = 18222;
-          description = "Local Caddy listener port used as hidden-service backend.";
+        enableHttp = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Expose plaintext HTTP over Tor for vaultwarden.";
         };
 
-        virtualPort = lib.mkOption {
+        httpLocalPort = lib.mkOption {
+          type = lib.types.port;
+          default = 18222;
+          description = "Local Caddy HTTP listener port used as hidden-service backend.";
+        };
+
+        httpVirtualPort = lib.mkOption {
           type = lib.types.port;
           default = 80;
-          description = "Virtual Tor hidden-service port exposed to clients.";
+          description = "Virtual Tor hidden-service HTTP port exposed to clients.";
+        };
+
+        enableHttps = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Expose HTTPS over Tor for vaultwarden.";
+        };
+
+        httpsLocalPort = lib.mkOption {
+          type = lib.types.port;
+          default = 18643;
+          description = "Local Caddy HTTPS listener port used as hidden-service backend.";
+        };
+
+        httpsVirtualPort = lib.mkOption {
+          type = lib.types.port;
+          default = 443;
+          description = "Virtual Tor hidden-service HTTPS port exposed to clients.";
         };
 
         version = lib.mkOption {
@@ -544,11 +617,6 @@ in
           default = null;
           description = "Optional sops secret containing hidden-service private key for stable onion address.";
         };
-      };
-
-      syncPublicKey = lib.mkOption {
-        type = lib.types.str;
-        description = "Public SSH key allowed for vaultwarden failover sync/control.";
       };
 
       priorityOverrides = lib.mkOption {

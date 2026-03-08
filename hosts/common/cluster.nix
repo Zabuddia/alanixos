@@ -13,6 +13,7 @@
       provider = "cloudflare";
       apiTokenSecret = "cloudflare/api-token";
     };
+    syncPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFqBvDH10XQLN1srCL3U92KUZcXn0f+PkYPKhWfQehf7 filebrowser-failover-sync";
 
     nodes = {
       alan-big-nixos = {
@@ -31,6 +32,7 @@
     };
 
     services.filebrowser = {
+      enable = true;
       backendPort = 8088;
       uid = 45000;
       gid = 45000;
@@ -63,12 +65,15 @@
       torAccess = {
         enable = true;
         onionServiceName = "filebrowser";
-        localPort = 18088;
-        virtualPort = 80;
+        enableHttp = true;
+        httpLocalPort = 18088;
+        httpVirtualPort = 80;
+        enableHttps = true;
+        httpsLocalPort = 18443;
+        httpsVirtualPort = 443;
         version = 3;
         secretKeySecret = null;
       };
-      syncPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFqBvDH10XQLN1srCL3U92KUZcXn0f+PkYPKhWfQehf7 filebrowser-failover-sync";
     };
 
     services.forgejo = {
@@ -95,12 +100,15 @@
       torAccess = {
         enable = true;
         onionServiceName = "forgejo";
-        localPort = 13000;
-        virtualPort = 80;
+        enableHttp = true;
+        httpLocalPort = 13000;
+        httpVirtualPort = 80;
+        enableHttps = true;
+        httpsLocalPort = 13443;
+        httpsVirtualPort = 443;
         version = 3;
         secretKeySecret = null;
       };
-      syncPublicKey = config.alanix.cluster.services.filebrowser.syncPublicKey;
       backups = {
         enable = true;
         passwordSecret = "restic/cluster-password";
@@ -144,12 +152,15 @@
       torAccess = {
         enable = true;
         onionServiceName = "vaultwarden";
-        localPort = 18222;
-        virtualPort = 80;
+        enableHttp = true;
+        httpLocalPort = 18222;
+        httpVirtualPort = 80;
+        enableHttps = true;
+        httpsLocalPort = 18643;
+        httpsVirtualPort = 443;
         version = 3;
         secretKeySecret = null;
       };
-      syncPublicKey = config.alanix.cluster.services.filebrowser.syncPublicKey;
       backups = {
         enable = true;
         passwordSecret = "restic/cluster-password";

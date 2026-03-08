@@ -36,8 +36,12 @@ in
     torAccess = {
       enable = cluster.services.forgejo.torAccess.enable;
       serviceName = cluster.services.forgejo.torAccess.onionServiceName;
-      localPort = cluster.services.forgejo.torAccess.localPort;
-      virtualPort = cluster.services.forgejo.torAccess.virtualPort;
+      enableHttp = cluster.services.forgejo.torAccess.enableHttp;
+      httpLocalPort = cluster.services.forgejo.torAccess.httpLocalPort;
+      httpVirtualPort = cluster.services.forgejo.torAccess.httpVirtualPort;
+      enableHttps = cluster.services.forgejo.torAccess.enableHttps;
+      httpsLocalPort = cluster.services.forgejo.torAccess.httpsLocalPort;
+      httpsVirtualPort = cluster.services.forgejo.torAccess.httpsVirtualPort;
       version = cluster.services.forgejo.torAccess.version;
       secretKeySecret = cluster.services.forgejo.torAccess.secretKeySecret;
     };

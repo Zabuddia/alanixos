@@ -38,8 +38,12 @@ in
     torAccess = {
       enable = cluster.services.vaultwarden.torAccess.enable;
       serviceName = cluster.services.vaultwarden.torAccess.onionServiceName;
-      localPort = cluster.services.vaultwarden.torAccess.localPort;
-      virtualPort = cluster.services.vaultwarden.torAccess.virtualPort;
+      enableHttp = cluster.services.vaultwarden.torAccess.enableHttp;
+      httpLocalPort = cluster.services.vaultwarden.torAccess.httpLocalPort;
+      httpVirtualPort = cluster.services.vaultwarden.torAccess.httpVirtualPort;
+      enableHttps = cluster.services.vaultwarden.torAccess.enableHttps;
+      httpsLocalPort = cluster.services.vaultwarden.torAccess.httpsLocalPort;
+      httpsVirtualPort = cluster.services.vaultwarden.torAccess.httpsVirtualPort;
       version = cluster.services.vaultwarden.torAccess.version;
       secretKeySecret = cluster.services.vaultwarden.torAccess.secretKeySecret;
     };
