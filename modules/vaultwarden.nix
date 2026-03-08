@@ -250,6 +250,7 @@ in
         Group = "root";
         RuntimeDirectory = "alanix-vaultwarden";
         RuntimeDirectoryMode = "0700";
+        RuntimeDirectoryPreserve = "yes";
       };
       path = [ pkgs.coreutils ];
       script = ''
