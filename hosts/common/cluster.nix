@@ -136,8 +136,8 @@
       uid = 45020;
       gid = 45020;
       priorityOverrides = {
-        randy-big-nixos = 10;
-        alan-big-nixos = 20;
+        randy-big-nixos = 20;
+        alan-big-nixos = 10;
       };
       dataPaths = [ config.alanix.cluster.services.vaultwarden.stateDir ];
       wanAccess = {
