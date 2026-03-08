@@ -404,6 +404,205 @@ in
         };
       };
     };
+
+    services.vaultwarden = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Enable cluster-managed Vaultwarden service, failover, and DNS control.";
+      };
+
+      backendPort = lib.mkOption {
+        type = lib.types.port;
+        default = 8222;
+      };
+
+      stateDir = lib.mkOption {
+        type = lib.types.str;
+        default = "/var/lib/vaultwarden";
+      };
+
+      dbBackend = lib.mkOption {
+        type = lib.types.enum [
+          "sqlite"
+          "mysql"
+          "postgresql"
+        ];
+        default = "sqlite";
+      };
+
+      settings = lib.mkOption {
+        type =
+          with lib.types;
+          attrsOf (
+            nullOr (
+              oneOf [
+                bool
+                int
+                str
+              ]
+            )
+          );
+        default = {};
+        description = "Additional Vaultwarden settings merged into services.vaultwarden.config.";
+      };
+
+      adminTokenSecret = lib.mkOption {
+        type = lib.types.str;
+        default = "vaultwarden/admin-token";
+        description = ''
+          Required sops secret path used by Vaultwarden admin UI.
+          Secret content should be the raw admin token value.
+        '';
+      };
+
+      uid = lib.mkOption {
+        type = lib.types.nullOr lib.types.ints.positive;
+        default = null;
+        description = "Pinned UID for vaultwarden service user/group across nodes.";
+      };
+
+      gid = lib.mkOption {
+        type = lib.types.nullOr lib.types.ints.positive;
+        default = null;
+        description = "Pinned GID for vaultwarden service user/group across nodes.";
+      };
+
+      dataPaths = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [
+          "/var/lib/vaultwarden"
+        ];
+      };
+
+      wanAccess = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable WAN/public access endpoint for vaultwarden.";
+        };
+
+        domain = lib.mkOption {
+          type = lib.types.str;
+          description = "Public FQDN for vaultwarden WAN access.";
+        };
+
+        openFirewall = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Open TCP 80/443 for vaultwarden WAN access.";
+        };
+      };
+
+      wireguardAccess = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable a WireGuard-only access endpoint for vaultwarden.";
+        };
+
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 8091;
+          description = "WireGuard-only access port exposed by Caddy.";
+        };
+      };
+
+      torAccess = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable a Tor onion-service access endpoint for vaultwarden.";
+        };
+
+        onionServiceName = lib.mkOption {
+          type = lib.types.str;
+          default = "vaultwarden";
+          description = "Service key name under services.tor.relay.onionServices.";
+        };
+
+        localPort = lib.mkOption {
+          type = lib.types.port;
+          default = 18222;
+          description = "Local Caddy listener port used as hidden-service backend.";
+        };
+
+        virtualPort = lib.mkOption {
+          type = lib.types.port;
+          default = 80;
+          description = "Virtual Tor hidden-service port exposed to clients.";
+        };
+
+        version = lib.mkOption {
+          type = lib.types.enum [ 2 3 ];
+          default = 3;
+          description = "Tor hidden-service version.";
+        };
+
+        secretKeySecret = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Optional sops secret containing hidden-service private key for stable onion address.";
+        };
+      };
+
+      syncPublicKey = lib.mkOption {
+        type = lib.types.str;
+        description = "Public SSH key allowed for vaultwarden failover sync/control.";
+      };
+
+      priorityOverrides = lib.mkOption {
+        type = lib.types.attrsOf lib.types.int;
+        default = {};
+        description = ''
+          Optional per-node priority overrides for vaultwarden failover/backups.
+          Lower number means higher priority. Keys must match alanix.cluster.nodes.
+          Nodes not listed here use alanix.cluster.nodes.<name>.priority.
+        '';
+      };
+
+      backups = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable restic backups for vaultwarden data.";
+        };
+
+        passwordSecret = lib.mkOption {
+          type = lib.types.str;
+          default = "restic/cluster-password";
+          description = "sops secret containing the restic password used for vaultwarden backup repositories.";
+        };
+
+        repositoryBasePath = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/backups/restic/vaultwarden";
+          description = "Base directory on each node used for incoming vaultwarden restic repositories.";
+        };
+
+        schedule = lib.mkOption {
+          type = lib.types.str;
+          default = "hourly";
+          description = "Systemd OnCalendar schedule used for vaultwarden restic jobs.";
+        };
+
+        randomizedDelaySec = lib.mkOption {
+          type = lib.types.str;
+          default = "10m";
+        };
+
+        pruneOpts = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [
+            "--keep-hourly 24"
+            "--keep-daily 7"
+            "--keep-weekly 4"
+            "--keep-monthly 6"
+          ];
+          description = "Retention policy for vaultwarden restic snapshots.";
+        };
+      };
+    };
   };
 
   config.assertions = [
@@ -418,6 +617,12 @@ in
       message =
         "alanix.cluster.services.forgejo.priorityOverrides contains unknown nodes: "
         + lib.concatStringsSep ", " (unknownOverrideKeys cluster.services.forgejo.priorityOverrides);
+    }
+    {
+      assertion = (unknownOverrideKeys cluster.services.vaultwarden.priorityOverrides) == [];
+      message =
+        "alanix.cluster.services.vaultwarden.priorityOverrides contains unknown nodes: "
+        + lib.concatStringsSep ", " (unknownOverrideKeys cluster.services.vaultwarden.priorityOverrides);
     }
   ];
 }

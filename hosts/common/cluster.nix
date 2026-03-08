@@ -115,5 +115,54 @@
         ];
       };
     };
+
+    services.vaultwarden = {
+      enable = true;
+      backendPort = 8222;
+      stateDir = "/var/lib/vaultwarden";
+      dbBackend = "sqlite";
+      settings = {
+        SIGNUPS_ALLOWED = true;
+      };
+      adminTokenSecret = "vaultwarden/admin-token";
+      uid = 45020;
+      gid = 45020;
+      priorityOverrides = {
+        randy-big-nixos = 10;
+        alan-big-nixos = 20;
+      };
+      dataPaths = [ config.alanix.cluster.services.vaultwarden.stateDir ];
+      wanAccess = {
+        enable = true;
+        domain = "vaultwarden.fifefin.com";
+        openFirewall = true;
+      };
+      wireguardAccess = {
+        enable = true;
+        port = 8091;
+      };
+      torAccess = {
+        enable = true;
+        onionServiceName = "vaultwarden";
+        localPort = 18222;
+        virtualPort = 80;
+        version = 3;
+        secretKeySecret = null;
+      };
+      syncPublicKey = config.alanix.cluster.services.filebrowser.syncPublicKey;
+      backups = {
+        enable = true;
+        passwordSecret = "restic/cluster-password";
+        repositoryBasePath = "/var/backups/restic/vaultwarden";
+        schedule = "hourly";
+        randomizedDelaySec = "10m";
+        pruneOpts = [
+          "--keep-hourly 24"
+          "--keep-daily 7"
+          "--keep-weekly 4"
+          "--keep-monthly 6"
+        ];
+      };
+    };
   };
 }

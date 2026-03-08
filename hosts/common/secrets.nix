@@ -53,4 +53,12 @@
     group = "root";
     mode = "0400";
   };
+
+  sops.secrets."vaultwarden/admin-token" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+    restartUnits = [ "vaultwarden.service" ];
+  };
 }
