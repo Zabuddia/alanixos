@@ -152,7 +152,14 @@
       stateDir = "/var/lib/invidious";
       uid = 45040;
       gid = 45040;
-      settings = {};
+      settings = {
+        default_home = "Popular";
+        feed_menu = [
+          "Popular"
+          "Subscriptions"
+          "Playlists"
+        ];
+      };
       database = {
         createLocally = true;
         host = null;

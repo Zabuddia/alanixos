@@ -29,6 +29,12 @@
       url = "github:fort-nix/nix-bitcoin";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Invidious companion source (for companion wrapper package)
+    invidious-companion-src = {
+      url = "github:iv-org/invidious-companion";
+      flake = false;
+    };
   };
 
   outputs = inputs:

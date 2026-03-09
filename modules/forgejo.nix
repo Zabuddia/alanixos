@@ -346,6 +346,10 @@ in
               "$@"
           }
 
+          # Ensure schema migrations are applied before any admin user operations.
+          # This avoids reconcile failures right after upgrades when new tables are introduced.
+          run_as_forgejo migrate >/dev/null
+
           sql_quote() {
             printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\"'\"'/g")"
           }

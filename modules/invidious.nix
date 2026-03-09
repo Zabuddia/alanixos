@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ... }:
+{ config, lib, pkgs, pkgs-unstable ? pkgs, inputs, ... }:
 let
   cfg = config.alanix.invidious;
   serviceAccess = import ./_service-access.nix { inherit lib; };
@@ -20,6 +20,42 @@ let
     else
       config.sops.secrets.${cfg.hmacKeySecret}.path;
   hmacKeyJsonFile = "/run/alanix-invidious/hmac-key.json";
+  companionSettingsFile = "/run/alanix-invidious/companion-settings.json";
+  companionEnvFile = "/run/alanix-invidious/companion.env";
+  companionListenMatch = builtins.match "^([^:]+):([0-9]+)$" cfg.companion.listenAddress;
+  companionHost =
+    if companionListenMatch == null then
+      null
+    else
+      builtins.elemAt companionListenMatch 0;
+  companionPort =
+    if companionListenMatch == null then
+      null
+    else
+      builtins.elemAt companionListenMatch 1;
+  companionPrivateUrl =
+    if companionListenMatch == null then
+      null
+    else
+      "http://${cfg.companion.listenAddress}/companion";
+  invidiousCompanionSource = inputs.invidious-companion-src;
+  invidiousCompanionPackage = pkgs.writeShellApplication {
+    name = "invidious_companion";
+    runtimeInputs = [ pkgs.deno ];
+    text = ''
+      set -euo pipefail
+
+      cd ${invidiousCompanionSource}
+      exec deno run \
+        --allow-import=github.com:443,jsr.io:443,cdn.jsdelivr.net:443,esm.sh:443,deno.land:443 \
+        --allow-net \
+        --allow-env \
+        --allow-sys=hostname \
+        --allow-read=.,/tmp/invidious-companion.sock,/var/cache/invidious-companion \
+        --allow-write=/var/cache/invidious-companion,/tmp/invidious-companion.sock \
+        src/main.ts "$@"
+    '';
+  };
   anySopsUserPassword = lib.any (u: u.passwordSecret != null) (lib.attrValues cfg.users);
   userPasswordSecretNames =
     lib.unique (lib.filter (x: x != null) (map (u: u.passwordSecret) (lib.attrValues cfg.users)));
@@ -75,6 +111,13 @@ in
       description = "Additional Invidious settings merged into services.invidious.settings.";
     };
 
+    package = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs-unstable.invidious;
+      defaultText = lib.literalExpression "pkgs-unstable.invidious";
+      description = "Invidious package to run.";
+    };
+
     database = {
       createLocally = lib.mkOption {
         type = lib.types.bool;
@@ -110,13 +153,20 @@ in
       enable = lib.mkOption {
         type = lib.types.bool;
         default = false;
-        description = "Enable Invidious companion endpoint (implemented via inv-sig-helper on this nixpkgs version).";
+        description = "Enable Invidious companion service and companion integration.";
       };
 
       listenAddress = lib.mkOption {
         type = lib.types.str;
         default = "127.0.0.1:2999";
         description = "TCP listen address for the companion endpoint.";
+      };
+
+      package = lib.mkOption {
+        type = lib.types.package;
+        default = invidiousCompanionPackage;
+        defaultText = lib.literalExpression "invidiousCompanionPackage";
+        description = "Package providing the `invidious_companion` binary.";
       };
     };
 
@@ -221,6 +271,14 @@ in
         assertion = !(anySopsUserPassword && !hasSopsSecrets);
         message = "alanix.invidious.users.*.passwordSecret requires sops-nix configuration.";
       }
+      {
+        assertion = !(cfg.companion.enable && companionListenMatch == null);
+        message = "alanix.invidious.companion.listenAddress must be in HOST:PORT format (for example 127.0.0.1:2999).";
+      }
+      {
+        assertion = !(cfg.companion.enable && (cfg.settings ? signature_server));
+        message = "Do not set alanix.invidious.settings.signature_server when companion is enabled.";
+      }
     ]
     ++ serviceAccess.mkAccessAssertions {
       inherit cfg hasSopsSecrets;
@@ -237,7 +295,12 @@ in
       })
       (lib.mkIf (hasSopsSecrets && cfg.hmacKeySecret != null) {
         "${cfg.hmacKeySecret}" = {
-          restartUnits = [ "invidious.service" ];
+          restartUnits =
+            [ "invidious.service" ]
+            ++ lib.optionals cfg.companion.enable [
+              "invidious-companion.service"
+              "invidious-companion-config.service"
+            ];
         };
       })
       (lib.mkIf (hasSopsSecrets && userPasswordSecretNames != []) (
@@ -250,11 +313,19 @@ in
 
     services.invidious = {
       enable = true;
+      package = cfg.package;
       address = cfg.listenAddress;
       port = cfg.port;
       nginx.enable = false;
       domain = if cfg.wanAccess.enable then cfg.wanAccess.domain else null;
-      settings = cfg.settings;
+      settings = cfg.settings // lib.optionalAttrs cfg.companion.enable {
+        invidious_companion = [
+          {
+            private_url = companionPrivateUrl;
+          }
+        ];
+      };
+      extraSettingsFile = lib.mkIf cfg.companion.enable companionSettingsFile;
       hmacKeyFile = hmacKeyJsonFile;
 
       database = {
@@ -265,7 +336,7 @@ in
       };
 
       sig-helper = {
-        enable = cfg.companion.enable;
+        enable = false;
         listenAddress = cfg.companion.listenAddress;
       };
     };
@@ -326,6 +397,111 @@ in
         mv -f "$TMP_PATH" "$OUT_PATH"
       '';
     };
+
+    systemd.services.invidious-companion-config = lib.mkIf cfg.companion.enable {
+      description = "Prepare Invidious companion environment and settings";
+      before = [
+        "invidious.service"
+        "invidious-companion.service"
+      ];
+      requiredBy = [
+        "invidious.service"
+        "invidious-companion.service"
+      ];
+      after = [ "sops-install-secrets.service" ];
+      wants = [ "sops-install-secrets.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        User = "root";
+        Group = "root";
+        RuntimeDirectory = "alanix-invidious";
+        RuntimeDirectoryMode = "0711";
+        RuntimeDirectoryPreserve = "yes";
+      };
+      path = [
+        pkgs.coreutils
+        pkgs.jq
+      ];
+      script = ''
+        set -euo pipefail
+
+        HMAC_PATH=${lib.escapeShellArg hmacKeyFile}
+        COMPANION_ENV=${lib.escapeShellArg companionEnvFile}
+        COMPANION_SETTINGS=${lib.escapeShellArg companionSettingsFile}
+        COMPANION_URL=${lib.escapeShellArg companionPrivateUrl}
+
+        HMAC="$(tr -d '\r\n' < "$HMAC_PATH")"
+        [ -n "$HMAC" ] || { echo "Invidious hmac key is empty in $HMAC_PATH" >&2; exit 1; }
+
+        # Derive a stable 16-char companion secret from the cluster hmac key.
+        COMPANION_KEY="$(printf '%s' "$HMAC" | sha256sum | cut -c1-16)"
+        [ "''${#COMPANION_KEY}" -eq 16 ] || { echo "Derived companion key has invalid length" >&2; exit 1; }
+
+        TMP_ENV="$(mktemp /run/alanix-invidious/companion-env.XXXXXX)"
+        TMP_SETTINGS="$(mktemp /run/alanix-invidious/companion-settings.XXXXXX)"
+
+        cat > "$TMP_ENV" <<EOF
+        HOST=${companionHost}
+        PORT=${companionPort}
+        SERVER_BASE_PATH=/companion
+        SERVER_SECRET_KEY=$COMPANION_KEY
+        CACHE_DIRECTORY=/var/cache/invidious-companion
+        EOF
+
+        jq -cn \
+          --arg private_url "$COMPANION_URL" \
+          --arg companion_key "$COMPANION_KEY" \
+          '{invidious_companion:[{private_url:$private_url}], invidious_companion_key:$companion_key}' \
+          > "$TMP_SETTINGS"
+
+        chown invidious:invidious "$TMP_ENV" "$TMP_SETTINGS"
+        chmod 0400 "$TMP_ENV" "$TMP_SETTINGS"
+        mv -f "$TMP_ENV" "$COMPANION_ENV"
+        mv -f "$TMP_SETTINGS" "$COMPANION_SETTINGS"
+      '';
+    };
+
+    systemd.services.invidious-companion = lib.mkIf cfg.companion.enable {
+      description = "Invidious companion";
+      before = [ "invidious.service" ];
+      requiredBy = [ "invidious.service" ];
+      wants = [
+        "network-online.target"
+        "invidious-companion-config.service"
+      ];
+      after = [
+        "network-online.target"
+        "invidious-companion-config.service"
+      ];
+      partOf = [ "invidious.service" ];
+
+      serviceConfig = {
+        Type = "simple";
+        User = "invidious";
+        Group = "invidious";
+        ExecStart = lib.getExe' cfg.companion.package "invidious_companion";
+        EnvironmentFile = companionEnvFile;
+        Environment = [ "DENO_DIR=/var/cache/invidious-companion/deno" ];
+        TimeoutStartSec = "10min";
+        Restart = "always";
+        RestartSec = "2s";
+        CacheDirectory = "invidious-companion";
+        CacheDirectoryMode = "0750";
+        NoNewPrivileges = true;
+        PrivateTmp = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        ProtectControlGroups = true;
+        ProtectKernelModules = true;
+        ProtectKernelTunables = true;
+        ProtectKernelLogs = true;
+        RestrictAddressFamilies = [ "AF_UNIX" "AF_INET" "AF_INET6" ];
+        RestrictNamespaces = true;
+      };
+    };
+
+    # Ensure legacy helper never starts when this module manages companion mode.
+    systemd.services.invidious-sig-helper.enable = lib.mkForce false;
 
     users.groups.invidious = lib.mkMerge [
       {}

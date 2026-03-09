@@ -126,18 +126,27 @@ in
             RECORDS=()
             ${mkRecordArrayLines updater.records}
 
+            curl_retry() {
+              curl -4fsS --retry 5 --retry-delay 2 --retry-all-errors "$@"
+            }
+
             API_TOKEN="$(tr -d '\n' < "$API_TOKEN_PATH")"
-            PUBLIC_IP="$(curl -4fsS "$PUBLIC_IP_URL")"
+            PUBLIC_IP="$(curl_retry "$PUBLIC_IP_URL" || true)"
+
+            if ! jq -en --arg ip "$PUBLIC_IP" '$ip | test("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$")' >/dev/null; then
+              echo "DNS updater: unable to determine public IPv4 from $PUBLIC_IP_URL (got '$PUBLIC_IP'); skipping this run" >&2
+              exit 0
+            fi
 
             case "$PROVIDER" in
               cloudflare)
                 API="https://api.cloudflare.com/client/v4"
                 AUTH=(-H "Authorization: Bearer $API_TOKEN" -H "Content-Type: application/json")
 
-                ZONE_ID="$(curl -fsS "''${AUTH[@]}" "$API/zones?name=$ZONE" | jq -er '.result[0].id')"
+                ZONE_ID="$(curl_retry "''${AUTH[@]}" "$API/zones?name=$ZONE" | jq -er '.result[0].id')"
 
                 for RECORD in "''${RECORDS[@]}"; do
-                  RECORD_JSON="$(curl -fsS "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records?type=A&name=$RECORD" | jq -c '.result[0] // empty')"
+                  RECORD_JSON="$(curl_retry "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records?type=A&name=$RECORD" | jq -c '.result[0] // empty')"
 
                   BODY="$(jq -n \
                     --arg type "A" \
@@ -148,12 +157,12 @@ in
                     '{type: $type, name: $name, content: $content, ttl: $ttl, proxied: $proxied}')"
 
                   if [ -z "$RECORD_JSON" ]; then
-                    curl -fsS -X POST "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records" --data "$BODY" >/dev/null
+                    curl_retry -X POST "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records" --data "$BODY" >/dev/null
                     continue
                   fi
 
                   RECORD_ID="$(printf '%s' "$RECORD_JSON" | jq -er '.id')"
-                  curl -fsS -X PATCH "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records/$RECORD_ID" --data "$BODY" >/dev/null
+                  curl_retry -X PATCH "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records/$RECORD_ID" --data "$BODY" >/dev/null
                 done
                 ;;
               *)

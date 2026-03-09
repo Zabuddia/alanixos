@@ -622,7 +622,7 @@ in
         enable = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Enable Invidious companion endpoint (implemented via inv-sig-helper on this nixpkgs version).";
+          description = "Enable Invidious companion service and integration.";
         };
 
         listenAddress = lib.mkOption {
