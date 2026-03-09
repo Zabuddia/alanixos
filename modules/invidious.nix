@@ -38,7 +38,21 @@ let
       null
     else
       "http://${cfg.companion.listenAddress}/companion";
+  hasLegacyDefaultHome = cfg.settings ? default_home;
+  hasLegacyFeedMenu = cfg.settings ? feed_menu;
+  hasDefaultUserPreferences = cfg.settings ? default_user_preferences;
+  invidiousSettingsBase = builtins.removeAttrs cfg.settings [ "default_home" "feed_menu" ];
+  invidiousDefaultUserPreferences =
+    (if hasDefaultUserPreferences then cfg.settings.default_user_preferences else {})
+    // lib.optionalAttrs hasLegacyDefaultHome { default_home = cfg.settings.default_home; }
+    // lib.optionalAttrs hasLegacyFeedMenu { feed_menu = cfg.settings.feed_menu; };
+  effectiveInvidiousSettings =
+    invidiousSettingsBase
+    // lib.optionalAttrs (hasDefaultUserPreferences || hasLegacyDefaultHome || hasLegacyFeedMenu) {
+      default_user_preferences = invidiousDefaultUserPreferences;
+    };
   invidiousCompanionSource = inputs.invidious-companion-src;
+  defaultInvidiousPackage = pkgs-unstable.invidious;
   invidiousCompanionPackage = pkgs.writeShellApplication {
     name = "invidious_companion";
     runtimeInputs = [ pkgs.deno ];
@@ -80,6 +94,16 @@ in
       default = 3100;
     };
 
+    cookieDomain = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        Optional cookie domain for Invidious SID/PREFS cookies.
+        Leave null to make cookies host-only so login works consistently across
+        multiple entrypoints (for example WAN domain, WireGuard IP, and .onion).
+      '';
+    };
+
     inherit (serviceAccess.mkBackendFirewallOptions {
       serviceTitle = "Invidious";
       defaultOpenFirewall = false;
@@ -113,7 +137,7 @@ in
 
     package = lib.mkOption {
       type = lib.types.package;
-      default = pkgs-unstable.invidious;
+      default = defaultInvidiousPackage;
       defaultText = lib.literalExpression "pkgs-unstable.invidious";
       description = "Invidious package to run.";
     };
@@ -216,6 +240,10 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    warnings = lib.optionals (hasLegacyDefaultHome || hasLegacyFeedMenu) [
+      "alanix.invidious.settings.default_home/feed_menu are legacy top-level keys; move them under alanix.invidious.settings.default_user_preferences.* (they are auto-migrated for now)."
+    ];
+
     assertions =
       (lib.flatten (lib.mapAttrsToList (uname: u:
         let
@@ -317,8 +345,8 @@ in
       address = cfg.listenAddress;
       port = cfg.port;
       nginx.enable = false;
-      domain = if cfg.wanAccess.enable then cfg.wanAccess.domain else null;
-      settings = cfg.settings // lib.optionalAttrs cfg.companion.enable {
+      domain = cfg.cookieDomain;
+      settings = effectiveInvidiousSettings // lib.optionalAttrs cfg.companion.enable {
         invidious_companion = [
           {
             private_url = companionPrivateUrl;
@@ -588,9 +616,10 @@ in
 
           ensureLines =
             lib.concatStringsSep "\n"
-              (lib.mapAttrsToList (uname: _u:
+              (lib.mapAttrsToList (uname: u:
                 let
-                  var = "PASSFILE_" + lib.replaceStrings [ "/" "-" "." "@" " " ] [ "_" "_" "_" "_" "_" ] uname;
+                  safeName = lib.replaceStrings [ "/" "-" "." "@" " " ] [ "_" "_" "_" "_" "_" ] uname;
+                  var = "PASSFILE_" + safeName;
                 in
                 ''
                   ensure_user ${lib.escapeShellArg uname} "${"$"}${var}"
@@ -676,12 +705,11 @@ in
                     email = '${"$"}user_sql',
                     updated = NOW(),
                     notifications = COALESCE(notifications, ARRAY[]::text[]),
-                    subscriptions = COALESCE(subscriptions, ARRAY[]::text[]),
                     preferences = COALESCE(preferences, '{}'),
                     password = '${"$"}pass_hash_sql',
                     token = COALESCE(token, '${"$"}token_sql'),
                     watched = COALESCE(watched, ARRAY[]::text[]),
-                    feed_needs_update = COALESCE(feed_needs_update, true)
+                    feed_needs_update = true
                   WHERE lower(email) = lower('${"$"}user_sql');
                 " >/dev/null
               return

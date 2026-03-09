@@ -145,12 +145,14 @@
       uid = 45040;
       gid = 45040;
       settings = {
-        default_home = "Popular";
-        feed_menu = [
-          "Popular"
-          "Subscriptions"
-          "Playlists"
-        ];
+        default_user_preferences = {
+          default_home = "Popular";
+          feed_menu = [
+            "Popular"
+            "Subscriptions"
+            "Playlists"
+          ];
+        };
       };
       database = {
         createLocally = true;
