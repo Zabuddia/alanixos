@@ -195,6 +195,7 @@ in
 
     services.forgejo = {
       enable = true;
+      package = pkgs.forgejo;
       user = "forgejo";
       group = "forgejo";
       stateDir = cfg.stateDir;
