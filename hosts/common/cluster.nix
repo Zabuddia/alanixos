@@ -161,7 +161,7 @@
       };
       hmacKeySecret = "invidious/hmac-key";
       companion = {
-        enable = false;
+        enable = true;
         listenAddress = "127.0.0.1:2999";
       };
       users = {
