@@ -1166,6 +1166,74 @@ in
         };
       };
 
+      reconcileAdminEmail = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Email of an existing Immich admin account used to authenticate the declarative user reconcile job.
+          Required when services.immich.users is non-empty.
+        '';
+      };
+
+      reconcileAdminPasswordSecret = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          sops secret containing the password for services.immich.reconcileAdminEmail.
+          Required when services.immich.users is non-empty.
+        '';
+      };
+
+      users = lib.mkOption {
+        type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
+          options = {
+            email = lib.mkOption {
+              type = lib.types.str;
+              default = name;
+              description = "Immich login email.";
+            };
+
+            displayName = lib.mkOption {
+              type = lib.types.str;
+              default = name;
+              description = "Immich display name.";
+            };
+
+            isAdmin = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = "Whether this Immich user should have admin privileges.";
+            };
+
+            shouldChangePassword = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = "Whether this Immich user must change password on next login.";
+            };
+
+            password = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "Plaintext password for this Immich user (simple, not recommended).";
+            };
+
+            passwordFile = lib.mkOption {
+              type = lib.types.nullOr lib.types.path;
+              default = null;
+              description = "Path to file containing plaintext password for this Immich user.";
+            };
+
+            passwordSecret = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "sops secret name containing plaintext password for this Immich user.";
+            };
+          };
+        }));
+        default = {};
+        description = "Declarative Immich users reconciled by alanix.immich.";
+      };
+
       dataPaths = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [

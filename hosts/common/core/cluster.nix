@@ -238,6 +238,17 @@
         enable = true;
         environment = { };
       };
+      reconcileAdminEmail = "fife.alan@protonmail.com";
+      reconcileAdminPasswordSecret = "service-passwords/buddia";
+      users = {
+        buddia = {
+          email = "fife.alan@protonmail.com";
+          displayName = "Alan Fife";
+          isAdmin = true;
+          shouldChangePassword = false;
+          passwordSecret = "service-passwords/buddia";
+        };
+      };
       dataPaths = [
         config.alanix.cluster.services.immich.stateDir
         "/var/lib/postgresql"

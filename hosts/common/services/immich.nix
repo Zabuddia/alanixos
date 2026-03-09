@@ -44,6 +44,10 @@ in
       environment = cluster.services.immich.machineLearning.environment;
     };
 
+    adminEmail = cluster.services.immich.reconcileAdminEmail;
+    adminPasswordSecret = cluster.services.immich.reconcileAdminPasswordSecret;
+    users = cluster.services.immich.users;
+
     wanAccess = {
       enable = cluster.services.immich.wanAccess.enable;
       domain = cluster.services.immich.wanAccess.domain;
