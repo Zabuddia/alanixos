@@ -1389,6 +1389,160 @@ in
         };
       };
     };
+
+    services.dashboard = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Enable cluster dashboard stack (Grafana + Prometheus).";
+      };
+
+      activeNode = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Node name that should run the dashboard stack.
+          null means run on all nodes.
+        '';
+      };
+
+      backendPort = lib.mkOption {
+        type = lib.types.port;
+        default = 3300;
+        description = "Grafana backend port.";
+      };
+
+      adminUser = lib.mkOption {
+        type = lib.types.str;
+        default = "admin";
+      };
+
+      adminPasswordSecret = lib.mkOption {
+        type = lib.types.str;
+        default = "grafana/admin-password";
+        description = "sops secret containing Grafana admin password.";
+      };
+
+      prometheusPort = lib.mkOption {
+        type = lib.types.port;
+        default = 9090;
+      };
+
+      blackboxPort = lib.mkOption {
+        type = lib.types.port;
+        default = 9115;
+      };
+
+      nodeExporterPort = lib.mkOption {
+        type = lib.types.port;
+        default = 9100;
+      };
+
+      nodeExporterInterface = lib.mkOption {
+        type = lib.types.str;
+        default = "wg0";
+      };
+
+      metricsInterval = lib.mkOption {
+        type = lib.types.str;
+        default = "1m";
+      };
+
+      wanAccess = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable WAN/public access endpoint for dashboard.";
+        };
+
+        domain = lib.mkOption {
+          type = lib.types.str;
+          description = "Public FQDN for dashboard WAN access.";
+        };
+
+        openFirewall = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Open TCP 80/443 for dashboard WAN access.";
+        };
+      };
+
+      wireguardAccess = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable a WireGuard-only access endpoint for dashboard.";
+        };
+
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 8094;
+          description = "WireGuard-only access port exposed by Caddy.";
+        };
+      };
+
+      torAccess = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable a Tor onion-service access endpoint for dashboard.";
+        };
+
+        onionServiceName = lib.mkOption {
+          type = lib.types.str;
+          default = "dashboard";
+          description = "Service key name under services.tor.relay.onionServices.";
+        };
+
+        enableHttp = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Expose plaintext HTTP over Tor for dashboard.";
+        };
+
+        httpLocalPort = lib.mkOption {
+          type = lib.types.port;
+          default = 18330;
+          description = "Local Caddy HTTP listener port used as hidden-service backend.";
+        };
+
+        httpVirtualPort = lib.mkOption {
+          type = lib.types.port;
+          default = 80;
+          description = "Virtual Tor hidden-service HTTP port exposed to clients.";
+        };
+
+        enableHttps = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Expose HTTPS over Tor for dashboard.";
+        };
+
+        httpsLocalPort = lib.mkOption {
+          type = lib.types.port;
+          default = 18730;
+          description = "Local Caddy HTTPS listener port used as hidden-service backend.";
+        };
+
+        httpsVirtualPort = lib.mkOption {
+          type = lib.types.port;
+          default = 443;
+          description = "Virtual Tor hidden-service HTTPS port exposed to clients.";
+        };
+
+        version = lib.mkOption {
+          type = lib.types.enum [ 2 3 ];
+          default = 3;
+          description = "Tor hidden-service version.";
+        };
+
+        secretKeySecret = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Optional sops secret containing hidden-service private key for stable onion address.";
+        };
+      };
+    };
   };
 
   config.assertions = [
@@ -1421,6 +1575,13 @@ in
       message =
         "alanix.cluster.services.immich.priorityOverrides contains unknown nodes: "
         + lib.concatStringsSep ", " (unknownOverrideKeys cluster.services.immich.priorityOverrides);
+    }
+    {
+      assertion =
+        cluster.services.dashboard.activeNode == null
+        || builtins.hasAttr cluster.services.dashboard.activeNode cluster.nodes;
+      message =
+        "alanix.cluster.services.dashboard.activeNode must be null or a key in alanix.cluster.nodes.";
     }
   ];
 }

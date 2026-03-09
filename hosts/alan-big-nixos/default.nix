@@ -10,6 +10,7 @@
     ../common/services/invidious.nix
     ../common/services/immich.nix
     ../common/services/vaultwarden.nix
+    ../common/services/dashboard.nix
     ../common/core/dynamic-dns.nix
     ../common/services/failover/filebrowser.nix
     ../common/services/failover/forgejo.nix

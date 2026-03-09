@@ -289,6 +289,40 @@
       };
     };
 
+    services.dashboard = {
+      enable = true;
+      activeNode = "alan-big-nixos";
+      backendPort = 3300;
+      adminUser = "admin";
+      adminPasswordSecret = "service-passwords/buddia";
+      prometheusPort = 9090;
+      blackboxPort = 9115;
+      nodeExporterPort = 9100;
+      nodeExporterInterface = "wg0";
+      metricsInterval = "1m";
+      wanAccess = {
+        enable = true;
+        domain = "dashboard.fifefin.com";
+        openFirewall = true;
+      };
+      wireguardAccess = {
+        enable = true;
+        port = 8094;
+      };
+      torAccess = {
+        enable = true;
+        onionServiceName = "dashboard";
+        enableHttp = true;
+        httpLocalPort = 18330;
+        httpVirtualPort = 80;
+        enableHttps = true;
+        httpsLocalPort = 18730;
+        httpsVirtualPort = 443;
+        version = 3;
+        secretKeySecret = null;
+      };
+    };
+
     services.vaultwarden = {
       enable = true;
       backendPort = 8222;
