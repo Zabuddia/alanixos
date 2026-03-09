@@ -291,15 +291,19 @@
 
     services.dashboard = {
       enable = true;
-      activeNode = "alan-big-nixos";
       backendPort = 3300;
       adminUser = "admin";
-      adminPasswordSecret = "service-passwords/buddia";
+      adminPasswordSecret = "grafana/admin-password";
       prometheusPort = 9090;
       blackboxPort = 9115;
       nodeExporterPort = 9100;
       nodeExporterInterface = "wg0";
       metricsInterval = "1m";
+      dataPaths = [
+        "/var/lib/grafana"
+        "/var/lib/prometheus2"
+      ];
+      priorityOverrides = {};
       wanAccess = {
         enable = true;
         domain = "dashboard.fifefin.com";

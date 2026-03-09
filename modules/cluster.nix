@@ -1397,15 +1397,6 @@ in
         description = "Enable cluster dashboard stack (Grafana + Prometheus).";
       };
 
-      activeNode = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = ''
-          Node name that should run the dashboard stack.
-          null means run on all nodes.
-        '';
-      };
-
       backendPort = lib.mkOption {
         type = lib.types.port;
         default = 3300;
@@ -1446,6 +1437,25 @@ in
       metricsInterval = lib.mkOption {
         type = lib.types.str;
         default = "1m";
+      };
+
+      dataPaths = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [
+          "/var/lib/grafana"
+          "/var/lib/prometheus2"
+        ];
+        description = "Paths synchronized for dashboard failover.";
+      };
+
+      priorityOverrides = lib.mkOption {
+        type = lib.types.attrsOf lib.types.int;
+        default = {};
+        description = ''
+          Optional per-node priority overrides for dashboard failover.
+          Lower number means higher priority. Keys must match alanix.cluster.nodes.
+          Nodes not listed here use alanix.cluster.nodes.<name>.priority.
+        '';
       };
 
       wanAccess = {
@@ -1577,11 +1587,10 @@ in
         + lib.concatStringsSep ", " (unknownOverrideKeys cluster.services.immich.priorityOverrides);
     }
     {
-      assertion =
-        cluster.services.dashboard.activeNode == null
-        || builtins.hasAttr cluster.services.dashboard.activeNode cluster.nodes;
+      assertion = (unknownOverrideKeys cluster.services.dashboard.priorityOverrides) == [];
       message =
-        "alanix.cluster.services.dashboard.activeNode must be null or a key in alanix.cluster.nodes.";
+        "alanix.cluster.services.dashboard.priorityOverrides contains unknown nodes: "
+        + lib.concatStringsSep ", " (unknownOverrideKeys cluster.services.dashboard.priorityOverrides);
     }
   ];
 }

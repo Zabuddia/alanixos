@@ -500,20 +500,20 @@ in
         message = "alanix.dashboard.nodeExporterListenAddress must be set (use node VPN IP).";
       }
       {
-        assertion = !cfg.active || cfg.scrapeTargets != [ ];
-        message = "alanix.dashboard.scrapeTargets must be non-empty when alanix.dashboard.active = true.";
+        assertion = cfg.scrapeTargets != [ ];
+        message = "alanix.dashboard.scrapeTargets must be non-empty.";
       }
     ] ++ serviceAccess.mkAccessAssertions {
       inherit cfg hasSopsSecrets;
       modulePathPrefix = "alanix.dashboard";
     };
 
-    sops.secrets.${cfg.adminPasswordSecret}.restartUnits = lib.optionals cfg.active [
+    sops.secrets.${cfg.adminPasswordSecret}.restartUnits = [
       "grafana.service"
     ];
 
     networking.firewall = lib.mkMerge [
-      (lib.mkIf cfg.active (serviceAccess.mkAccessFirewallConfig { inherit cfg; }))
+      (serviceAccess.mkAccessFirewallConfig { inherit cfg; })
       {
         interfaces.${cfg.nodeExporterInterface}.allowedTCPPorts = [ cfg.nodeExporterPort ];
       }
@@ -634,6 +634,18 @@ in
     };
 
     services.prometheus = {
+      enable = true;
+      listenAddress = cfg.prometheusListenAddress;
+      port = cfg.prometheusPort;
+      scrapeConfigs =
+        [
+          {
+            job_name = "node";
+            static_configs = [ { targets = cfg.scrapeTargets; } ];
+          }
+        ]
+        ++ lib.optional (cfg.endpointChecks != [ ]) blackboxScrapeConfig;
+
       exporters.node = {
         enable = true;
         listenAddress = cfg.nodeExporterListenAddress;
@@ -647,28 +659,16 @@ in
         extraFlags = [ "--collector.textfile.directory=${cfg.metricsTextfileDir}" ];
       };
 
-      exporters.blackbox = lib.mkIf cfg.active {
+      exporters.blackbox = {
         enable = true;
         listenAddress = cfg.prometheusListenAddress;
         port = cfg.blackboxPort;
         configFile = blackboxConfig;
         openFirewall = false;
       };
-    } // lib.optionalAttrs cfg.active {
-      enable = true;
-      listenAddress = cfg.prometheusListenAddress;
-      port = cfg.prometheusPort;
-      scrapeConfigs =
-        [
-          {
-            job_name = "node";
-            static_configs = [ { targets = cfg.scrapeTargets; } ];
-          }
-        ]
-        ++ lib.optional (cfg.endpointChecks != [ ]) blackboxScrapeConfig;
     };
 
-    services.grafana = lib.mkIf cfg.active {
+    services.grafana = {
       enable = true;
       settings = {
         server = {
@@ -713,13 +713,22 @@ in
       };
     };
 
-    services.caddy = lib.mkIf cfg.active (serviceAccess.mkAccessCaddyConfig {
+    systemd.services.prometheus.wantedBy = lib.mkIf (!cfg.active) (lib.mkForce []);
+    systemd.services.grafana.wantedBy = lib.mkIf (!cfg.active) (lib.mkForce []);
+    systemd.services.prometheus-blackbox-exporter = {
+      wantedBy = lib.mkIf (!cfg.active) (lib.mkForce []);
+      partOf = [ "prometheus.service" ];
+    };
+    systemd.services.prometheus.wants = [ "prometheus-blackbox-exporter.service" ];
+    systemd.services.prometheus.after = [ "prometheus-blackbox-exporter.service" ];
+
+    services.caddy = serviceAccess.mkAccessCaddyConfig {
       inherit cfg;
       upstreamPort = cfg.port;
-    });
+    };
 
-    services.tor = lib.mkIf cfg.active (serviceAccess.mkTorConfig {
+    services.tor = serviceAccess.mkTorConfig {
       inherit cfg torSecretKeyPath;
-    });
+    };
   };
 }

@@ -13,6 +13,7 @@
     ../common/services/dashboard.nix
     ../common/core/dynamic-dns.nix
     ../common/services/failover/filebrowser.nix
+    ../common/services/failover/dashboard.nix
     ../common/services/failover/forgejo.nix
     ../common/services/failover/invidious.nix
     ../common/services/failover/immich.nix

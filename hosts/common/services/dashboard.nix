@@ -37,11 +37,8 @@ in
 
   alanix.dashboard = {
     enable = cluster.services.dashboard.enable;
-    active =
-      if cluster.services.dashboard.activeNode == null then
-        true
-      else
-        cluster.services.dashboard.activeNode == hostname;
+    # Role controller starts/stops dashboard declaratively; do not auto-start by default.
+    active = lib.mkDefault false;
     listenAddress = "127.0.0.1";
     port = cluster.services.dashboard.backendPort;
     openFirewall = false;

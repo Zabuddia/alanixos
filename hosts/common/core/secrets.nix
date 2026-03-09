@@ -54,6 +54,13 @@
     mode = "0400";
   };
 
+  sops.secrets."grafana/admin-password" = {
+    sopsFile = ../../../secrets/secrets.yaml;
+    owner = "grafana";
+    group = "grafana";
+    mode = "0400";
+  };
+
   sops.secrets."invidious/hmac-key" = {
     sopsFile = ../../../secrets/secrets.yaml;
     owner = "root";
