@@ -615,17 +615,17 @@ in
         description = "Optional sops secret containing Invidious hmac_key.";
       };
 
-      sigHelper = {
+      companion = {
         enable = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Enable inv-sig-helper for better playback compatibility.";
+          description = "Enable Invidious companion endpoint (implemented via inv-sig-helper on this nixpkgs version).";
         };
 
         listenAddress = lib.mkOption {
           type = lib.types.str;
           default = "127.0.0.1:2999";
-          description = "TCP listen address for inv-sig-helper.";
+          description = "TCP listen address for the companion endpoint.";
         };
       };
 

@@ -160,7 +160,7 @@
         passwordSecret = null;
       };
       hmacKeySecret = null;
-      sigHelper = {
+      companion = {
         enable = false;
         listenAddress = "127.0.0.1:2999";
       };
@@ -170,8 +170,8 @@
         };
       };
       priorityOverrides = {
-        randy-big-nixos = 10;
-        alan-big-nixos = 20;
+        randy-big-nixos = 20;
+        alan-big-nixos = 10;
       };
       dataPaths = [
         config.alanix.cluster.services.invidious.stateDir

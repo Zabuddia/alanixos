@@ -28,9 +28,9 @@ in
       passwordSecret = cluster.services.invidious.database.passwordSecret;
     };
 
-    sigHelper = {
-      enable = cluster.services.invidious.sigHelper.enable;
-      listenAddress = cluster.services.invidious.sigHelper.listenAddress;
+    companion = {
+      enable = cluster.services.invidious.companion.enable;
+      listenAddress = cluster.services.invidious.companion.listenAddress;
     };
 
     users = cluster.services.invidious.users;
