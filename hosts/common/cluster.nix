@@ -18,14 +18,14 @@
     nodes = {
       alan-big-nixos = {
         vpnIP = "10.100.0.1";
-        priority = 20;
+        priority = 10;
         wireguardPublicKey = "19Kloz2N3r2ksivuyLNtSplbDxS1kneNzVNRFhnQoCA=";
         wireguardEndpointHost = "alan-big-nixos-wg.fifefin.com";
       };
 
       randy-big-nixos = {
         vpnIP = "10.100.0.2";
-        priority = 10;
+        priority = 20;
         wireguardPublicKey = "YD/m4D7uTGFnWBEACTkc7MnY7yG0yvRVAEJKqOQ91UE=";
         wireguardEndpointHost = "randy-big-nixos-wg.fifefin.com";
       };
@@ -48,10 +48,6 @@
           admin = false;
           scope = "users/buddia";
         };
-      };
-      priorityOverrides = {
-        randy-big-nixos = 10;
-        alan-big-nixos = 20;
       };
       backups = {
         enable = true;
@@ -103,10 +99,6 @@
           passwordSecret = "service-passwords/buddia";
           mustChangePassword = false;
         };
-      };
-      priorityOverrides = {
-        alan-big-nixos = 10;
-        randy-big-nixos = 20;
       };
       dataPaths = [ "/var/lib/forgejo" ];
       wanAccess = {
@@ -176,10 +168,6 @@
           passwordSecret = "service-passwords/buddia";
         };
       };
-      priorityOverrides = {
-        randy-big-nixos = 20;
-        alan-big-nixos = 10;
-      };
       dataPaths = [
         config.alanix.cluster.services.invidious.stateDir
         "/var/lib/postgresql"
@@ -231,10 +219,6 @@
       adminTokenSecret = "vaultwarden/admin-token";
       uid = 45020;
       gid = 45020;
-      priorityOverrides = {
-        randy-big-nixos = 20;
-        alan-big-nixos = 10;
-      };
       dataPaths = [ config.alanix.cluster.services.vaultwarden.stateDir ];
       wanAccess = {
         enable = true;

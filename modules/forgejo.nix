@@ -257,7 +257,7 @@ in
         Group = "root";
       };
 
-      path = [ pkgs.forgejo pkgs.coreutils pkgs.gnugrep pkgs.gawk pkgs.util-linux pkgs.sqlite ];
+      path = [ config.services.forgejo.package pkgs.coreutils pkgs.gnugrep pkgs.gawk pkgs.util-linux pkgs.sqlite ];
 
       script =
         let
@@ -339,7 +339,7 @@ in
           fi
 
           run_as_forgejo() {
-            runuser -u forgejo -- forgejo \
+            runuser -u forgejo -- ${lib.getExe config.services.forgejo.package} \
               --work-path "$FORGEJO_HOME" \
               --custom-path "$FORGEJO_CUSTOM" \
               --config "$APP_INI" \
@@ -349,6 +349,12 @@ in
           # Ensure schema migrations are applied before any admin user operations.
           # This avoids reconcile failures right after upgrades when new tables are introduced.
           run_as_forgejo migrate >/dev/null
+
+          # Guard against partially migrated sqlite schemas seen across rapid upgrades/failovers.
+          if ! sqlite3 "$DB_PATH" "PRAGMA table_info(user);" | awk -F'|' '$2 == "normalized_federated_uri" { found = 1 } END { exit(found ? 0 : 1) }'; then
+            echo "forgejo-reconcile-users: adding missing user.normalized_federated_uri column" >&2
+            sqlite3 "$DB_PATH" "ALTER TABLE user ADD COLUMN normalized_federated_uri TEXT;"
+          fi
 
           sql_quote() {
             printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\"'\"'/g")"
