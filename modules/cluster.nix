@@ -610,9 +610,12 @@ in
       };
 
       hmacKeySecret = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = "Optional sops secret containing Invidious hmac_key.";
+        type = lib.types.str;
+        default = "invidious/hmac-key";
+        description = ''
+          Required sops secret containing Invidious hmac_key.
+          Set this secret in secrets/secrets.yaml to avoid per-node auto-generated keys.
+        '';
       };
 
       companion = {

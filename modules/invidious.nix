@@ -10,12 +10,12 @@ let
     else
       config.sops.secrets.${cfg.torAccess.secretKeySecret}.path;
   dbPasswordFile =
-    if cfg.database.passwordSecret == null then
+    if cfg.database.passwordSecret == null || !hasSopsSecrets then
       null
     else
       config.sops.secrets.${cfg.database.passwordSecret}.path;
   hmacKeyFile =
-    if cfg.hmacKeySecret == null then
+    if cfg.hmacKeySecret == null || !hasSopsSecrets then
       null
     else
       config.sops.secrets.${cfg.hmacKeySecret}.path;
@@ -206,7 +206,14 @@ in
         message = "alanix.invidious.database.passwordSecret requires sops-nix configuration.";
       }
       {
-        assertion = !(cfg.hmacKeySecret != null && !hasSopsSecrets);
+        assertion = cfg.hmacKeySecret != null;
+        message = ''
+          alanix.invidious.hmacKeySecret must be set.
+          Store the key in sops and set this to that secret path (for example "invidious/hmac-key").
+        '';
+      }
+      {
+        assertion = hasSopsSecrets;
         message = "alanix.invidious.hmacKeySecret requires sops-nix configuration.";
       }
       {
@@ -294,6 +301,9 @@ in
 
     systemd.tmpfiles.rules = [
       "d ${cfg.stateDir} 0750 invidious invidious - -"
+      "z ${cfg.stateDir} 0750 invidious invidious - -"
+      "z /var/lib/invidious 0750 invidious invidious - -"
+      "z /var/lib/invidious/hmac_key 0600 invidious invidious - -"
     ];
 
     systemd.services.invidious-reconcile-users = lib.mkIf (cfg.users != {}) {

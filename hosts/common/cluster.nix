@@ -159,7 +159,7 @@
         port = 5432;
         passwordSecret = null;
       };
-      hmacKeySecret = null;
+      hmacKeySecret = "invidious/hmac-key";
       companion = {
         enable = false;
         listenAddress = "127.0.0.1:2999";
