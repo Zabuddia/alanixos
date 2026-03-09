@@ -7,13 +7,16 @@
     ../common/wireguard.nix
     ../common/filebrowser.nix
     ../common/forgejo.nix
+    ../common/invidious.nix
     ../common/vaultwarden.nix
     ../common/dynamic-dns.nix
     ../common/filebrowser-failover.nix
     ../common/forgejo-failover.nix
+    ../common/invidious-failover.nix
     ../common/vaultwarden-failover.nix
     ../common/filebrowser-backups.nix
     ../common/forgejo-backups.nix
+    ../common/invidious-backups.nix
     ../common/vaultwarden-backups.nix
     ../../modules/cosmic.nix
     ../../modules/ssh.nix

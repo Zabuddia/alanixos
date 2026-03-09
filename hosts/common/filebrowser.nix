@@ -45,18 +45,6 @@ in
       secretKeySecret = cluster.services.filebrowser.torAccess.secretKeySecret;
     };
 
-    users = {
-      admin = {
-        passwordSecret = "service-passwords/admin";
-        admin = true;
-        scope = ".";
-      };
-
-      buddia = {
-        passwordSecret = "service-passwords/buddia";
-        admin = false;
-        scope = "users/buddia";
-      };
-    };
+    users = cluster.services.filebrowser.users;
   };
 }

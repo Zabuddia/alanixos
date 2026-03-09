@@ -36,6 +36,19 @@
       backendPort = 8088;
       uid = 45000;
       gid = 45000;
+      users = {
+        admin = {
+          passwordSecret = "service-passwords/admin";
+          admin = true;
+          scope = ".";
+        };
+
+        buddia = {
+          passwordSecret = "service-passwords/buddia";
+          admin = false;
+          scope = "users/buddia";
+        };
+      };
       priorityOverrides = {
         randy-big-nixos = 10;
         alan-big-nixos = 20;
@@ -82,6 +95,15 @@
       stateDir = "/var/lib/forgejo";
       uid = 45010;
       gid = 45010;
+      users = {
+        buddia = {
+          admin = true;
+          email = "fife.alan@protonmail.com";
+          fullName = "Alan Fife";
+          passwordSecret = "service-passwords/buddia";
+          mustChangePassword = false;
+        };
+      };
       priorityOverrides = {
         alan-big-nixos = 10;
         randy-big-nixos = 20;
@@ -113,6 +135,73 @@
         enable = true;
         passwordSecret = "restic/cluster-password";
         repositoryBasePath = "/var/backups/restic/forgejo";
+        schedule = "hourly";
+        randomizedDelaySec = "10m";
+        pruneOpts = [
+          "--keep-hourly 24"
+          "--keep-daily 7"
+          "--keep-weekly 4"
+          "--keep-monthly 6"
+        ];
+      };
+    };
+
+    services.invidious = {
+      enable = true;
+      backendPort = 3100;
+      stateDir = "/var/lib/invidious";
+      uid = 45040;
+      gid = 45040;
+      settings = {};
+      database = {
+        createLocally = true;
+        host = null;
+        port = 5432;
+        passwordSecret = null;
+      };
+      hmacKeySecret = null;
+      sigHelper = {
+        enable = false;
+        listenAddress = "127.0.0.1:2999";
+      };
+      users = {
+        buddia = {
+          passwordSecret = "service-passwords/buddia";
+        };
+      };
+      priorityOverrides = {
+        randy-big-nixos = 10;
+        alan-big-nixos = 20;
+      };
+      dataPaths = [
+        config.alanix.cluster.services.invidious.stateDir
+        "/var/lib/postgresql"
+      ];
+      wanAccess = {
+        enable = true;
+        domain = "invidious.fifefin.com";
+        openFirewall = true;
+      };
+      wireguardAccess = {
+        enable = true;
+        port = 8092;
+      };
+      torAccess = {
+        enable = true;
+        onionServiceName = "invidious";
+        enableHttp = true;
+        httpLocalPort = 18300;
+        httpVirtualPort = 80;
+        enableHttps = true;
+        httpsLocalPort = 18743;
+        httpsVirtualPort = 443;
+        version = 3;
+        secretKeySecret = null;
+      };
+      backups = {
+        enable = true;
+        passwordSecret = "restic/cluster-password";
+        repositoryBasePath = "/var/backups/restic/invidious";
         schedule = "hourly";
         randomizedDelaySec = "10m";
         pruneOpts = [

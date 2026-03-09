@@ -1,4 +1,4 @@
-{ config, lib, hostname, cluster, serviceName, serviceUnit, enable }:
+{ config, lib, hostname, cluster, serviceName, serviceUnit, edgeUnit ? null, enable }:
 let
   mkPrioritizedServiceNodes = import ./mk-prioritized-service-nodes.nix;
   svc = builtins.getAttr serviceName cluster.services;
@@ -10,8 +10,7 @@ in
 {
   inherit enable nodes;
   nodeName = hostname;
-  inherit serviceUnit;
-  edgeUnit = null;
+  inherit serviceUnit edgeUnit;
   requireServiceEnableOptionPath = [ "alanix" serviceName "enable" ];
 
   checkInterval = "15s";

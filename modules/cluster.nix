@@ -108,6 +108,44 @@ in
         description = "Pinned GID for filebrowser service user/group across nodes.";
       };
 
+      users = lib.mkOption {
+        type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
+          options = {
+            admin = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = "Whether this File Browser user is an admin.";
+            };
+
+            scope = lib.mkOption {
+              type = lib.types.str;
+              default = "users/${name}";
+              description = "User scope relative to alanix.filebrowser.root (for example users/buddia or .).";
+            };
+
+            password = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "Plaintext password for this File Browser user (simple, not recommended).";
+            };
+
+            passwordFile = lib.mkOption {
+              type = lib.types.nullOr lib.types.path;
+              default = null;
+              description = "Path to file containing plaintext password for this File Browser user.";
+            };
+
+            passwordSecret = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "sops secret name containing plaintext password for this File Browser user.";
+            };
+          };
+        }));
+        default = {};
+        description = "Declarative File Browser users.";
+      };
+
       dataPaths = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [
@@ -293,6 +331,62 @@ in
         description = "Pinned GID for forgejo service user/group across nodes.";
       };
 
+      users = lib.mkOption {
+        type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
+          options = {
+            admin = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+            };
+
+            email = lib.mkOption {
+              type = lib.types.str;
+              default = "${name}@local.invalid";
+            };
+
+            fullName = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+            };
+
+            userType = lib.mkOption {
+              type = lib.types.enum [ "individual" "bot" ];
+              default = "individual";
+            };
+
+            restricted = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+            };
+
+            mustChangePassword = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+            };
+
+            password = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "Plaintext password for this Forgejo user (simple, not recommended).";
+            };
+
+            passwordFile = lib.mkOption {
+              type = lib.types.nullOr lib.types.path;
+              default = null;
+              description = "Path to file containing plaintext password for this Forgejo user.";
+            };
+
+            passwordSecret = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "sops secret name containing plaintext password for this Forgejo user.";
+            };
+          };
+        }));
+        default = {};
+        description = "Declarative Forgejo users.";
+      };
+
       dataPaths = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [
@@ -450,6 +544,272 @@ in
             "--keep-monthly 6"
           ];
           description = "Retention policy for forgejo restic snapshots.";
+        };
+      };
+    };
+
+    services.invidious = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Enable cluster-managed Invidious service, failover, and DNS control.";
+      };
+
+      backendPort = lib.mkOption {
+        type = lib.types.port;
+        default = 3100;
+      };
+
+      stateDir = lib.mkOption {
+        type = lib.types.str;
+        default = "/var/lib/invidious";
+      };
+
+      uid = lib.mkOption {
+        type = lib.types.nullOr lib.types.ints.positive;
+        default = null;
+        description = "Pinned UID for invidious service user/group across nodes.";
+      };
+
+      gid = lib.mkOption {
+        type = lib.types.nullOr lib.types.ints.positive;
+        default = null;
+        description = "Pinned GID for invidious service user/group across nodes.";
+      };
+
+      settings = lib.mkOption {
+        type = lib.types.attrs;
+        default = {};
+        description = "Additional Invidious settings merged into services.invidious.settings.";
+      };
+
+      database = {
+        createLocally = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Whether to create and use a local PostgreSQL database.";
+        };
+
+        host = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Database host. null means local unix socket.";
+        };
+
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 5432;
+          description = "Database port for Invidious.";
+        };
+
+        passwordSecret = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Optional sops secret containing Invidious database password.";
+        };
+      };
+
+      hmacKeySecret = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Optional sops secret containing Invidious hmac_key.";
+      };
+
+      sigHelper = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable inv-sig-helper for better playback compatibility.";
+        };
+
+        listenAddress = lib.mkOption {
+          type = lib.types.str;
+          default = "127.0.0.1:2999";
+          description = "TCP listen address for inv-sig-helper.";
+        };
+      };
+
+      users = lib.mkOption {
+        type = lib.types.attrsOf (lib.types.submodule ({ ... }: {
+          options = {
+            password = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "Plaintext password for this Invidious user (simple, not recommended).";
+            };
+
+            passwordFile = lib.mkOption {
+              type = lib.types.nullOr lib.types.path;
+              default = null;
+              description = "Path to file containing plaintext password for this Invidious user.";
+            };
+
+            passwordSecret = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "sops secret name containing plaintext password for this Invidious user.";
+            };
+          };
+        }));
+        default = {};
+        description = ''
+          Declarative Invidious users.
+          Attribute names are Invidious login IDs (its "email" field), for example `buddia` or `buddia@example.com`.
+        '';
+      };
+
+      dataPaths = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [
+          "/var/lib/invidious"
+          "/var/lib/postgresql"
+        ];
+      };
+
+      wanAccess = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable WAN/public access endpoint for invidious.";
+        };
+
+        domain = lib.mkOption {
+          type = lib.types.str;
+          description = "Public FQDN for invidious WAN access.";
+        };
+
+        openFirewall = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Open TCP 80/443 for invidious WAN access.";
+        };
+      };
+
+      wireguardAccess = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable a WireGuard-only access endpoint for invidious.";
+        };
+
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 8092;
+          description = "WireGuard-only access port exposed by Caddy.";
+        };
+      };
+
+      torAccess = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable a Tor onion-service access endpoint for invidious.";
+        };
+
+        onionServiceName = lib.mkOption {
+          type = lib.types.str;
+          default = "invidious";
+          description = "Service key name under services.tor.relay.onionServices.";
+        };
+
+        enableHttp = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Expose plaintext HTTP over Tor for invidious.";
+        };
+
+        httpLocalPort = lib.mkOption {
+          type = lib.types.port;
+          default = 18300;
+          description = "Local Caddy HTTP listener port used as hidden-service backend.";
+        };
+
+        httpVirtualPort = lib.mkOption {
+          type = lib.types.port;
+          default = 80;
+          description = "Virtual Tor hidden-service HTTP port exposed to clients.";
+        };
+
+        enableHttps = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Expose HTTPS over Tor for invidious.";
+        };
+
+        httpsLocalPort = lib.mkOption {
+          type = lib.types.port;
+          default = 18743;
+          description = "Local Caddy HTTPS listener port used as hidden-service backend.";
+        };
+
+        httpsVirtualPort = lib.mkOption {
+          type = lib.types.port;
+          default = 443;
+          description = "Virtual Tor hidden-service HTTPS port exposed to clients.";
+        };
+
+        version = lib.mkOption {
+          type = lib.types.enum [ 2 3 ];
+          default = 3;
+          description = "Tor hidden-service version.";
+        };
+
+        secretKeySecret = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Optional sops secret containing hidden-service private key for stable onion address.";
+        };
+      };
+
+      priorityOverrides = lib.mkOption {
+        type = lib.types.attrsOf lib.types.int;
+        default = {};
+        description = ''
+          Optional per-node priority overrides for invidious failover/backups.
+          Lower number means higher priority. Keys must match alanix.cluster.nodes.
+          Nodes not listed here use alanix.cluster.nodes.<name>.priority.
+        '';
+      };
+
+      backups = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable restic backups for invidious data.";
+        };
+
+        passwordSecret = lib.mkOption {
+          type = lib.types.str;
+          default = "restic/cluster-password";
+          description = "sops secret containing the restic password used for invidious backup repositories.";
+        };
+
+        repositoryBasePath = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/backups/restic/invidious";
+          description = "Base directory on each node used for incoming invidious restic repositories.";
+        };
+
+        schedule = lib.mkOption {
+          type = lib.types.str;
+          default = "hourly";
+          description = "Systemd OnCalendar schedule used for invidious restic jobs.";
+        };
+
+        randomizedDelaySec = lib.mkOption {
+          type = lib.types.str;
+          default = "10m";
+        };
+
+        pruneOpts = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [
+            "--keep-hourly 24"
+            "--keep-daily 7"
+            "--keep-weekly 4"
+            "--keep-monthly 6"
+          ];
+          description = "Retention policy for invidious restic snapshots.";
         };
       };
     };
@@ -685,6 +1045,12 @@ in
       message =
         "alanix.cluster.services.forgejo.priorityOverrides contains unknown nodes: "
         + lib.concatStringsSep ", " (unknownOverrideKeys cluster.services.forgejo.priorityOverrides);
+    }
+    {
+      assertion = (unknownOverrideKeys cluster.services.invidious.priorityOverrides) == [];
+      message =
+        "alanix.cluster.services.invidious.priorityOverrides contains unknown nodes: "
+        + lib.concatStringsSep ", " (unknownOverrideKeys cluster.services.invidious.priorityOverrides);
     }
     {
       assertion = (unknownOverrideKeys cluster.services.vaultwarden.priorityOverrides) == [];

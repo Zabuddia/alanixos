@@ -46,21 +46,6 @@ in
       secretKeySecret = cluster.services.forgejo.torAccess.secretKeySecret;
     };
 
-    users = {
-      # buddia = {
-      #   admin = true;
-      #   email = "buddia@${cluster.domain}";
-      #   fullName = "buddia";
-      #   passwordSecret = "service-passwords/buddia";
-      #   mustChangePassword = false;
-      # };
-      buddia = {
-        admin = true;
-        email = "fife.alan@protonmail.com";
-        fullName = "Alan Fife";
-        passwordSecret = "service-passwords/buddia";
-        mustChangePassword = false;
-      };
-    };
+    users = cluster.services.forgejo.users;
   };
 }
