@@ -236,6 +236,9 @@ in
       })
       (lib.mkIf (hasSopsSecrets && cfg.hmacKeySecret != null) {
         "${cfg.hmacKeySecret}" = {
+          owner = lib.mkDefault "invidious";
+          group = lib.mkDefault "invidious";
+          mode = lib.mkDefault "0400";
           restartUnits = [ "invidious.service" ];
         };
       })
@@ -324,7 +327,7 @@ in
         pkgs.gnugrep
         pkgs.gawk
         pkgs.util-linux
-        pkgs.whois
+        pkgs.mkpasswd
         pkgs.postgresql
       ];
 

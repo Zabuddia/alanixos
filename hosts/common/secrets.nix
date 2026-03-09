@@ -56,8 +56,8 @@
 
   sops.secrets."invidious/hmac-key" = {
     sopsFile = ../../secrets/secrets.yaml;
-    owner = "root";
-    group = "root";
+    owner = "invidious";
+    group = "invidious";
     mode = "0400";
   };
 
