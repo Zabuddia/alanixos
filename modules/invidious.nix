@@ -19,6 +19,7 @@ let
       null
     else
       config.sops.secrets.${cfg.hmacKeySecret}.path;
+  hmacKeyJsonFile = "/run/alanix-invidious/hmac-key.json";
   anySopsUserPassword = lib.any (u: u.passwordSecret != null) (lib.attrValues cfg.users);
   userPasswordSecretNames =
     lib.unique (lib.filter (x: x != null) (map (u: u.passwordSecret) (lib.attrValues cfg.users)));
@@ -236,9 +237,6 @@ in
       })
       (lib.mkIf (hasSopsSecrets && cfg.hmacKeySecret != null) {
         "${cfg.hmacKeySecret}" = {
-          owner = lib.mkDefault "invidious";
-          group = lib.mkDefault "invidious";
-          mode = lib.mkDefault "0400";
           restartUnits = [ "invidious.service" ];
         };
       })
@@ -257,7 +255,7 @@ in
       nginx.enable = false;
       domain = if cfg.wanAccess.enable then cfg.wanAccess.domain else null;
       settings = cfg.settings;
-      hmacKeyFile = hmacKeyFile;
+      hmacKeyFile = hmacKeyJsonFile;
 
       database = {
         createLocally = cfg.database.createLocally;
@@ -287,6 +285,45 @@ in
       User = lib.mkForce "invidious";
       Group = lib.mkForce "invidious";
       StateDirectory = lib.mkForce (lib.removePrefix "/var/lib/" cfg.stateDir);
+    };
+
+    systemd.services.invidious-hmac-key-json = {
+      description = "Prepare Invidious hmac_key JSON";
+      before = [ "invidious.service" ];
+      requiredBy = [ "invidious.service" ];
+      after = [ "sops-install-secrets.service" ];
+      wants = [ "sops-install-secrets.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        User = "root";
+        Group = "root";
+        RuntimeDirectory = "alanix-invidious";
+        RuntimeDirectoryMode = "0750";
+        RuntimeDirectoryPreserve = "yes";
+      };
+      path = [
+        pkgs.coreutils
+        pkgs.jq
+      ];
+      script = ''
+        set -euo pipefail
+
+        HMAC_PATH=${lib.escapeShellArg hmacKeyFile}
+        OUT_PATH=${lib.escapeShellArg hmacKeyJsonFile}
+        TMP_PATH="$(mktemp /run/alanix-invidious/hmac-key.XXXXXX)"
+        HMAC="$(tr -d '\r\n' < "$HMAC_PATH")"
+
+        if [ -z "$HMAC" ]; then
+          echo "Invidious hmac key is empty in $HMAC_PATH" >&2
+          rm -f "$TMP_PATH"
+          exit 1
+        fi
+
+        jq -cn --arg hmac_key "$HMAC" '{hmac_key:$hmac_key}' > "$TMP_PATH"
+        chown invidious:invidious "$TMP_PATH"
+        chmod 0400 "$TMP_PATH"
+        mv -f "$TMP_PATH" "$OUT_PATH"
+      '';
     };
 
     users.groups.invidious = lib.mkMerge [
