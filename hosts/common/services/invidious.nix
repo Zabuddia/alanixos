@@ -4,8 +4,8 @@ let
 in
 {
   imports = [
-    ./cluster.nix
-    ../../modules/invidious.nix
+    ../core/cluster.nix
+    ../../../modules/invidious.nix
   ];
 
   alanix.invidious = {

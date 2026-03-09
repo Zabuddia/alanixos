@@ -5,7 +5,7 @@ in
 {
   imports = [
     ./cluster.nix
-    ../../modules/dynamic-dns.nix
+    ../../../modules/dynamic-dns.nix
   ];
 
   alanix.dynamicDns = {

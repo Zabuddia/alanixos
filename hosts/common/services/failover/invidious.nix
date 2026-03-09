@@ -1,10 +1,10 @@
 { config, lib, hostname, ... }:
 let
   cluster = config.alanix.cluster;
-  mkServiceFailoverInstance = import ./mk-service-failover-instance.nix;
+  mkServiceFailoverInstance = import ../../service-helpers/mk-service-failover-instance.nix;
 in
 {
-  imports = [ ./cluster.nix ];
+  imports = [ ../../core/cluster.nix ];
 
   alanix.serviceFailover.instances.invidious = mkServiceFailoverInstance {
     inherit config lib hostname cluster;

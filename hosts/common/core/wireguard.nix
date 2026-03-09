@@ -5,7 +5,7 @@ in
 {
   imports = [
     ./cluster.nix
-    ../../modules/wireguard-mesh.nix
+    ../../../modules/wireguard-mesh.nix
   ];
 
   my.wireguard = {

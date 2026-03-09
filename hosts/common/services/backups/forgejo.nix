@@ -1,10 +1,10 @@
 { config, lib, hostname, ... }:
 let
   cluster = config.alanix.cluster;
-  mkServiceBackupInstance = import ./mk-service-backup-instance.nix;
+  mkServiceBackupInstance = import ../../service-helpers/mk-service-backup-instance.nix;
 in
 {
-  imports = [ ./cluster.nix ];
+  imports = [ ../../core/cluster.nix ];
 
   alanix.serviceBackups.instances.forgejo = mkServiceBackupInstance {
     inherit config lib hostname cluster;

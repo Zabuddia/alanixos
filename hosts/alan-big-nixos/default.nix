@@ -2,22 +2,25 @@
 {
   imports = [
     ./hardware-configuration.nix
-    ../common/secrets.nix
-    ../common/users.nix
-    ../common/wireguard.nix
-    ../common/filebrowser.nix
-    ../common/forgejo.nix
-    ../common/invidious.nix
-    ../common/vaultwarden.nix
-    ../common/dynamic-dns.nix
-    ../common/filebrowser-failover.nix
-    ../common/forgejo-failover.nix
-    ../common/invidious-failover.nix
-    ../common/vaultwarden-failover.nix
-    ../common/filebrowser-backups.nix
-    ../common/forgejo-backups.nix
-    ../common/invidious-backups.nix
-    ../common/vaultwarden-backups.nix
+    ../common/core/secrets.nix
+    ../common/core/users.nix
+    ../common/core/wireguard.nix
+    ../common/services/filebrowser.nix
+    ../common/services/forgejo.nix
+    ../common/services/invidious.nix
+    ../common/services/immich.nix
+    ../common/services/vaultwarden.nix
+    ../common/core/dynamic-dns.nix
+    ../common/services/failover/filebrowser.nix
+    ../common/services/failover/forgejo.nix
+    ../common/services/failover/invidious.nix
+    ../common/services/failover/immich.nix
+    ../common/services/failover/vaultwarden.nix
+    ../common/services/backups/filebrowser.nix
+    ../common/services/backups/forgejo.nix
+    ../common/services/backups/invidious.nix
+    ../common/services/backups/immich.nix
+    ../common/services/backups/vaultwarden.nix
     ../../modules/cosmic.nix
     ../../modules/ssh.nix
     ../../modules/tailscale.nix

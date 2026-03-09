@@ -4,8 +4,8 @@ let
 in
 {
   imports = [
-    ./cluster.nix
-    ../../modules/filebrowser.nix
+    ../core/cluster.nix
+    ../../../modules/filebrowser.nix
   ];
 
   alanix.filebrowser = {

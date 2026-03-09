@@ -1034,6 +1034,293 @@ in
         };
       };
     };
+
+    services.immich = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Enable cluster-managed Immich service, failover, and DNS control.";
+      };
+
+      backendPort = lib.mkOption {
+        type = lib.types.port;
+        default = 2283;
+      };
+
+      stateDir = lib.mkOption {
+        type = lib.types.str;
+        default = "/var/lib/immich";
+      };
+
+      uid = lib.mkOption {
+        type = lib.types.nullOr lib.types.ints.positive;
+        default = null;
+        description = "Pinned UID for immich service user/group across nodes.";
+      };
+
+      gid = lib.mkOption {
+        type = lib.types.nullOr lib.types.ints.positive;
+        default = null;
+        description = "Pinned GID for immich service user/group across nodes.";
+      };
+
+      settings = lib.mkOption {
+        type = lib.types.nullOr lib.types.attrs;
+        default = null;
+        description = "Optional Immich settings payload.";
+      };
+
+      environment = lib.mkOption {
+        type = lib.types.attrs;
+        default = {};
+        description = "Extra Immich environment variables.";
+      };
+
+      accelerationDevices = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [];
+        description = "Acceleration devices passed through to Immich.";
+      };
+
+      database = {
+        createLocally = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Whether to run and initialize local PostgreSQL for Immich.";
+        };
+
+        host = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Database host. null means local unix socket.";
+        };
+
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 5432;
+          description = "Database port for Immich.";
+        };
+
+        name = lib.mkOption {
+          type = lib.types.str;
+          default = "immich";
+          description = "Database name used by Immich.";
+        };
+
+        user = lib.mkOption {
+          type = lib.types.str;
+          default = "immich";
+          description = "Database user used by Immich.";
+        };
+
+        enableVectorChord = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable PostgreSQL VectorChord extension for Immich vectors.";
+        };
+
+        enableVectors = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable legacy pgvecto.rs extension.";
+        };
+
+        passwordSecret = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Optional sops secret containing Immich database password.";
+        };
+      };
+
+      redis = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Whether to run local Redis for Immich.";
+        };
+
+        host = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Optional Redis host override for Immich.";
+        };
+
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 0;
+          description = "Redis port for Immich (0 keeps module default unix socket behavior).";
+        };
+      };
+
+      machineLearning = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable Immich machine-learning worker.";
+        };
+
+        environment = lib.mkOption {
+          type = lib.types.attrs;
+          default = {};
+          description = "Environment variables for Immich machine-learning worker.";
+        };
+      };
+
+      dataPaths = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [
+          "/var/lib/immich"
+          "/var/lib/postgresql"
+        ];
+      };
+
+      wanAccess = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable WAN/public access endpoint for immich.";
+        };
+
+        domain = lib.mkOption {
+          type = lib.types.str;
+          description = "Public FQDN for immich WAN access.";
+        };
+
+        openFirewall = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Open TCP 80/443 for immich WAN access.";
+        };
+      };
+
+      wireguardAccess = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable a WireGuard-only access endpoint for immich.";
+        };
+
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 8093;
+          description = "WireGuard-only access port exposed by Caddy.";
+        };
+      };
+
+      torAccess = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable a Tor onion-service access endpoint for immich.";
+        };
+
+        onionServiceName = lib.mkOption {
+          type = lib.types.str;
+          default = "immich";
+          description = "Service key name under services.tor.relay.onionServices.";
+        };
+
+        enableHttp = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Expose plaintext HTTP over Tor for immich.";
+        };
+
+        httpLocalPort = lib.mkOption {
+          type = lib.types.port;
+          default = 18283;
+          description = "Local Caddy HTTP listener port used as hidden-service backend.";
+        };
+
+        httpVirtualPort = lib.mkOption {
+          type = lib.types.port;
+          default = 80;
+          description = "Virtual Tor hidden-service HTTP port exposed to clients.";
+        };
+
+        enableHttps = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Expose HTTPS over Tor for immich.";
+        };
+
+        httpsLocalPort = lib.mkOption {
+          type = lib.types.port;
+          default = 18683;
+          description = "Local Caddy HTTPS listener port used as hidden-service backend.";
+        };
+
+        httpsVirtualPort = lib.mkOption {
+          type = lib.types.port;
+          default = 443;
+          description = "Virtual Tor hidden-service HTTPS port exposed to clients.";
+        };
+
+        version = lib.mkOption {
+          type = lib.types.enum [ 2 3 ];
+          default = 3;
+          description = "Tor hidden-service version.";
+        };
+
+        secretKeySecret = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Optional sops secret containing hidden-service private key for stable onion address.";
+        };
+      };
+
+      priorityOverrides = lib.mkOption {
+        type = lib.types.attrsOf lib.types.int;
+        default = {};
+        description = ''
+          Optional per-node priority overrides for immich failover/backups.
+          Lower number means higher priority. Keys must match alanix.cluster.nodes.
+          Nodes not listed here use alanix.cluster.nodes.<name>.priority.
+        '';
+      };
+
+      backups = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable restic backups for immich data.";
+        };
+
+        passwordSecret = lib.mkOption {
+          type = lib.types.str;
+          default = "restic/cluster-password";
+          description = "sops secret containing the restic password used for immich backup repositories.";
+        };
+
+        repositoryBasePath = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/backups/restic/immich";
+          description = "Base directory on each node used for incoming immich restic repositories.";
+        };
+
+        schedule = lib.mkOption {
+          type = lib.types.str;
+          default = "hourly";
+          description = "Systemd OnCalendar schedule used for immich restic jobs.";
+        };
+
+        randomizedDelaySec = lib.mkOption {
+          type = lib.types.str;
+          default = "10m";
+        };
+
+        pruneOpts = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [
+            "--keep-hourly 24"
+            "--keep-daily 7"
+            "--keep-weekly 4"
+            "--keep-monthly 6"
+          ];
+          description = "Retention policy for immich restic snapshots.";
+        };
+      };
+    };
   };
 
   config.assertions = [
@@ -1060,6 +1347,12 @@ in
       message =
         "alanix.cluster.services.vaultwarden.priorityOverrides contains unknown nodes: "
         + lib.concatStringsSep ", " (unknownOverrideKeys cluster.services.vaultwarden.priorityOverrides);
+    }
+    {
+      assertion = (unknownOverrideKeys cluster.services.immich.priorityOverrides) == [];
+      message =
+        "alanix.cluster.services.immich.priorityOverrides contains unknown nodes: "
+        + lib.concatStringsSep ", " (unknownOverrideKeys cluster.services.immich.priorityOverrides);
     }
   ];
 }

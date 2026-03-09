@@ -4,8 +4,8 @@ let
 in
 {
   imports = [
-    ./cluster.nix
-    ../../modules/vaultwarden.nix
+    ../core/cluster.nix
+    ../../../modules/vaultwarden.nix
   ];
 
   alanix.vaultwarden = {

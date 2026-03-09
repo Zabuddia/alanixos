@@ -4,8 +4,8 @@ let
 in
 {
   imports = [
-    ./cluster.nix
-    ../../modules/forgejo.nix
+    ../core/cluster.nix
+    ../../../modules/forgejo.nix
   ];
 
   alanix.forgejo = {

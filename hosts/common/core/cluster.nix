@@ -1,9 +1,9 @@
 { config, ... }:
 {
   imports = [
-    ../../modules/cluster.nix
-    ../../modules/service-failover.nix
-    ../../modules/service-backups.nix
+    ../../../modules/cluster.nix
+    ../../../modules/service-failover.nix
+    ../../../modules/service-backups.nix
   ];
 
   alanix.cluster = {
@@ -199,6 +199,74 @@
         enable = true;
         passwordSecret = "restic/cluster-password";
         repositoryBasePath = "/var/backups/restic/invidious";
+        schedule = "hourly";
+        randomizedDelaySec = "10m";
+        pruneOpts = [
+          "--keep-hourly 24"
+          "--keep-daily 7"
+          "--keep-weekly 4"
+          "--keep-monthly 6"
+        ];
+      };
+    };
+
+    services.immich = {
+      enable = true;
+      backendPort = 2283;
+      stateDir = "/var/lib/immich";
+      uid = 45030;
+      gid = 45030;
+      settings = null;
+      environment = { };
+      accelerationDevices = [ ];
+      database = {
+        createLocally = true;
+        host = null;
+        port = 5432;
+        name = "immich";
+        user = "immich";
+        enableVectorChord = true;
+        enableVectors = false;
+        passwordSecret = null;
+      };
+      redis = {
+        enable = true;
+        host = null;
+        port = 0;
+      };
+      machineLearning = {
+        enable = true;
+        environment = { };
+      };
+      dataPaths = [
+        config.alanix.cluster.services.immich.stateDir
+        "/var/lib/postgresql"
+      ];
+      wanAccess = {
+        enable = true;
+        domain = "immich.fifefin.com";
+        openFirewall = true;
+      };
+      wireguardAccess = {
+        enable = true;
+        port = 8093;
+      };
+      torAccess = {
+        enable = true;
+        onionServiceName = "immich";
+        enableHttp = true;
+        httpLocalPort = 18283;
+        httpVirtualPort = 80;
+        enableHttps = true;
+        httpsLocalPort = 18683;
+        httpsVirtualPort = 443;
+        version = 3;
+        secretKeySecret = null;
+      };
+      backups = {
+        enable = true;
+        passwordSecret = "restic/cluster-password";
+        repositoryBasePath = "/var/backups/restic/immich";
         schedule = "hourly";
         randomizedDelaySec = "10m";
         pruneOpts = [
