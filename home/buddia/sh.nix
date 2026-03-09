@@ -32,6 +32,12 @@
 
         "$elevate" "$system_path/bin/switch-to-configuration" switch
       }
+
+      svcaddrs() {
+        local repo
+        repo="/home/buddia/.nixos"
+        "$repo/scripts/show-service-addresses.sh" "$@"
+      }
     '';
   };
 }
