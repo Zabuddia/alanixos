@@ -298,7 +298,8 @@ in
         User = "root";
         Group = "root";
         RuntimeDirectory = "alanix-invidious";
-        RuntimeDirectoryMode = "0750";
+        # invidious service user must traverse this directory to read hmac-key.json
+        RuntimeDirectoryMode = "0711";
         RuntimeDirectoryPreserve = "yes";
       };
       path = [
@@ -458,6 +459,10 @@ in
             head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n'
           }
 
+          sql_escape() {
+            printf '%s' "$1" | gawk '{ gsub(/\047/, "\047\047"); printf "%s", $0 }'
+          }
+
           ensure_user() {
             local user_id="$1"
             local passfile="$2"
@@ -476,40 +481,37 @@ in
             local pass_hash token exists
             pass_hash="$(printf '%s\n' "$pw" | mkpasswd -m bcrypt -R 10 -s)"
             token="$(make_token)"
+            local user_sql pass_hash_sql token_sql
+            user_sql="$(sql_escape "$user_id")"
+            pass_hash_sql="$(sql_escape "$pass_hash")"
+            token_sql="$(sql_escape "$token")"
 
             exists="$(
               psql_exec \
-                -v user_id="$user_id" \
-                -c "SELECT EXISTS (SELECT 1 FROM users WHERE lower(email) = lower(:'user_id'));" \
+                -c "SELECT EXISTS (SELECT 1 FROM users WHERE lower(email) = lower('${"$"}user_sql'));" \
                 | tr -d '[:space:]'
             )"
 
             if [ "$exists" = "t" ]; then
               psql_exec \
-                -v user_id="$user_id" \
-                -v pass_hash="$pass_hash" \
-                -v token="$token" \
                 -c "
                   UPDATE users
                   SET
-                    email = :'user_id',
+                    email = '${"$"}user_sql',
                     updated = NOW(),
                     notifications = COALESCE(notifications, ARRAY[]::text[]),
                     subscriptions = COALESCE(subscriptions, ARRAY[]::text[]),
                     preferences = COALESCE(preferences, '{}'),
-                    password = :'pass_hash',
-                    token = COALESCE(token, :'token'),
+                    password = '${"$"}pass_hash_sql',
+                    token = COALESCE(token, '${"$"}token_sql'),
                     watched = COALESCE(watched, ARRAY[]::text[]),
                     feed_needs_update = COALESCE(feed_needs_update, true)
-                  WHERE lower(email) = lower(:'user_id');
+                  WHERE lower(email) = lower('${"$"}user_sql');
                 " >/dev/null
               return
             fi
 
             psql_exec \
-              -v user_id="$user_id" \
-              -v pass_hash="$pass_hash" \
-              -v token="$token" \
               -c "
                 INSERT INTO users (
                   updated,
@@ -526,10 +528,10 @@ in
                   NOW(),
                   ARRAY[]::text[],
                   ARRAY[]::text[],
-                  :'user_id',
+                  '${"$"}user_sql',
                   '{}',
-                  :'pass_hash',
-                  :'token',
+                  '${"$"}pass_hash_sql',
+                  '${"$"}token_sql',
                   ARRAY[]::text[],
                   true
                 );
