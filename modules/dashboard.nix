@@ -224,8 +224,6 @@ let
           x = (idx - (builtins.div idx 2) * 2) * 12;
           y = (builtins.div idx 2) * 10;
           serviceName = entry.service;
-          backupExpr =
-            "max by(node) ((alanix_backup_last_success_seconds{service=~\"restic-backups-${serviceName}-to-.*\\\\.service\"} > 0) * 1000)";
         in
         {
           id = 100 + idx;
@@ -242,22 +240,37 @@ let
           };
           targets = [
             {
-              refId = "A";
-              expr = "max by(node,state) (alanix_service_node_state{service=\"${serviceName}\"})";
-              format = "table";
-              instant = true;
-            }
-            {
               refId = "B";
-              expr = "max by(node,endpoint,status,url) (alanix_service_endpoint_active{service=\"${serviceName}\"})";
+              expr = "max by(node,endpoint,status,url,icon) (alanix_service_endpoint_active{service=\"${serviceName}\",url!=\"none\"})";
               format = "table";
               instant = true;
             }
+          ];
+          transformations = [
             {
-              refId = "C";
-              expr = backupExpr;
-              format = "table";
-              instant = true;
+              id = "organize";
+              options = {
+                excludeByName = {
+                  Time = true;
+                  Value = true;
+                  service = true;
+                  __name__ = true;
+                };
+                indexByName = {
+                  icon = 0;
+                  node = 1;
+                  endpoint = 2;
+                  status = 3;
+                  url = 4;
+                };
+                renameByName = {
+                  icon = "Icon";
+                  node = "Node";
+                  endpoint = "Endpoint";
+                  status = "Status";
+                  url = "URL";
+                };
+              };
             }
           ];
           fieldConfig = {
@@ -266,12 +279,64 @@ let
               {
                 matcher = {
                   id = "byName";
-                  options = "Value #C";
+                  options = "icon";
                 };
                 properties = [
                   {
-                    id = "unit";
-                    value = "dateTimeAsIso";
+                    id = "custom.cellOptions";
+                    value = {
+                      type = "image";
+                    };
+                  }
+                ];
+              }
+              {
+                matcher = {
+                  id = "byName";
+                  options = "status";
+                };
+                properties = [
+                  {
+                    id = "mappings";
+                    value = [
+                      {
+                        type = "value";
+                        options = {
+                          active = {
+                            text = "active";
+                            color = "green";
+                          };
+                          standby = {
+                            text = "standby";
+                            color = "orange";
+                          };
+                        };
+                      }
+                    ];
+                  }
+                  {
+                    id = "custom.cellOptions";
+                    value = {
+                      type = "color-background";
+                    };
+                  }
+                ];
+              }
+              {
+                matcher = {
+                  id = "byName";
+                  options = "url";
+                };
+                properties = [
+                  {
+                    id = "links";
+                    value = [
+                      {
+                        title = "Open";
+                        url = "\${__value.raw}";
+                        targetBlank = true;
+                      }
+                    ];
                   }
                 ];
               }
@@ -574,18 +639,24 @@ in
           local endpoint="$3"
           local status="$4"
           local url="$5"
-          local active="$6"
+          local icon="$6"
+          local active="$7"
 
           if [ -z "$url" ]; then
             url="none"
           fi
 
-          printf 'alanix_service_endpoint_active{service="%s",node="%s",endpoint="%s",status="%s",url="%s"} %s\n' \
+          if [ -z "$icon" ]; then
+            icon="none"
+          fi
+
+          printf 'alanix_service_endpoint_active{service="%s",node="%s",endpoint="%s",status="%s",url="%s",icon="%s"} %s\n' \
             "$(esc_label "$service")" \
             "$(esc_label "$node")" \
             "$(esc_label "$endpoint")" \
             "$(esc_label "$status")" \
             "$(esc_label "$url")" \
+            "$(esc_label "$icon")" \
             "$active"
         }
 
@@ -642,7 +713,7 @@ in
 
             marker="/run/alanix-''${service_name}-failover/active"
             role_active=0
-            role_status="inactive"
+            role_status="standby"
             if [ -f "$marker" ]; then
               role_active=1
               role_status="active"
@@ -663,9 +734,22 @@ in
               fi
             fi
 
-            emit_endpoint_metric "$service_name" "$node_name" "wan" "$role_status" "$wan_url" "$role_active"
-            emit_endpoint_metric "$service_name" "$node_name" "wireguard" "$role_status" "$wg_url" "$role_active"
-            emit_endpoint_metric "$service_name" "$node_name" "tor" "$role_status" "$tor_url" "$role_active"
+            preferred_icon_base=""
+            if [ -n "$wan_url" ]; then
+              preferred_icon_base="$wan_url"
+            elif [ -n "$wg_url" ]; then
+              preferred_icon_base="$wg_url"
+            elif [ -n "$tor_url" ]; then
+              preferred_icon_base="$tor_url"
+            fi
+            preferred_icon=""
+            if [ -n "$preferred_icon_base" ]; then
+              preferred_icon="''${preferred_icon_base%/}/favicon.ico"
+            fi
+
+            emit_endpoint_metric "$service_name" "$node_name" "wan" "$role_status" "$wan_url" "$preferred_icon" "$role_active"
+            emit_endpoint_metric "$service_name" "$node_name" "wireguard" "$role_status" "$wg_url" "$preferred_icon" "$role_active"
+            emit_endpoint_metric "$service_name" "$node_name" "tor" "$role_status" "$tor_url" "$preferred_icon" "$role_active"
           done
 
           printf '# HELP alanix_backup_last_success_seconds Last successful backup completion time (Unix seconds).\n'
