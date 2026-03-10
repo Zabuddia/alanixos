@@ -63,7 +63,7 @@ let
         targets = [
           {
             refId = "A";
-            expr = "100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)";
+            expr = "100 - (avg by(instance) (rate(node_cpu_seconds_total{job=\"node\",mode=\"idle\"}[5m])) * 100)";
             legendFormat = "{{instance}}";
           }
         ];
@@ -93,7 +93,7 @@ let
         targets = [
           {
             refId = "A";
-            expr = "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100";
+            expr = "max by(instance) ((1 - (node_memory_MemAvailable_bytes{job=\"node\"} / node_memory_MemTotal_bytes{job=\"node\"})) * 100)";
             legendFormat = "{{instance}}";
           }
         ];
@@ -123,7 +123,7 @@ let
         targets = [
           {
             refId = "A";
-            expr = "(1 - (node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay|squashfs\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay|squashfs\"})) * 100";
+            expr = "max by(instance) ((1 - (node_filesystem_avail_bytes{job=\"node\",mountpoint=\"/\",fstype!~\"tmpfs|overlay|squashfs\"} / node_filesystem_size_bytes{job=\"node\",mountpoint=\"/\",fstype!~\"tmpfs|overlay|squashfs\"})) * 100)";
             legendFormat = "{{instance}}";
           }
         ];
@@ -153,7 +153,7 @@ let
         targets = [
           {
             refId = "A";
-            expr = "sum by(instance) (rate(node_network_receive_bytes_total{device!=\"lo\"}[5m]))";
+            expr = "sum by(instance) (rate(node_network_receive_bytes_total{job=\"node\",device!=\"lo\"}[5m]))";
             legendFormat = "{{instance}}";
           }
         ];
@@ -179,7 +179,7 @@ let
         targets = [
           {
             refId = "A";
-            expr = "sum by(instance) (rate(node_network_transmit_bytes_total{device!=\"lo\"}[5m]))";
+            expr = "sum by(instance) (rate(node_network_transmit_bytes_total{job=\"node\",device!=\"lo\"}[5m]))";
             legendFormat = "{{instance}}";
           }
         ];
@@ -205,7 +205,7 @@ let
         targets = [
           {
             refId = "A";
-            expr = "node_hwmon_temp_celsius";
+            expr = "node_hwmon_temp_celsius{job=\"node\"}";
             legendFormat = "{{instance}} {{chip}} {{sensor}}";
           }
         ];
@@ -231,7 +231,7 @@ let
         targets = [
           {
             refId = "A";
-            expr = "max by(node,instance,private_ip,public_ip,public_host) (up{job=\"node\",node!=\"\"} * on(node,instance) group_left(private_ip,public_ip,public_host) alanix_node_reachability_info)";
+            expr = "max by(node,instance,private_ip,public_ip,public_host) (((max by(node,instance,private_ip,public_ip,public_host) (alanix_node_reachability_info{node!=\"\"}) * on(instance) group_left() max by(instance) (up{instance=~\".*:9100\"})) or (0 * max by(node,instance,private_ip,public_ip,public_host) (alanix_node_reachability_info{node!=\"\"}))))";
             format = "table";
             instant = true;
           }
@@ -307,160 +307,84 @@ let
 
   serviceTilePanels =
     let
-      mkPanels = idx: entry:
+      mkPanel = idx: entry:
         let
           x = (idx - (builtins.div idx 2) * 2) * 12;
-          y = (builtins.div idx 2) * 11;
+          y = (builtins.div idx 2) * 9;
           serviceName = entry.service;
-          wanExpr =
-            if entry.wanUrl != null then
-              "max(probe_success{job=\"blackbox-http\",endpoint=\"${serviceName}-wan\"})"
-            else
-              "vector(-1)";
           probeTableExpr = ''
-            (
+            max by(node,endpoint,status,url) (
               (
                 (
-                  label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",endpoint="wan",url!="none"}) + 1), "endpoint", "wan", "node", ".*")
-                  * on() group_left() probe_success{job="blackbox-http",endpoint="${serviceName}-wan"}
+                  max by(node,endpoint) (
+                    label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wan",url!="none"}) + 1), "endpoint", "wan", "node", ".*")
+                    * on() group_left() probe_success{job="blackbox-http",endpoint="${serviceName}-wan"}
+                  )
+                  or
+                  max by(node,endpoint) (
+                    label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wan",url!="none"}) + 1), "endpoint", "wan", "node", ".*")
+                    * 0 - 1
+                  )
                 )
                 or
                 (
-                  label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",endpoint="wan",url!="none"}) + 1), "endpoint", "wan", "node", ".*")
-                  * 0 - 1
-                )
-              )
-              or
-              (
-                label_replace(
-                  label_replace(probe_success{job="blackbox-http",endpoint=~"${serviceName}-wg-.*"}, "node", "$1", "endpoint", "${serviceName}-wg-(.*)"),
-                  "endpoint", "wireguard", "endpoint", ".*"
+                  max by(node,endpoint) (
+                    label_replace(
+                      label_replace(probe_success{job="blackbox-http",endpoint=~"${serviceName}-wg-.*"}, "node", "$1", "endpoint", "${serviceName}-wg-(.*)"),
+                      "endpoint", "wireguard", "endpoint", ".*"
+                    )
+                  )
+                  or
+                  max by(node,endpoint) (
+                    label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wireguard",url!="none"}) + 1), "endpoint", "wireguard", "node", ".*")
+                    * 0 - 1
+                  )
                 )
                 or
-                (
-                  label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",endpoint="wireguard",url!="none"}) + 1), "endpoint", "wireguard", "node", ".*")
+                max by(node,endpoint) (
+                  label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="tor",url!="none"}) + 1), "endpoint", "tor", "node", ".*")
                   * 0 - 1
                 )
               )
-              or
-              (
-                label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",endpoint="tor",url!="none"}) + 1), "endpoint", "tor", "node", ".*")
-                * 0 - 1
-              )
+              * on(node,endpoint) group_left(status,url)
+              (0 * max by(node,endpoint,status,url) (alanix_service_endpoint_active{service="${serviceName}",node!="",url!="none"}) + 1)
             )
-            * on(node,endpoint) group_left(status,url)
-            (0 * max by(node,endpoint,status,url) (alanix_service_endpoint_active{service="${serviceName}",url!="none"}) + 1)
           '';
         in
-        [
-          {
-            id = 1000 + idx;
-            type = "stat";
-            title = "Service: ${serviceName} WAN";
-            datasource = {
-              type = "prometheus";
-              uid = "prometheus";
-            };
-            gridPos = {
-              h = 2;
-              w = 12;
-              inherit x y;
-            };
-            targets = [
-              {
-                refId = "A";
-                expr = wanExpr;
-                instant = true;
-              }
-            ];
-            fieldConfig = {
-              defaults = {
-                min = -1;
-                max = 1;
-                decimals = 0;
-              };
-              overrides = [
-                {
-                  matcher = {
-                    id = "byName";
-                    options = "Value";
-                  };
-                  properties = [
-                    {
-                      id = "mappings";
-                      value = [
-                        {
-                          type = "value";
-                          options = {
-                            "-1" = {
-                              text = "no wan";
-                              color = "gray";
-                            };
-                            "0" = {
-                              text = "down";
-                              color = "red";
-                            };
-                            "1" = {
-                              text = "up";
-                              color = "green";
-                            };
-                          };
-                        }
-                      ];
-                    }
-                    {
-                      id = "color";
-                      value = {
-                        mode = "thresholds";
-                      };
-                    }
-                  ];
-                }
-              ];
-            };
-            options = {
-              colorMode = "background";
-              graphMode = "none";
-              justifyMode = "auto";
-              orientation = "horizontal";
-              reduceOptions = {
-                calcs = [ "lastNotNull" ];
-                fields = "";
-                values = false;
-              };
-              textMode = "auto";
-            };
-          }
-          {
-            id = 2000 + idx;
-            type = "table";
-            title = "Service: ${serviceName}";
-            datasource = {
-              type = "prometheus";
-              uid = "prometheus";
-            };
-            gridPos = {
-              h = 9;
-              w = 12;
-              x = x;
-              y = y + 2;
-            };
-            targets = [
-              {
-                refId = "B";
-                expr = probeTableExpr;
-                format = "table";
-                instant = true;
-              }
-            ];
-            transformations = [
-              {
-                id = "organize";
-                options = {
+        {
+          id = 2000 + idx;
+          type = "table";
+          title = "Service: ${serviceName}";
+          datasource = {
+            type = "prometheus";
+            uid = "prometheus";
+          };
+          gridPos = {
+            h = 9;
+            w = 12;
+            inherit x y;
+          };
+          targets = [
+            {
+              refId = "A";
+              expr = probeTableExpr;
+              format = "table";
+              instant = true;
+            }
+          ];
+          transformations = [
+            {
+              id = "organize";
+              options = {
                 excludeByName = {
                   Time = true;
-                  service = true;
                   __name__ = true;
+                  service = true;
+                  instance = true;
+                  job = true;
+                  exported_instance = true;
+                  exported_job = true;
+                  exported_node = true;
                 };
                 indexByName = {
                   node = 0;
@@ -479,9 +403,9 @@ let
               };
             }
           ];
-            fieldConfig = {
-              defaults = { };
-              overrides = [
+          fieldConfig = {
+            defaults = { };
+            overrides = [
               {
                 matcher = {
                   id = "byName";
@@ -511,6 +435,10 @@ let
                     ];
                   }
                   {
+                    id = "custom.align";
+                    value = "left";
+                  }
+                  {
                     id = "custom.cellOptions";
                     value = {
                       type = "color-background";
@@ -524,56 +452,55 @@ let
                   options = "status";
                 };
                 properties = [
-                    {
-                      id = "mappings";
-                      value = [
-                        {
-                          type = "value";
-                          options = {
-                            active = {
-                              text = "active";
-                              color = "green";
-                            };
-                            standby = {
-                              text = "standby";
-                              color = "orange";
-                            };
+                  {
+                    id = "mappings";
+                    value = [
+                      {
+                        type = "value";
+                        options = {
+                          active = {
+                            text = "active";
+                            color = "green";
                           };
-                        }
-                      ];
-                    }
-                    {
-                      id = "custom.cellOptions";
-                      value = {
-                        type = "color-background";
-                      };
-                    }
-                  ];
-                }
-                {
-                  matcher = {
-                    id = "byName";
-                    options = "url";
-                  };
-                  properties = [
-                    {
-                      id = "links";
-                      value = [
-                        {
-                          title = "Open";
-                          url = "\${__value.raw}";
-                          targetBlank = true;
-                        }
-                      ];
-                    }
-                  ];
-                }
-              ];
-            };
-          }
-        ];
+                          standby = {
+                            text = "standby";
+                            color = "orange";
+                          };
+                        };
+                      }
+                    ];
+                  }
+                  {
+                    id = "custom.cellOptions";
+                    value = {
+                      type = "color-background";
+                    };
+                  }
+                ];
+              }
+              {
+                matcher = {
+                  id = "byName";
+                  options = "url";
+                };
+                properties = [
+                  {
+                    id = "links";
+                    value = [
+                      {
+                        title = "Open";
+                        url = "\${__value.raw}";
+                        targetBlank = true;
+                      }
+                    ];
+                  }
+                ];
+              }
+            ];
+          };
+        };
     in
-    lib.concatLists (lib.imap0 mkPanels cfg.serviceDirectory);
+    lib.imap0 mkPanel cfg.serviceDirectory;
 
   serviceStatsDashboard = {
     id = null;
