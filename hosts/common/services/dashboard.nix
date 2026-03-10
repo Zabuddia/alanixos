@@ -82,6 +82,8 @@ in
     scrapeTargets = lib.mapAttrsToList (nodeName: node: {
       target = "${node.vpnIP}:${toString cluster.services.dashboard.nodeExporterPort}";
       node = nodeName;
+      privateIp = node.vpnIP;
+      publicHost = node.wireguardEndpointHost or null;
     }) cluster.nodes;
     inherit endpointChecks;
     inherit serviceDirectory;

@@ -231,7 +231,7 @@ let
         targets = [
           {
             refId = "A";
-            expr = "max by(node,instance) (up{job=\"node\",node!=\"\"})";
+            expr = "max by(node,instance,private_ip,public_ip,public_host) (up{job=\"node\",node!=\"\"} * on(node,instance) group_left(private_ip,public_ip,public_host) alanix_node_reachability_info)";
             format = "table";
             instant = true;
           }
@@ -247,11 +247,17 @@ let
               };
               indexByName = {
                 node = 0;
-                instance = 1;
-                Value = 2;
+                private_ip = 1;
+                public_ip = 2;
+                public_host = 3;
+                instance = 4;
+                Value = 5;
               };
               renameByName = {
                 node = "Node";
+                private_ip = "Private IP";
+                public_ip = "Public IP";
+                public_host = "Public Host";
                 instance = "Target";
                 Value = "Reachable";
               };
@@ -311,6 +317,40 @@ let
               "max(probe_success{job=\"blackbox-http\",endpoint=\"${serviceName}-wan\"})"
             else
               "vector(-1)";
+          probeTableExpr = ''
+            (
+              (
+                (
+                  label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",endpoint="wan",url!="none"}) + 1), "endpoint", "wan", "node", ".*")
+                  * on() group_left() probe_success{job="blackbox-http",endpoint="${serviceName}-wan"}
+                )
+                or
+                (
+                  label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",endpoint="wan",url!="none"}) + 1), "endpoint", "wan", "node", ".*")
+                  * 0 - 1
+                )
+              )
+              or
+              (
+                label_replace(
+                  label_replace(probe_success{job="blackbox-http",endpoint=~"${serviceName}-wg-.*"}, "node", "$1", "endpoint", "${serviceName}-wg-(.*)"),
+                  "endpoint", "wireguard", "endpoint", ".*"
+                )
+                or
+                (
+                  label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",endpoint="wireguard",url!="none"}) + 1), "endpoint", "wireguard", "node", ".*")
+                  * 0 - 1
+                )
+              )
+              or
+              (
+                label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",endpoint="tor",url!="none"}) + 1), "endpoint", "tor", "node", ".*")
+                * 0 - 1
+              )
+            )
+            * on(node,endpoint) group_left(status,url)
+            (0 * max by(node,endpoint,status,url) (alanix_service_endpoint_active{service="${serviceName}",url!="none"}) + 1)
+          '';
         in
         [
           {
@@ -408,7 +448,7 @@ let
             targets = [
               {
                 refId = "B";
-                expr = "max by(node,endpoint,status,url) (alanix_service_endpoint_active{service=\"${serviceName}\",url!=\"none\"})";
+                expr = probeTableExpr;
                 format = "table";
                 instant = true;
               }
@@ -417,36 +457,73 @@ let
               {
                 id = "organize";
                 options = {
-                  excludeByName = {
-                    Time = true;
-                    Value = true;
-                    service = true;
-                    __name__ = true;
-                  };
-                  indexByName = {
-                    node = 0;
-                    endpoint = 1;
-                    status = 2;
-                    url = 3;
-                  };
-                  renameByName = {
-                    node = "Node";
-                    endpoint = "Endpoint";
-                    status = "Status";
-                    url = "URL";
-                  };
+                excludeByName = {
+                  Time = true;
+                  service = true;
+                  __name__ = true;
                 };
-              }
-            ];
+                indexByName = {
+                  node = 0;
+                  endpoint = 1;
+                  status = 2;
+                  Value = 3;
+                  url = 4;
+                };
+                renameByName = {
+                  node = "Node";
+                  endpoint = "Endpoint";
+                  status = "Status";
+                  Value = "Reachability";
+                  url = "URL";
+                };
+              };
+            }
+          ];
             fieldConfig = {
               defaults = { };
               overrides = [
-                {
-                  matcher = {
-                    id = "byName";
-                    options = "status";
-                  };
-                  properties = [
+              {
+                matcher = {
+                  id = "byName";
+                  options = "Reachability";
+                };
+                properties = [
+                  {
+                    id = "mappings";
+                    value = [
+                      {
+                        type = "value";
+                        options = {
+                          "-1" = {
+                            text = "n/a";
+                            color = "gray";
+                          };
+                          "0" = {
+                            text = "down";
+                            color = "red";
+                          };
+                          "1" = {
+                            text = "up";
+                            color = "green";
+                          };
+                        };
+                      }
+                    ];
+                  }
+                  {
+                    id = "custom.cellOptions";
+                    value = {
+                      type = "color-background";
+                    };
+                  }
+                ];
+              }
+              {
+                matcher = {
+                  id = "byName";
+                  options = "status";
+                };
+                properties = [
                     {
                       id = "mappings";
                       value = [
@@ -644,6 +721,11 @@ in
         options = {
           target = lib.mkOption { type = lib.types.str; };
           node = lib.mkOption { type = lib.types.str; };
+          privateIp = lib.mkOption { type = lib.types.str; };
+          publicHost = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+          };
         };
       });
       default = [ ];
@@ -762,6 +844,7 @@ in
       };
       path = [
         pkgs.coreutils
+        pkgs.glibc.bin
         pkgs.gawk
         pkgs.systemd
       ];
@@ -819,10 +902,41 @@ in
           ''SERVICE_DIRECTORY+=(${lib.escapeShellArg tuple})''
         ) cfg.serviceDirectory)}
 
+        SCRAPE_TARGETS=()
+        ${lib.concatStringsSep "\n" (map (entry:
+          let
+            tuple = "${entry.target}|${entry.node}|${entry.privateIp}|${entry.publicHost or ""}";
+          in
+          ''SCRAPE_TARGETS+=(${lib.escapeShellArg tuple})''
+        ) cfg.scrapeTargets)}
+
         {
           printf '# HELP alanix_metrics_generated_seconds Unix timestamp when Alanix textfile metrics were generated.\n'
           printf '# TYPE alanix_metrics_generated_seconds gauge\n'
           printf 'alanix_metrics_generated_seconds %s\n' "$(date +%s)"
+
+          printf '# HELP alanix_node_reachability_info Node metadata for reachability table.\n'
+          printf '# TYPE alanix_node_reachability_info gauge\n'
+          for row in "''${SCRAPE_TARGETS[@]}"; do
+            IFS='|' read -r node_target node_id private_ip public_host <<< "$row"
+            [ -n "$node_target" ] || continue
+            [ -n "$node_id" ] || continue
+
+            public_ip="none"
+            if [ -n "$public_host" ]; then
+              resolved_ip="$(getent ahostsv4 "$public_host" 2>/dev/null | awk 'NR==1 { print $1 }')"
+              if [ -n "$resolved_ip" ]; then
+                public_ip="$resolved_ip"
+              fi
+            fi
+
+            printf 'alanix_node_reachability_info{node="%s",instance="%s",private_ip="%s",public_ip="%s",public_host="%s"} 1\n' \
+              "$(esc_label "$node_id")" \
+              "$(esc_label "$node_target")" \
+              "$(esc_label "$private_ip")" \
+              "$(esc_label "$public_ip")" \
+              "$(esc_label "$public_host")"
+          done
 
           printf '# HELP alanix_service_up Service unit health (1=active, 0=inactive).\n'
           printf '# TYPE alanix_service_up gauge\n'
