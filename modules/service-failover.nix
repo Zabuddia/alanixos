@@ -287,13 +287,23 @@ let
         }
 
         start_local() {
+          touch "$ACTIVE_MARKER"
+
           systemctl start "$SERVICE_UNIT"
+          if ! systemctl -q is-active "$SERVICE_UNIT"; then
+            rm -f "$ACTIVE_MARKER"
+            return 1
+          fi
+
           for unit in "''${SERVICE_UNITS[@]}"; do
             if [ "$unit" != "$SERVICE_UNIT" ]; then
               systemctl start "$unit"
+              if ! systemctl -q is-active "$unit"; then
+                rm -f "$ACTIVE_MARKER"
+                return 1
+              fi
             fi
           done
-          touch "$ACTIVE_MARKER"
           ${lib.optionalString v.inst.dns.enable ''
             systemctl start alanix-dns-updater-${v.inst.dns.jobName}.service || true
           ''}

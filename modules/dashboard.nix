@@ -2,6 +2,7 @@
 let
   cfg = config.alanix.dashboard;
   nodeName = config.networking.hostName;
+  dashboardActiveMarker = "/run/alanix-dashboard-failover/active";
   serviceAccess = import ./_service-access.nix { inherit lib; };
   hasSopsSecrets = lib.hasAttrByPath [ "sops" "secrets" ] config;
   torSecretKeyPath =
@@ -231,24 +232,7 @@ let
         targets = [
           {
             refId = "A";
-            expr = ''
-              (
-                max by(node,instance,private_ip,public_host,public_ip) (
-                  max by(node,instance,private_ip,public_host) (up{job="node",node!=""})
-                  * on(node) group_left(public_ip)
-                  max by(node,public_ip) (alanix_node_reachability_info{node!=""})
-                )
-              )
-              or
-              (
-                label_replace(
-                  max by(node,instance,private_ip,public_host) (up{job="node",node!=""}),
-                  "public_ip", "none", "node", ".*"
-                )
-                unless on(node)
-                max by(node) (alanix_node_reachability_info{node!=""})
-              )
-            '';
+            expr = "max by(node,private_ip,public_host,instance) (up{job=\"node\",node!=\"\"})";
             format = "table";
             instant = true;
           }
@@ -261,21 +245,19 @@ let
                 Time = true;
                 __name__ = true;
                 job = true;
+                instance = true;
+                public_ip = true;
               };
               indexByName = {
                 node = 0;
                 private_ip = 1;
-                public_ip = 2;
-                public_host = 3;
-                instance = 4;
-                Value = 5;
+                public_host = 2;
+                Value = 3;
               };
               renameByName = {
                 node = "Node";
-                private_ip = "Private IP";
-                public_ip = "Public IP";
+                private_ip = "WireGuard IP";
                 public_host = "Public Host";
-                instance = "Target";
                 Value = "Reachable";
               };
             };
@@ -1111,6 +1093,9 @@ in
       wantedBy = lib.mkIf (!cfg.active) (lib.mkForce []);
       partOf = [ "prometheus.service" ];
     };
+    systemd.services.prometheus.unitConfig.ConditionPathExists = dashboardActiveMarker;
+    systemd.services.grafana.unitConfig.ConditionPathExists = dashboardActiveMarker;
+    systemd.services.prometheus-blackbox-exporter.unitConfig.ConditionPathExists = dashboardActiveMarker;
     systemd.services.prometheus.wants = [ "prometheus-blackbox-exporter.service" ];
     systemd.services.prometheus.after = [ "prometheus-blackbox-exporter.service" ];
 
