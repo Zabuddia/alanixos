@@ -28,6 +28,34 @@ let
   endpointChecks = lib.concatLists (
     map (serviceName: mkWanEndpoint serviceName ++ mkWireguardEndpoints serviceName) serviceNames
   );
+
+  serviceDirectory = lib.map (serviceName:
+    let
+      svc = cluster.services.${serviceName};
+      torScheme =
+        if svc.torAccess.enableHttps then
+          "https"
+        else if svc.torAccess.enableHttp then
+          "http"
+        else
+          null;
+    in
+    {
+      service = serviceName;
+      wanUrl =
+        if svc.wanAccess.enable && svc.wanAccess.domain != null then
+          "https://${svc.wanAccess.domain}"
+        else
+          null;
+      wireguardUrl =
+        if svc.wireguardAccess.enable then
+          "http://${cluster.nodes.${hostname}.vpnIP}:${toString svc.wireguardAccess.port}"
+        else
+          null;
+      torServiceName = if svc.torAccess.enable then svc.torAccess.onionServiceName else null;
+      inherit torScheme;
+    }
+  ) (lib.filter (serviceName: cluster.services.${serviceName}.enable) serviceNames);
 in
 {
   imports = [
@@ -55,6 +83,7 @@ in
       "${node.vpnIP}:${toString cluster.services.dashboard.nodeExporterPort}"
     ) cluster.nodes;
     inherit endpointChecks;
+    inherit serviceDirectory;
 
     wanAccess = {
       enable = cluster.services.dashboard.wanAccess.enable;

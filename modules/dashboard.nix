@@ -1,6 +1,7 @@
 { config, lib, pkgs, ... }:
 let
   cfg = config.alanix.dashboard;
+  nodeName = config.networking.hostName;
   serviceAccess = import ./_service-access.nix { inherit lib; };
   hasSopsSecrets = lib.hasAttrByPath [ "sops" "secrets" ] config;
   torSecretKeyPath =
@@ -23,10 +24,10 @@ let
           preferred_ip_protocol: ip4
   '';
 
-  clusterOverviewDashboard = {
+  computerStatsDashboard = {
     id = null;
-    uid = "alanix-cluster-overview";
-    title = "Alanix Cluster Overview";
+    uid = "alanix-cluster-compute";
+    title = "Alanix Computer Stats";
     timezone = "browser";
     schemaVersion = 39;
     version = 1;
@@ -36,6 +37,13 @@ let
       from = "now-6h";
       to = "now";
     };
+    links = [
+      {
+        title = "Service Stats";
+        type = "link";
+        url = "/d/alanix-cluster-services/alanix-service-stats";
+      }
+    ];
     templating.list = [ ];
     panels = [
       {
@@ -206,137 +214,105 @@ let
           overrides = [ ];
         };
       }
-      {
-        id = 7;
-        type = "table";
-        title = "Service Health (1=up)";
-        datasource = {
-          type = "prometheus";
-          uid = "prometheus";
-        };
-        gridPos = {
-          h = 8;
-          w = 8;
-          x = 0;
-          y = 24;
-        };
-        targets = [
-          {
-            refId = "A";
-            expr = "alanix_service_up";
-            format = "table";
-            instant = true;
-          }
-        ];
-      }
-      {
-        id = 8;
-        type = "table";
-        title = "Failover Role Active (1=active)";
-        datasource = {
-          type = "prometheus";
-          uid = "prometheus";
-        };
-        gridPos = {
-          h = 8;
-          w = 8;
-          x = 8;
-          y = 24;
-        };
-        targets = [
-          {
-            refId = "A";
-            expr = "alanix_service_role_active";
-            format = "table";
-            instant = true;
-          }
-        ];
-      }
-      {
-        id = 9;
-        type = "table";
-        title = "Backup Jobs Last Success (1=success)";
-        datasource = {
-          type = "prometheus";
-          uid = "prometheus";
-        };
-        gridPos = {
-          h = 8;
-          w = 8;
-          x = 16;
-          y = 24;
-        };
-        targets = [
-          {
-            refId = "A";
-            expr = "alanix_backup_service_last_success";
-            format = "table";
-            instant = true;
-          }
-        ];
-      }
-      {
-        id = 10;
-        type = "timeseries";
-        title = "Endpoint Success (1=up)";
-        datasource = {
-          type = "prometheus";
-          uid = "prometheus";
-        };
-        gridPos = {
-          h = 8;
-          w = 12;
-          x = 0;
-          y = 32;
-        };
-        targets = [
-          {
-            refId = "A";
-            expr = "probe_success{job=\"blackbox-http\"}";
-            legendFormat = "{{endpoint}}";
-          }
-        ];
-        fieldConfig = {
-          defaults = {
-            min = 0;
-            max = 1;
+    ];
+  };
+
+  serviceTilePanels =
+    let
+      mkTile = idx: entry:
+        let
+          x = (idx - (builtins.div idx 2) * 2) * 12;
+          y = (builtins.div idx 2) * 10;
+          serviceName = entry.service;
+          backupExpr =
+            "max by(node) ((alanix_backup_last_success_seconds{service=~\"restic-backups-${serviceName}-to-.*\\\\.service\"} > 0) * 1000)";
+        in
+        {
+          id = 100 + idx;
+          type = "table";
+          title = "Service: ${serviceName}";
+          datasource = {
+            type = "prometheus";
+            uid = "prometheus";
           };
-          overrides = [ ];
+          gridPos = {
+            h = 10;
+            w = 12;
+            inherit x y;
+          };
+          targets = [
+            {
+              refId = "A";
+              expr = "max by(node,state) (alanix_service_node_state{service=\"${serviceName}\"})";
+              format = "table";
+              instant = true;
+            }
+            {
+              refId = "B";
+              expr = "max by(node,endpoint,status,url) (alanix_service_endpoint_active{service=\"${serviceName}\"})";
+              format = "table";
+              instant = true;
+            }
+            {
+              refId = "C";
+              expr = backupExpr;
+              format = "table";
+              instant = true;
+            }
+          ];
+          fieldConfig = {
+            defaults = { };
+            overrides = [
+              {
+                matcher = {
+                  id = "byName";
+                  options = "Value #C";
+                };
+                properties = [
+                  {
+                    id = "unit";
+                    value = "dateTimeAsIso";
+                  }
+                ];
+              }
+            ];
+          };
         };
-      }
+    in
+    lib.imap0 mkTile cfg.serviceDirectory;
+
+  serviceStatsDashboard = {
+    id = null;
+    uid = "alanix-cluster-services";
+    title = "Alanix Service Stats";
+    timezone = "browser";
+    schemaVersion = 39;
+    version = 1;
+    editable = false;
+    refresh = "30s";
+    time = {
+      from = "now-6h";
+      to = "now";
+    };
+    links = [
       {
-        id = 11;
-        type = "timeseries";
-        title = "Endpoint Latency";
-        datasource = {
-          type = "prometheus";
-          uid = "prometheus";
-        };
-        gridPos = {
-          h = 8;
-          w = 12;
-          x = 12;
-          y = 32;
-        };
-        targets = [
-          {
-            refId = "A";
-            expr = "probe_duration_seconds{job=\"blackbox-http\"}";
-            legendFormat = "{{endpoint}}";
-          }
-        ];
-        fieldConfig = {
-          defaults.unit = "s";
-          overrides = [ ];
-        };
+        title = "Computer Stats";
+        type = "link";
+        url = "/d/alanix-cluster-compute/alanix-computer-stats";
       }
     ];
+    templating.list = [ ];
+    panels = serviceTilePanels;
   };
 
   dashboardFiles = pkgs.linkFarm "alanix-grafana-dashboards" [
     {
-      name = "cluster-overview.json";
-      path = pkgs.writeText "cluster-overview.json" (builtins.toJSON clusterOverviewDashboard);
+      name = "computer-stats.json";
+      path = pkgs.writeText "computer-stats.json" (builtins.toJSON computerStatsDashboard);
+    }
+    {
+      name = "service-stats.json";
+      path = pkgs.writeText "service-stats.json" (builtins.toJSON serviceStatsDashboard);
     }
   ];
 
@@ -469,6 +445,38 @@ in
       description = "HTTP endpoints to probe.";
     };
 
+    serviceDirectory = lib.mkOption {
+      type = lib.types.listOf (lib.types.submodule {
+        options = {
+          service = lib.mkOption {
+            type = lib.types.str;
+          };
+
+          wanUrl = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+          };
+
+          wireguardUrl = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+          };
+
+          torServiceName = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+          };
+
+          torScheme = lib.mkOption {
+            type = lib.types.nullOr (lib.types.enum [ "http" "https" ]);
+            default = null;
+          };
+        };
+      });
+      default = [ ];
+      description = "Service endpoint metadata used for dynamic endpoint/status views.";
+    };
+
     wanAccess = serviceAccess.mkWanAccessOptions { serviceTitle = "Dashboard"; };
 
     wireguardAccess = serviceAccess.mkWireguardAccessOptions {
@@ -542,6 +550,7 @@ in
         OUT_FILE="$OUT_DIR/alanix_cluster.prom"
         TMP_FILE="$(mktemp "$OUT_DIR/.alanix_cluster.prom.XXXXXX")"
         trap 'rm -f "$TMP_FILE"' EXIT
+        node_name=${lib.escapeShellArg nodeName}
 
         to_bool_active() {
           if systemctl -q is-active "$1" 2>/dev/null; then
@@ -551,14 +560,42 @@ in
           fi
         }
 
-        to_epoch() {
-          local ts="$1"
-          if [ -z "$ts" ] || [ "$ts" = "n/a" ]; then
-            printf '0'
-            return 0
-          fi
-          date --date="$ts" +%s 2>/dev/null || printf '0'
+        esc_label() {
+          local s="$1"
+          s="''${s//\\/\\\\}"
+          s="''${s//\"/\\\"}"
+          s="''${s//$'\n'/ }"
+          printf '%s' "$s"
         }
+
+        emit_endpoint_metric() {
+          local service="$1"
+          local node="$2"
+          local endpoint="$3"
+          local status="$4"
+          local url="$5"
+          local active="$6"
+
+          if [ -z "$url" ]; then
+            url="none"
+          fi
+
+          printf 'alanix_service_endpoint_active{service="%s",node="%s",endpoint="%s",status="%s",url="%s"} %s\n' \
+            "$(esc_label "$service")" \
+            "$(esc_label "$node")" \
+            "$(esc_label "$endpoint")" \
+            "$(esc_label "$status")" \
+            "$(esc_label "$url")" \
+            "$active"
+        }
+
+        SERVICE_DIRECTORY=()
+        ${lib.concatStringsSep "\n" (map (entry:
+          let
+            tuple = "${entry.service}|${entry.wanUrl or ""}|${entry.wireguardUrl or ""}|${entry.torServiceName or ""}|${entry.torScheme or ""}";
+          in
+          ''SERVICE_DIRECTORY+=(${lib.escapeShellArg tuple})''
+        ) cfg.serviceDirectory)}
 
         {
           printf '# HELP alanix_metrics_generated_seconds Unix timestamp when Alanix textfile metrics were generated.\n'
@@ -571,11 +608,13 @@ in
           printf '# TYPE alanix_service_role_active gauge\n'
           printf '# HELP alanix_service_role_standby Failover role standby marker (1=standby).\n'
           printf '# TYPE alanix_service_role_standby gauge\n'
+          printf '# HELP alanix_service_node_state Service role state per node (1=true, 0=false).\n'
+          printf '# TYPE alanix_service_node_state gauge\n'
 
-          mapfile -t role_timers < <(systemctl list-unit-files --type=timer --no-legend | awk '/-role-controller\.timer$/ { print $1 }' | sort)
-          for timer in "''${role_timers[@]}"; do
-            [ -n "$timer" ] || continue
-            service_name="''${timer%-role-controller.timer}"
+          mapfile -t role_services < <(systemctl list-unit-files --type=service --no-legend | awk '$1 ~ /-role-controller\.service$/ { print $1 }' | sort)
+          for role_svc in "''${role_services[@]}"; do
+            [ -n "$role_svc" ] || continue
+            service_name="''${role_svc%-role-controller.service}"
             marker="/run/alanix-''${service_name}-failover/active"
             service_unit="''${service_name}.service"
 
@@ -587,34 +626,66 @@ in
               role_standby=0
             fi
 
-            printf 'alanix_service_up{service="%s"} %s\n' "$service_name" "$service_up"
-            printf 'alanix_service_role_active{service="%s"} %s\n' "$service_name" "$role_active"
-            printf 'alanix_service_role_standby{service="%s"} %s\n' "$service_name" "$role_standby"
+            printf 'alanix_service_up{service="%s",node="%s"} %s\n' "$service_name" "$node_name" "$service_up"
+            printf 'alanix_service_role_active{service="%s",node="%s"} %s\n' "$service_name" "$node_name" "$role_active"
+            printf 'alanix_service_role_standby{service="%s",node="%s"} %s\n' "$service_name" "$node_name" "$role_standby"
+            printf 'alanix_service_node_state{service="%s",node="%s",state="active"} %s\n' "$service_name" "$node_name" "$role_active"
+            printf 'alanix_service_node_state{service="%s",node="%s",state="standby"} %s\n' "$service_name" "$node_name" "$role_standby"
           done
 
-          printf '# HELP alanix_backup_timer_active Backup timer active state (1=active).\n'
-          printf '# TYPE alanix_backup_timer_active gauge\n'
-          printf '# HELP alanix_backup_last_trigger_seconds Backup timer last trigger UNIX timestamp.\n'
-          printf '# TYPE alanix_backup_last_trigger_seconds gauge\n'
-          printf '# HELP alanix_backup_service_last_success Backup service last result (1=success, 0=otherwise).\n'
-          printf '# TYPE alanix_backup_service_last_success gauge\n'
+          printf '# HELP alanix_service_endpoint_active Service endpoint active state based on role marker (1=active, 0=inactive).\n'
+          printf '# TYPE alanix_service_endpoint_active gauge\n'
 
-          mapfile -t backup_timers < <(systemctl list-unit-files --type=timer --no-legend | awk '/^restic-backups-.*\.timer$/ { print $1 }' | sort)
+          for row in "''${SERVICE_DIRECTORY[@]}"; do
+            IFS='|' read -r service_name wan_url wg_url tor_service_name tor_scheme <<< "$row"
+            [ -n "$service_name" ] || continue
+
+            marker="/run/alanix-''${service_name}-failover/active"
+            role_active=0
+            role_status="inactive"
+            if [ -f "$marker" ]; then
+              role_active=1
+              role_status="active"
+            fi
+
+            tor_url=""
+            if [ -n "$tor_service_name" ]; then
+              tor_host_file="/var/lib/tor/onion/$tor_service_name/hostname"
+              if [ -f "$tor_host_file" ]; then
+                tor_host="$(tr -d '\r\n' < "$tor_host_file")"
+                if [ -n "$tor_host" ]; then
+                  if [ -n "$tor_scheme" ]; then
+                    tor_url="$tor_scheme://$tor_host"
+                  else
+                    tor_url="http://$tor_host"
+                  fi
+                fi
+              fi
+            fi
+
+            emit_endpoint_metric "$service_name" "$node_name" "wan" "$role_status" "$wan_url" "$role_active"
+            emit_endpoint_metric "$service_name" "$node_name" "wireguard" "$role_status" "$wg_url" "$role_active"
+            emit_endpoint_metric "$service_name" "$node_name" "tor" "$role_status" "$tor_url" "$role_active"
+          done
+
+          printf '# HELP alanix_backup_last_success_seconds Last successful backup completion time (Unix seconds).\n'
+          printf '# TYPE alanix_backup_last_success_seconds gauge\n'
+
+          mapfile -t backup_timers < <(systemctl list-unit-files --type=timer --no-legend | awk '$1 ~ /^restic-backups-.*\.timer$/ { print $1 }' | sort)
           for timer in "''${backup_timers[@]}"; do
             [ -n "$timer" ] || continue
             service="''${timer%.timer}.service"
-            timer_active="$(to_bool_active "$timer")"
-            last_trigger_raw="$(systemctl show "$timer" -p LastTriggerUSec --value 2>/dev/null || true)"
-            last_trigger_epoch="$(to_epoch "$last_trigger_raw")"
-            result="$(systemctl show "$service" -p Result --value 2>/dev/null || true)"
-            last_success=0
-            if [ "$result" = "success" ]; then
-              last_success=1
+            last_success_line="$(journalctl --unit "$service" --no-pager --output=short-unix -g 'Finished ' -n 1 2>/dev/null | head -n1 || true)"
+            last_success_epoch="0"
+            if [ -n "$last_success_line" ]; then
+              last_success_epoch="''${last_success_line%% *}"
+              last_success_epoch="''${last_success_epoch%%.*}"
+              case "$last_success_epoch" in
+                ""|*[!0-9]*) last_success_epoch="0" ;;
+              esac
             fi
 
-            printf 'alanix_backup_timer_active{timer="%s"} %s\n' "$timer" "$timer_active"
-            printf 'alanix_backup_last_trigger_seconds{timer="%s"} %s\n' "$timer" "$last_trigger_epoch"
-            printf 'alanix_backup_service_last_success{service="%s"} %s\n' "$service" "$last_success"
+            printf 'alanix_backup_last_success_seconds{service="%s",node="%s"} %s\n' "$service" "$node_name" "$last_success_epoch"
           done
         } > "$TMP_FILE"
 
@@ -677,6 +748,7 @@ in
         };
         users.allow_sign_up = false;
         analytics.reporting_enabled = false;
+        dashboards.default_home_dashboard_path = "${dashboardFiles}/service-stats.json";
         security = {
           admin_user = cfg.adminUser;
           admin_password = if adminPasswordFile == null then "" else "$__file{${adminPasswordFile}}";
