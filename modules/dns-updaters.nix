@@ -146,7 +146,8 @@ in
                 ZONE_ID="$(curl_retry "''${AUTH[@]}" "$API/zones?name=$ZONE" | jq -er '.result[0].id')"
 
                 for RECORD in "''${RECORDS[@]}"; do
-                  RECORD_JSON="$(curl_retry "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records?type=A&name=$RECORD" | jq -c '.result[0] // empty')"
+                  RECORDS_JSON="$(curl_retry "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records?type=A&name=$RECORD" | jq -c '.result')"
+                  RECORD_COUNT="$(printf '%s' "$RECORDS_JSON" | jq -r 'length')"
 
                   BODY="$(jq -n \
                     --arg type "A" \
@@ -156,13 +157,21 @@ in
                     --argjson proxied "$PROXIED" \
                     '{type: $type, name: $name, content: $content, ttl: $ttl, proxied: $proxied}')"
 
-                  if [ -z "$RECORD_JSON" ]; then
+                  if [ "$RECORD_COUNT" = "0" ]; then
                     curl_retry -X POST "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records" --data "$BODY" >/dev/null
                     continue
                   fi
 
-                  RECORD_ID="$(printf '%s' "$RECORD_JSON" | jq -er '.id')"
+                  RECORD_ID="$(printf '%s' "$RECORDS_JSON" | jq -er '.[0].id')"
                   curl_retry -X PATCH "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records/$RECORD_ID" --data "$BODY" >/dev/null
+
+                  # Keep exactly one A record per name to avoid split DNS answers.
+                  if [ "$RECORD_COUNT" -gt 1 ]; then
+                    while IFS= read -r EXTRA_ID; do
+                      [ -n "$EXTRA_ID" ] || continue
+                      curl_retry -X DELETE "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records/$EXTRA_ID" >/dev/null
+                    done < <(printf '%s' "$RECORDS_JSON" | jq -r '.[1:][]?.id')
+                  fi
                 done
                 ;;
               *)
