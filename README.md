@@ -292,5 +292,23 @@ sops secrets/secrets.yaml
 ./scripts/update-sops-keys.sh
 ```
 
+- To deploy a host directly from your laptop without logging into it first:
+
+```bash
+./scripts/deploy-hosts.sh randy-big-nixos
+```
+
+- To deploy more than one host:
+
+```bash
+./scripts/deploy-hosts.sh randy-big-nixos alan-big-nixos
+```
+
+- If your laptop is weak or you want the server to do its own build:
+
+```bash
+./scripts/deploy-hosts.sh --build-on-target randy-big-nixos
+```
+
 - If you later split secrets by scope, narrow the `creationRules` in
   `secrets/keys.nix` so each host only gets the secrets it actually needs.
