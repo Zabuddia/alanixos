@@ -345,19 +345,13 @@ let
           unreachable_count="$(cat "$FAIL_FILE" || echo 0)"
         fi
 
-        unhealthy_count=0
-        if [ -f "$UNHEALTHY_FAIL_FILE" ]; then
-          unhealthy_count="$(cat "$UNHEALTHY_FAIL_FILE" || echo 0)"
-        fi
-
         if [ "$higher_reachable" -eq 1 ]; then
           echo 0 > "$FAIL_FILE"
-          unhealthy_count=$((unhealthy_count + 1))
-          echo "$unhealthy_count" > "$UNHEALTHY_FAIL_FILE"
-
-          if [ "$unhealthy_count" -lt ${toString v.inst.higherUnhealthyThreshold} ]; then
-            exit 0
+          echo 0 > "$UNHEALTHY_FAIL_FILE"
+          if [ -f "$ACTIVE_MARKER" ] || local_is_serving; then
+            stop_local
           fi
+          exit 0
         else
           echo 0 > "$UNHEALTHY_FAIL_FILE"
           unreachable_count=$((unreachable_count + 1))
