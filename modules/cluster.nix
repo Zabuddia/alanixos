@@ -84,6 +84,70 @@ in
       description = "Cluster node definitions keyed by hostname.";
     };
 
+    controlPlane = {
+      etcd = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable the shared etcd control plane on all cluster nodes.";
+        };
+
+        clientPort = lib.mkOption {
+          type = lib.types.port;
+          default = 2379;
+          description = "TCP port etcd listens on for client traffic over WireGuard.";
+        };
+
+        peerPort = lib.mkOption {
+          type = lib.types.port;
+          default = 2380;
+          description = "TCP port etcd listens on for peer replication traffic over WireGuard.";
+        };
+
+        heartbeatIntervalMs = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 1500;
+          description = "Etcd heartbeat interval in milliseconds, tuned conservatively for long-haul links.";
+        };
+
+        electionTimeoutMs = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 15000;
+          description = "Etcd election timeout in milliseconds, tuned conservatively for long-haul links.";
+        };
+
+        autoCompactionMode = lib.mkOption {
+          type = lib.types.enum [ "periodic" "revision" ];
+          default = "periodic";
+          description = "Etcd auto-compaction mode.";
+        };
+
+        autoCompactionRetention = lib.mkOption {
+          type = lib.types.str;
+          default = "1h";
+          description = "Etcd auto-compaction retention window.";
+        };
+
+        dataDir = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/lib/etcd";
+          description = "Etcd data directory.";
+        };
+
+        initialClusterState = lib.mkOption {
+          type = lib.types.enum [ "new" "existing" ];
+          default = "new";
+          description = "Etcd bootstrap mode. Use `existing` only when joining an already-bootstrapped cluster.";
+        };
+
+        initialClusterToken = lib.mkOption {
+          type = lib.types.str;
+          default = "alanix-etcd";
+          description = "Etcd cluster token used during bootstrap.";
+        };
+      };
+    };
+
     services.filebrowser = {
       enable = lib.mkOption {
         type = lib.types.bool;

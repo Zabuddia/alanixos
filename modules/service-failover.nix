@@ -3,7 +3,7 @@ let
   cfg = config.alanix.serviceFailover;
   enabledInstances = lib.filterAttrs (_: inst: inst.enable) cfg.instances;
 
-  mkNodeTuple = nodes: name: "${name}|${nodes.${name}.vpnIP}|${nodes.${name}.sshTarget}";
+  mkNodeTuple = nodes: name: "${name}|${toString nodes.${name}.priority}|${nodes.${name}.vpnIP}|${nodes.${name}.sshTarget}";
 
   mkInstance = name: inst:
     let
@@ -33,7 +33,7 @@ let
       syncPathsEscaped = lib.concatStringsSep " " (map lib.escapeShellArg inst.sync.paths);
     in
     {
-      inherit name inst higherNodeTuples lowerNodeTuples remoteNodeTuples serviceUnitsEscaped unitChecksExpr syncPathsEscaped;
+      inherit name inst localNodeName localPriority higherNodeTuples lowerNodeTuples remoteNodeTuples serviceUnitsEscaped unitChecksExpr syncPathsEscaped;
     };
 
   instances = lib.mapAttrs mkInstance enabledInstances;
@@ -133,7 +133,7 @@ let
           }
 
           for node in "''${REMOTE_NODES[@]}"; do
-            IFS='|' read -r _name ip ssh_target <<< "$node"
+            IFS='|' read -r _name _priority ip ssh_target <<< "$node"
             if node_is_active "$ip" "$ssh_target"; then
               sync_from_target "$ssh_target"
               exit 0
@@ -165,7 +165,7 @@ let
   roleServices = builtins.listToAttrs (lib.mapAttrsToList (_: v: {
     name = "${v.name}-role-controller";
     value = {
-      description = "${v.name} role controller (auto failover + failback)";
+      description = "${v.name} role controller (auto failover + manual failback)";
       after = [ "network-online.target" ] ++ lib.optional v.inst.sync.enable "sops-install-secrets.service";
       wants = [ "network-online.target" ] ++ lib.optional v.inst.sync.enable "sops-install-secrets.service";
       serviceConfig = {
@@ -186,12 +186,17 @@ let
 
         SERVICE_UNITS=(${v.serviceUnitsEscaped})
         SERVICE_UNIT=${lib.escapeShellArg v.inst.serviceUnit}
+        LOCAL_NODE_NAME=${lib.escapeShellArg v.localNodeName}
+        LOCAL_PRIORITY=${toString v.localPriority}
 
         HIGHER_NODES=()
         ${lib.concatStringsSep "\n" (map (tuple: ''HIGHER_NODES+=(${lib.escapeShellArg tuple})'') v.higherNodeTuples)}
 
         LOWER_NODES=()
         ${lib.concatStringsSep "\n" (map (tuple: ''LOWER_NODES+=(${lib.escapeShellArg tuple})'') v.lowerNodeTuples)}
+
+        REMOTE_NODES=()
+        ${lib.concatStringsSep "\n" (map (tuple: ''REMOTE_NODES+=(${lib.escapeShellArg tuple})'') v.remoteNodeTuples)}
 
         mkdir -p "$STATE_DIR"
 
@@ -243,12 +248,12 @@ let
           }
 
           # Return codes:
-          # 0 = synced from an active lower-priority node
+          # 0 = active lower-priority node exists and sync succeeded
           # 1 = no active lower-priority node found (safe to continue)
-          # 2 = active lower-priority node found but sync failed (block takeover)
+          # 2 = active lower-priority node exists but sync failed
           maybe_sync_from_active_lower() {
             for node in "''${LOWER_NODES[@]}"; do
-              IFS='|' read -r _name ip ssh_target <<< "$node"
+              IFS='|' read -r _name _priority ip ssh_target <<< "$node"
               if node_is_active "$ip" "$ssh_target"; then
                 if sync_from_target "$ssh_target"; then
                   return 0
@@ -277,7 +282,13 @@ let
           }
 
           maybe_sync_from_active_lower() {
-            return 0
+            for node in "''${LOWER_NODES[@]}"; do
+              IFS='|' read -r _name _priority ip ssh_target <<< "$node"
+              if node_is_active "$ip" "$ssh_target"; then
+                return 0
+              fi
+            done
+            return 1
           }
         ''}
 
@@ -318,40 +329,133 @@ let
           return 0
         }
 
-        higher_healthy=0
-        higher_reachable=0
-        for node in "''${HIGHER_NODES[@]}"; do
-          IFS='|' read -r _name ip ssh_target <<< "$node"
-          if node_reachable "$ip" "$ssh_target"; then
-            higher_reachable=1
+        better_candidate() {
+          local candidate_name="$1"
+          local candidate_priority="$2"
+          local current_name="$3"
+          local current_priority="$4"
+
+          if [ -z "$current_priority" ]; then
+            return 0
           fi
+
+          if [ "$candidate_priority" -lt "$current_priority" ]; then
+            return 0
+          fi
+
+          if [ "$candidate_priority" -eq "$current_priority" ] && [[ "$candidate_name" < "$current_name" ]]; then
+            return 0
+          fi
+
+          return 1
+        }
+
+        remote_active_beats_local() {
+          local candidate_name="$1"
+          local candidate_priority="$2"
+
+          if [ "$candidate_priority" -lt "$LOCAL_PRIORITY" ]; then
+            return 0
+          fi
+
+          if [ "$candidate_priority" -eq "$LOCAL_PRIORITY" ] && [[ "$candidate_name" < "$LOCAL_NODE_NAME" ]]; then
+            return 0
+          fi
+
+          return 1
+        }
+
+        pre_promotion_sync_guard() {
+          local sync_result=0
+          if maybe_sync_from_active_lower; then
+            sync_result=0
+          else
+            sync_result=$?
+          fi
+
+          case "$sync_result" in
+            0)
+              echo "${v.name} failover: lower-priority node is still active; keeping local node on standby" >&2
+              return 1
+              ;;
+            1)
+              return 0
+              ;;
+            2)
+              echo "${v.name} failover: sync from active lower-priority node failed; refusing promotion" >&2
+              return 1
+              ;;
+          esac
+        }
+
+        best_remote_active_name=""
+        best_remote_active_priority=""
+        for node in "''${REMOTE_NODES[@]}"; do
+          IFS='|' read -r name priority ip ssh_target <<< "$node"
           if node_is_active "$ip" "$ssh_target"; then
-            higher_healthy=1
-            break
+            if better_candidate "$name" "$priority" "$best_remote_active_name" "$best_remote_active_priority"; then
+              best_remote_active_name="$name"
+              best_remote_active_priority="$priority"
+            fi
           fi
         done
 
-        if [ "$higher_healthy" -eq 1 ]; then
+        if [ -n "$best_remote_active_name" ]; then
           echo 0 > "$FAIL_FILE"
           echo 0 > "$UNHEALTHY_FAIL_FILE"
-          if [ -f "$ACTIVE_MARKER" ] || local_is_serving; then
-            stop_local
+
+          if remote_active_beats_local "$best_remote_active_name" "$best_remote_active_priority"; then
+            if [ -f "$ACTIVE_MARKER" ] || local_is_serving; then
+              stop_local
+            fi
+            exit 0
+          fi
+
+          if [ -f "$ACTIVE_MARKER" ] && ! local_is_serving; then
+            rm -f "$ACTIVE_MARKER"
+          fi
+
+          # A lower-priority node is currently active. Stay on standby until a
+          # manual failback is performed.
+          exit 0
+        fi
+
+        if [ -f "$ACTIVE_MARKER" ]; then
+          echo 0 > "$FAIL_FILE"
+          echo 0 > "$UNHEALTHY_FAIL_FILE"
+          if ! local_is_serving; then
+            systemctl reset-failed "$SERVICE_UNIT" || true
+            start_local
           fi
           exit 0
         fi
+
+        higher_reachable=0
+        for node in "''${HIGHER_NODES[@]}"; do
+          IFS='|' read -r _name _priority ip ssh_target <<< "$node"
+          if node_reachable "$ip" "$ssh_target"; then
+            higher_reachable=1
+          fi
+        done
 
         unreachable_count=0
         if [ -f "$FAIL_FILE" ]; then
           unreachable_count="$(cat "$FAIL_FILE" || echo 0)"
         fi
 
+        unhealthy_count=0
+        if [ -f "$UNHEALTHY_FAIL_FILE" ]; then
+          unhealthy_count="$(cat "$UNHEALTHY_FAIL_FILE" || echo 0)"
+        fi
+
         if [ "$higher_reachable" -eq 1 ]; then
           echo 0 > "$FAIL_FILE"
-          echo 0 > "$UNHEALTHY_FAIL_FILE"
-          if [ -f "$ACTIVE_MARKER" ] || local_is_serving; then
-            stop_local
+          unhealthy_count=$((unhealthy_count + 1))
+          echo "$unhealthy_count" > "$UNHEALTHY_FAIL_FILE"
+
+          if [ "$unhealthy_count" -lt ${toString v.inst.higherUnhealthyThreshold} ]; then
+            exit 0
           fi
-          exit 0
         else
           echo 0 > "$UNHEALTHY_FAIL_FILE"
           unreachable_count=$((unreachable_count + 1))
@@ -362,32 +466,9 @@ let
           fi
         fi
 
-        safe_sync_before_start() {
-          local sync_result=0
-          if maybe_sync_from_active_lower; then
-            sync_result=0
-          else
-            sync_result=$?
-          fi
-
-          if [ "$sync_result" -eq 2 ]; then
-            echo "${v.name} failover: sync from current active node failed; continuing takeover to avoid prolonged standby" >&2
-            return 0
-          fi
-
-          return 0
-        }
-
-        if [ -f "$ACTIVE_MARKER" ]; then
-          if ! local_is_serving; then
-            safe_sync_before_start
-            start_local
-          fi
-          exit 0
+        if pre_promotion_sync_guard; then
+          start_local
         fi
-
-        safe_sync_before_start
-        start_local
       '';
     };
   }) instances);

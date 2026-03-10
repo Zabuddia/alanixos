@@ -17,3 +17,14 @@ When adding a new clustered service:
 3. Add failover and backup wrappers in `hosts/common/services/{failover,backups}/`.
 4. Import those wrappers in host defaults (`hosts/*/default.nix`).
 5. Add concrete service settings in `hosts/common/core/cluster.nix`.
+
+Current failover policy:
+- Automatic failover, manual failback.
+- A node stays standby while any remote node is already active.
+- Higher-priority nodes do not automatically reclaim a service after they return.
+- Promotion is blocked if a lower-priority active node is still detected or if pre-promotion sync fails.
+
+Control-plane groundwork:
+- `alanix.cluster.controlPlane.etcd` is the intended shared consensus layer for 3+ identical nodes.
+- It is meant to run only over WireGuard and only with an odd number of members.
+- Leave it disabled until the third node exists and is declared in `alanix.cluster.nodes`.

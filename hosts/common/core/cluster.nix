@@ -2,6 +2,7 @@
 {
   imports = [
     ../../../modules/cluster.nix
+    ../../../modules/etcd-cluster.nix
     ../../../modules/service-failover.nix
     ../../../modules/service-backups.nix
   ];
@@ -12,6 +13,13 @@
     dns = {
       provider = "cloudflare";
       apiTokenSecret = "cloudflare/api-token";
+    };
+    controlPlane.etcd = {
+      enable = false;
+      heartbeatIntervalMs = 1500;
+      electionTimeoutMs = 15000;
+      initialClusterState = "new";
+      initialClusterToken = "alanix-etcd";
     };
     syncPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFqBvDH10XQLN1srCL3U92KUZcXn0f+PkYPKhWfQehf7 filebrowser-failover-sync";
 
