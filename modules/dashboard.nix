@@ -233,15 +233,8 @@ let
             refId = "A";
             expr = ''
               max by(node,instance,private_ip,public_ip,public_host) (
-                (
-                  max by(node,instance,private_ip,public_ip,public_host) (alanix_node_reachability_info{node!=""})
-                  * on(instance) group_left() max by(instance) (up{job="node",node!=""})
-                )
-                or
-                label_replace(
-                  max by(node,instance,private_ip,public_host) (up{job="node",node!=""}),
-                  "public_ip", "none", "instance", ".*"
-                )
+                max by(node,instance,private_ip,public_ip,public_host) (alanix_node_reachability_info{node!=""})
+                * on(instance) group_left() max by(instance) (up{job="node"})
               )
             '';
             format = "table";
@@ -324,86 +317,62 @@ let
           x = (idx - (builtins.div idx 2) * 2) * 12;
           y = (builtins.div idx 2) * 9;
           serviceName = entry.service;
-          probeTableExpr = ''
-            max by(node,endpoint,status,url) (
+          probeExpr = ''
+            max by(node,endpoint) (
               (
-                label_replace(
-                  (
-                    (
-                      (
-                        max by(node,endpoint) (
-                          label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wan",url!="none"}) + 1), "endpoint", "wan", "node", ".*")
-                          * on() group_left() probe_success{job="blackbox-http",endpoint="${serviceName}-wan"}
-                        )
-                        or
-                        max by(node,endpoint) (
-                          label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wan",url!="none"}) + 1), "endpoint", "wan", "node", ".*")
-                          * 0 - 1
-                        )
-                      )
-                      or
-                      (
-                        max by(node,endpoint) (
-                          label_replace(
-                            label_replace(probe_success{job="blackbox-http",endpoint=~"${serviceName}-wg-.*"}, "node", "$1", "endpoint", "${serviceName}-wg-(.*)"),
-                            "endpoint", "wireguard", "endpoint", ".*"
-                          )
-                        )
-                        or
-                        max by(node,endpoint) (
-                          label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wireguard",url!="none"}) + 1), "endpoint", "wireguard", "node", ".*")
-                          * 0 - 1
-                        )
-                      )
-                      or
-                      max by(node,endpoint) (
-                        label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="tor",url!="none"}) + 1), "endpoint", "tor", "node", ".*")
-                        * 0 - 1
-                      )
-                    ) == 0
-                  )
-                  * on(node,endpoint) group_left(status,url)
-                  (0 * max by(node,endpoint,status,url) (alanix_service_endpoint_active{service="${serviceName}",node!="",url!="none"}) + 1),
-                  "status", "error", "status", ".*"
-                )
+                label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wan",url!="none"}) + 1), "endpoint", "wan", "node", ".*")
+                * on() group_left() probe_success{job="blackbox-http",endpoint="${serviceName}-wan"}
               )
               or
               (
+                label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wan",url!="none"}) + 1), "endpoint", "wan", "node", ".*")
+                * 0 - 1
+              )
+              or
+              label_replace(
+                label_replace(probe_success{job="blackbox-http",endpoint=~"${serviceName}-wg-.*"}, "node", "$1", "endpoint", "${serviceName}-wg-(.*)"),
+                "endpoint", "wireguard", "endpoint", ".*"
+              )
+              or
+              (
+                label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wireguard",url!="none"}) + 1), "endpoint", "wireguard", "node", ".*")
+                * 0 - 1
+              )
+              or
+              (
+                label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="tor",url!="none"}) + 1), "endpoint", "tor", "node", ".*")
+                * 0 - 1
+              )
+            )
+          '';
+          statusExpr = ''
+            (
+              (
+                (0 * max by(node,endpoint,status,url) (alanix_service_endpoint_active{service="${serviceName}",node!="",url!="none"}) + 1)
+                and on(node) max by(node) (up{job="node",node!=""} == 1)
+              )
+              or
+              label_replace(
                 (
                   (
-                    max by(node,endpoint) (
-                      label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wan",url!="none"}) + 1), "endpoint", "wan", "node", ".*")
-                      * on() group_left() probe_success{job="blackbox-http",endpoint="${serviceName}-wan"}
-                    )
-                    or
-                    max by(node,endpoint) (
-                      label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wan",url!="none"}) + 1), "endpoint", "wan", "node", ".*")
-                      * 0 - 1
-                    )
+                    (0 * max by(node,endpoint,status,url) (alanix_service_endpoint_active{service="${serviceName}",node!="",url!="none"}) + 1)
+                    and on(node) max by(node) (up{job="node",node!=""} == 0)
                   )
                   or
                   (
-                    max by(node,endpoint) (
-                      label_replace(
-                        label_replace(probe_success{job="blackbox-http",endpoint=~"${serviceName}-wg-.*"}, "node", "$1", "endpoint", "${serviceName}-wg-(.*)"),
-                        "endpoint", "wireguard", "endpoint", ".*"
-                      )
-                    )
-                    or
-                    max by(node,endpoint) (
-                      label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wireguard",url!="none"}) + 1), "endpoint", "wireguard", "node", ".*")
-                      * 0 - 1
-                    )
+                    label_replace(label_replace((0 * (${probeExpr}) + 1), "status", "error", "node", ".*"), "url", "none", "node", ".*")
+                    and on(node) max by(node) (up{job="node",node!=""} == 0)
                   )
-                  or
-                  max by(node,endpoint) (
-                    label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="tor",url!="none"}) + 1), "endpoint", "tor", "node", ".*")
-                    * 0 - 1
-                  )
-                ) != 0
+                ),
+                "status", "error", "status", ".*"
               )
+            )
+          '';
+          probeTableExpr = ''
+            max by(node,endpoint,status,url) (
+              (${probeExpr})
               * on(node,endpoint) group_left(status,url)
-              (0 * max by(node,endpoint,status,url) (alanix_service_endpoint_active{service="${serviceName}",node!="",url!="none"}) + 1)
+              (${statusExpr})
             )
           '';
         in
@@ -835,6 +804,7 @@ in
         pkgs.coreutils
         pkgs.glibc.bin
         pkgs.gawk
+        pkgs.dnsutils
         pkgs.systemd
       ];
       script = ''
@@ -914,6 +884,12 @@ in
             public_ip="none"
             if [ -n "$public_host" ]; then
               resolved_ip="$(getent ahostsv4 "$public_host" 2>/dev/null | awk 'NR==1 { print $1 }')"
+              if [ -z "$resolved_ip" ]; then
+                resolved_ip="$(dig +short A "$public_host" @1.1.1.1 2>/dev/null | awk 'NF { print; exit }')"
+              fi
+              if [ -z "$resolved_ip" ]; then
+                resolved_ip="$(dig +short A "$public_host" 2>/dev/null | awk 'NF { print; exit }')"
+              fi
               if [ -n "$resolved_ip" ]; then
                 public_ip="$resolved_ip"
               fi
