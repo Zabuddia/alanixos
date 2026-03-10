@@ -66,5 +66,6 @@
     htop
     nano
     tree
+    jq
   ];
 }

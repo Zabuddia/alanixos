@@ -1,6 +1,12 @@
 { config, pkgs, ... }:
 
 {
+  home.packages = [
+    (pkgs.writeShellScriptBin "svcaddrs" ''
+      exec /home/buddia/.nixos/scripts/show-service-addresses.sh "$@"
+    '')
+  ];
+
   programs.bash = {
     enable = true;
     initExtra = ''
