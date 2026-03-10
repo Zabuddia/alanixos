@@ -232,9 +232,21 @@ let
           {
             refId = "A";
             expr = ''
-              max by(node,instance,private_ip,public_ip,public_host) (
-                max by(node,instance,private_ip,public_ip,public_host) (alanix_node_reachability_info{node!=""})
-                * on(instance) group_left() max by(instance) (up{job="node"})
+              (
+                max by(node,instance,private_ip,public_host,public_ip) (
+                  max by(node,instance,private_ip,public_host) (up{job="node",node!=""})
+                  * on(node) group_left(public_ip)
+                  max by(node,public_ip) (alanix_node_reachability_info{node!=""})
+                )
+              )
+              or
+              (
+                label_replace(
+                  max by(node,instance,private_ip,public_host) (up{job="node",node!=""}),
+                  "public_ip", "none", "node", ".*"
+                )
+                unless on(node)
+                max by(node) (alanix_node_reachability_info{node!=""})
               )
             '';
             format = "table";

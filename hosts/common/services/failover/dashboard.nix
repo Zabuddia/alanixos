@@ -11,7 +11,7 @@ in
     serviceName = "dashboard";
     serviceUnit = "prometheus.service";
     edgeUnit = "grafana.service";
-    activeDetectionFallbackPort = cluster.services.dashboard.prometheusPort;
+    activeDetectionFallbackPort = cluster.services.dashboard.nodeExporterPort;
     enable = cluster.services.dashboard.enable;
   };
 }
