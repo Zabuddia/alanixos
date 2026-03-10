@@ -1,67 +1,77 @@
-# SOPS Workflow
+# Fresh NixOS + Flake + sops-nix Bootstrap Runbook
 
-This repo uses `sops-nix` with dedicated `age` keys and a generated `.sops.yaml`.
+This is a command-by-command runbook for bringing up a new machine from this
+repo.
 
-The intended model is:
-- Editor keys live on laptops/workstations and are used to edit or rekey secrets.
-- Host keys live only on servers at `/var/lib/sops-nix/key.txt` and are used only for runtime decryption.
-- Server keys are never copied into a user profile just so `sops` can edit files.
+There are two machine types:
+- Runtime host: decrypts at boot using `/var/lib/sops-nix/key.txt`
+- Editor laptop: edits and rekeys secrets using `~/.config/sops/age/keys.txt`
 
-## Source of Truth
+Keep those keys separate. Do not copy a server key into a user `sops` profile
+unless that machine is intentionally also acting as an editor.
 
-These files define the workflow:
-- `secrets/keys.nix`: named editor keys, named host keys, and the creation rules.
-- `secrets/render-sops-config.nix`: renders `.sops.yaml` from `secrets/keys.nix`.
-- `scripts/generate-sops-config.sh`: regenerates `.sops.yaml`.
-- `scripts/update-sops-keys.sh`: regenerates `.sops.yaml` and runs `sops updatekeys` on managed secret files.
+## Common Variables
 
-Use this any time recipients change:
+Set these on whichever machine you are working on:
 
 ```bash
-./scripts/generate-sops-config.sh
-./scripts/update-sops-keys.sh
+export REPO="$HOME/.nixos"
+export GIT_REPO="git@github.com:Zabuddia/alanixos.git"
 ```
 
-If you only want to verify the generated file is current:
+For a new runtime host, also set:
 
 ```bash
-./scripts/generate-sops-config.sh --check
+export HOST="randy-big-nixos"
 ```
 
-## Day-to-Day Rules
-
-1. Keep at least one editor key on a machine you control.
-2. Give each server its own dedicated `age` key.
-3. Only put a host on the rules for secrets that host should decrypt.
-4. After changing recipients, always run `./scripts/update-sops-keys.sh` from a machine that already has an editor key.
-
-The current repo still uses one broad rule for `secrets/*.yaml`. That is fine as a starting point, but the more real-world pattern is to split secrets by scope and narrow the host list per rule as you grow.
-
-## Add an Editor Laptop
-
-Generate a dedicated editor key on the laptop:
+For a new editor laptop, also set:
 
 ```bash
-mkdir -p ~/.config/sops/age
-age-keygen -o ~/.config/sops/age/keys.txt
-chmod 0600 ~/.config/sops/age/keys.txt
-age-keygen -y ~/.config/sops/age/keys.txt
+export EDITOR_NAME="alan-laptop"
 ```
 
-Take the printed `age1...` public key and add it under `editors` in `secrets/keys.nix`, then include that editor name in the appropriate `creationRules`.
+## Runbook A: New Runtime Host
 
-Apply the change:
+### 1. Fresh install
+
+Do this in the NixOS installer/UI:
+1. Install NixOS
+2. Create user `buddia`
+3. Boot the installed system
+4. Connect to the internet
+
+### 2. Install temporary tools on the new host
+
+Run on the new host:
 
 ```bash
-./scripts/generate-sops-config.sh
-./scripts/update-sops-keys.sh
-git add secrets/keys.nix .sops.yaml secrets/secrets.yaml
-git commit -m "Add editor sops recipient"
+nix-shell -p git sops age
 ```
 
-## Add a Server
+### 3. Create SSH key for GitHub
 
-Generate a dedicated runtime key on the server:
+Run on the new host:
+
+```bash
+ssh-keygen -t ed25519 -C "fife.alan@protonmail.com"
+cat ~/.ssh/id_ed25519.pub
+```
+
+Add the printed key to GitHub -> Settings -> SSH keys.
+
+### 4. Clone the repo
+
+Run on the new host:
+
+```bash
+git clone "$GIT_REPO" "$REPO"
+cd "$REPO"
+```
+
+### 5. Create the host runtime key
+
+Run on the new host:
 
 ```bash
 sudo mkdir -p /var/lib/sops-nix
@@ -71,59 +81,216 @@ sudo chown root:root /var/lib/sops-nix/key.txt
 sudo age-keygen -y /var/lib/sops-nix/key.txt
 ```
 
-Take the printed `age1...` public key and add it under `hosts` in `secrets/keys.nix`, then add that host name to the right `creationRules`.
+Copy the printed `age1...` public key.
 
-From an editor machine that can already decrypt secrets:
+### 6. Add the host key to the repo inventory
+
+Run on an existing machine that can already decrypt secrets:
 
 ```bash
+cd "$REPO"
+nano secrets/keys.nix
+```
+
+Add the new public key under `hosts` and make sure the correct
+`creationRules` entry includes `"$HOST"`.
+
+Example shape:
+
+```nix
+hosts = {
+  randy-big-nixos = {
+    recipient = "age1...";
+    description = "Root-only runtime key stored at /var/lib/sops-nix/key.txt.";
+  };
+};
+
+creationRules = [
+  {
+    pathRegex = "^secrets/.*\\.ya?ml$";
+    editors = [ "alan-laptop" ];
+    hosts = [ "randy-big-nixos" "alan-big-nixos" ];
+  }
+];
+```
+
+### 7. Regenerate `.sops.yaml` and rekey the secrets
+
+Run on an existing machine that can already decrypt secrets:
+
+```bash
+cd "$REPO"
 ./scripts/generate-sops-config.sh
 ./scripts/update-sops-keys.sh
 git add secrets/keys.nix .sops.yaml secrets/secrets.yaml
-git commit -m "Add host sops recipient"
+git commit -m "Add $HOST sops recipient"
+git push
 ```
 
-Then deploy the server normally. Do not copy `/var/lib/sops-nix/key.txt` into `~/.config/sops/age/keys.txt`.
+If you do not yet have an editor laptop key, you can temporarily run the rekey
+step on an existing server that already has a working host key:
 
-## Fresh Server Bootstrap
+```bash
+cd "$REPO"
+sudo env SOPS_AGE_KEY_FILE=/var/lib/sops-nix/key.txt ./scripts/update-sops-keys.sh
+```
 
-For a brand-new NixOS machine that needs to join this repo:
+### 8. Pull the updated repo onto the new host
 
-1. Install NixOS and create your user.
-2. Install basic tooling:
+Run on the new host:
+
+```bash
+cd "$REPO"
+git pull
+```
+
+### 9. Copy the hardware config into the repo
+
+Run on the new host:
+
+```bash
+cp /etc/nixos/hardware-configuration.nix "$REPO/hosts/$HOST/hardware-configuration.nix"
+```
+
+### 10. Rebuild
+
+Run on the new host:
+
+```bash
+sudo nixos-rebuild switch --flake "$REPO#$HOST"
+```
+
+### 11. Reboot
+
+Run on the new host:
+
+```bash
+reboot
+```
+
+## Runbook B: New Editor Laptop
+
+### 1. Fresh install
+
+Do this in the NixOS installer/UI:
+1. Install NixOS
+2. Create user `buddia`
+3. Enable networking
+4. Boot the installed system
+
+### 2. Install temporary tools on the laptop
+
+Run on the new laptop:
 
 ```bash
 nix-shell -p git sops age
 ```
 
-3. Clone the repo:
+### 3. Create SSH key for GitHub
+
+Run on the new laptop:
 
 ```bash
-git clone git@github.com:Zabuddia/alanixos.git ~/.nixos
-cd ~/.nixos
+ssh-keygen -t ed25519 -C "fife.alan@protonmail.com"
+cat ~/.ssh/id_ed25519.pub
 ```
 
-4. Generate the host key in `/var/lib/sops-nix/key.txt` as shown above.
-5. Add that public key to `secrets/keys.nix` from an editor machine.
-6. Run `./scripts/update-sops-keys.sh` on the editor machine and push the result.
-7. Pull the updated repo on the new server.
-8. Copy the hardware config into place:
+Add the printed key to GitHub -> Settings -> SSH keys.
+
+### 4. Clone the repo
+
+Run on the new laptop:
 
 ```bash
-cp /etc/nixos/hardware-configuration.nix ~/.nixos/hosts/randy-big-nixos/hardware-configuration.nix
+git clone "$GIT_REPO" "$REPO"
+cd "$REPO"
 ```
 
-9. Rebuild:
+### 5. Create the editor key
+
+Run on the new laptop:
 
 ```bash
-sudo nixos-rebuild switch --flake ~/.nixos#randy-big-nixos
+mkdir -p ~/.config/sops/age
+age-keygen -o ~/.config/sops/age/keys.txt
+chmod 0600 ~/.config/sops/age/keys.txt
+age-keygen -y ~/.config/sops/age/keys.txt
 ```
 
-## Editing Secrets
+Copy the printed `age1...` public key.
 
-Use `sops` from a machine that has an editor private key:
+### 6. Add the editor key to the repo inventory
+
+Run on any machine with the repo checked out:
+
+```bash
+cd "$REPO"
+nano secrets/keys.nix
+```
+
+Add the new public key under `editors` and make sure the correct
+`creationRules` entry includes `"$EDITOR_NAME"`.
+
+Example shape:
+
+```nix
+editors = {
+  alan-laptop = {
+    recipient = "age1...";
+    description = "Editor key kept on alan-laptop in ~/.config/sops/age/keys.txt.";
+  };
+};
+
+creationRules = [
+  {
+    pathRegex = "^secrets/.*\\.ya?ml$";
+    editors = [ "alan-laptop" ];
+    hosts = [ "randy-big-nixos" "alan-big-nixos" ];
+  }
+];
+```
+
+### 7. Rekey the secrets so the laptop can decrypt
+
+Run on an existing machine that can already decrypt secrets:
+
+```bash
+cd "$REPO"
+./scripts/generate-sops-config.sh
+./scripts/update-sops-keys.sh
+git add secrets/keys.nix .sops.yaml secrets/secrets.yaml
+git commit -m "Add $EDITOR_NAME editor key"
+git push
+```
+
+### 8. Pull the updated repo onto the new laptop
+
+Run on the new laptop:
+
+```bash
+cd "$REPO"
+git pull
+./scripts/generate-sops-config.sh --check
+```
+
+### 9. Confirm `sops` can decrypt
+
+Run on the new laptop:
 
 ```bash
 sops secrets/secrets.yaml
 ```
 
-If you later split secrets into files like `secrets/hosts/<host>.yaml` or `secrets/services/<name>.yaml`, add narrower rules in `secrets/keys.nix` and keep host recipients scoped to only what they need.
+## Notes
+
+- `.sops.yaml` is generated from `secrets/keys.nix`. Do not hand-edit
+  `.sops.yaml`.
+- When recipients change, always run:
+
+```bash
+./scripts/generate-sops-config.sh
+./scripts/update-sops-keys.sh
+```
+
+- If you later split secrets by scope, narrow the `creationRules` in
+  `secrets/keys.nix` so each host only gets the secrets it actually needs.
