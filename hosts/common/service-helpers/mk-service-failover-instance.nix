@@ -1,4 +1,4 @@
-{ config, lib, hostname, cluster, serviceName, serviceUnit, edgeUnit ? null, activeDetectionFallbackPort ? null, enable }:
+{ config, lib, hostname, cluster, serviceName, serviceUnit, edgeUnit ? null, activeDetectionFallbackPort ? 22, enable }:
 let
   mkPrioritizedServiceNodes = import ./mk-prioritized-service-nodes.nix;
   svc = builtins.getAttr serviceName cluster.services;

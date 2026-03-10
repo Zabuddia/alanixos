@@ -108,8 +108,9 @@ let
           node_is_active() {
             local ip="$1"
             local target="$2"
-            if ssh_cmd "$target" "${v.unitChecksExpr}" >/dev/null 2>&1; then
-              return 0
+            if ssh_cmd "$target" "true" >/dev/null 2>&1; then
+              ssh_cmd "$target" "${v.unitChecksExpr}" >/dev/null 2>&1
+              return $?
             fi
 
             if [ -n "$FALLBACK_PORT" ]; then
@@ -217,8 +218,9 @@ let
           node_is_active() {
             local ip="$1"
             local target="$2"
-            if ssh_cmd "$target" "${v.unitChecksExpr}" >/dev/null 2>&1; then
-              return 0
+            if ssh_cmd "$target" "true" >/dev/null 2>&1; then
+              ssh_cmd "$target" "${v.unitChecksExpr}" >/dev/null 2>&1
+              return $?
             fi
 
             if [ -n "$FALLBACK_PORT" ]; then
