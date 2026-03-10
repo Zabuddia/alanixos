@@ -5,6 +5,21 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 "${repo_root}/scripts/generate-sops-config.sh"
 
+list_sops_files() {
+  if command -v rg >/dev/null 2>&1; then
+    rg -l '^sops:' "${repo_root}/secrets" -g '*.yaml' -g '*.yml' | sort
+    return
+  fi
+
+  find "${repo_root}/secrets" -type f \( -name '*.yaml' -o -name '*.yml' \) -print0 \
+    | while IFS= read -r -d '' path; do
+        if grep -q '^sops:' "$path"; then
+          printf '%s\n' "$path"
+        fi
+      done \
+    | sort
+}
+
 files=()
 if [ "$#" -gt 0 ]; then
   for path in "$@"; do
@@ -17,7 +32,7 @@ if [ "$#" -gt 0 ]; then
 else
   while IFS= read -r path; do
     files+=("$path")
-  done < <(rg -l '^sops:' "${repo_root}/secrets" -g '*.yaml' -g '*.yml' | sort)
+  done < <(list_sops_files)
 fi
 
 if [ "${#files[@]}" -eq 0 ]; then
