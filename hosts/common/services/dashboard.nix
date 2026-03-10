@@ -72,7 +72,7 @@ in
     openFirewall = false;
     adminUser = cluster.services.dashboard.adminUser;
     adminPasswordSecret = cluster.services.dashboard.adminPasswordSecret;
-    prometheusListenAddress = "127.0.0.1";
+    prometheusListenAddress = cluster.nodes.${hostname}.vpnIP;
     prometheusPort = cluster.services.dashboard.prometheusPort;
     blackboxPort = cluster.services.dashboard.blackboxPort;
     nodeExporterListenAddress = cluster.nodes.${hostname}.vpnIP;

@@ -1,4 +1,4 @@
-{ config, lib, hostname, cluster, serviceName, serviceUnit, edgeUnit ? null, enable }:
+{ config, lib, hostname, cluster, serviceName, serviceUnit, edgeUnit ? null, activeDetectionFallbackPort ? null, enable }:
 let
   mkPrioritizedServiceNodes = import ./mk-prioritized-service-nodes.nix;
   svc = builtins.getAttr serviceName cluster.services;
@@ -11,6 +11,7 @@ in
   inherit enable nodes;
   nodeName = hostname;
   inherit serviceUnit edgeUnit;
+  inherit activeDetectionFallbackPort;
   requireServiceEnableOptionPath = [ "alanix" serviceName "enable" ];
 
   checkInterval = "15s";

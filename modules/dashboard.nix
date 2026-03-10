@@ -231,7 +231,19 @@ let
         targets = [
           {
             refId = "A";
-            expr = "max by(node,instance,private_ip,public_ip,public_host) (((max by(node,instance,private_ip,public_ip,public_host) (alanix_node_reachability_info{node!=\"\"}) * on(instance) group_left() max by(instance) (up{instance=~\".*:9100\"})) or (0 * max by(node,instance,private_ip,public_ip,public_host) (alanix_node_reachability_info{node!=\"\"}))))";
+            expr = ''
+              max by(node,instance,private_ip,public_ip,public_host) (
+                (
+                  max by(node,instance,private_ip,public_ip,public_host) (alanix_node_reachability_info{node!=""})
+                  * on(instance) group_left() max by(instance) (up{job="node",node!=""})
+                )
+                or
+                label_replace(
+                  max by(node,instance,private_ip,public_host) (up{job="node",node!=""}),
+                  "public_ip", "none", "instance", ".*"
+                )
+              )
+            '';
             format = "table";
             instant = true;
           }
@@ -315,36 +327,80 @@ let
           probeTableExpr = ''
             max by(node,endpoint,status,url) (
               (
+                label_replace(
+                  (
+                    (
+                      (
+                        max by(node,endpoint) (
+                          label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wan",url!="none"}) + 1), "endpoint", "wan", "node", ".*")
+                          * on() group_left() probe_success{job="blackbox-http",endpoint="${serviceName}-wan"}
+                        )
+                        or
+                        max by(node,endpoint) (
+                          label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wan",url!="none"}) + 1), "endpoint", "wan", "node", ".*")
+                          * 0 - 1
+                        )
+                      )
+                      or
+                      (
+                        max by(node,endpoint) (
+                          label_replace(
+                            label_replace(probe_success{job="blackbox-http",endpoint=~"${serviceName}-wg-.*"}, "node", "$1", "endpoint", "${serviceName}-wg-(.*)"),
+                            "endpoint", "wireguard", "endpoint", ".*"
+                          )
+                        )
+                        or
+                        max by(node,endpoint) (
+                          label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wireguard",url!="none"}) + 1), "endpoint", "wireguard", "node", ".*")
+                          * 0 - 1
+                        )
+                      )
+                      or
+                      max by(node,endpoint) (
+                        label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="tor",url!="none"}) + 1), "endpoint", "tor", "node", ".*")
+                        * 0 - 1
+                      )
+                    ) == 0
+                  )
+                  * on(node,endpoint) group_left(status,url)
+                  (0 * max by(node,endpoint,status,url) (alanix_service_endpoint_active{service="${serviceName}",node!="",url!="none"}) + 1),
+                  "status", "error", "status", ".*"
+                )
+              )
+              or
+              (
                 (
-                  max by(node,endpoint) (
-                    label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wan",url!="none"}) + 1), "endpoint", "wan", "node", ".*")
-                    * on() group_left() probe_success{job="blackbox-http",endpoint="${serviceName}-wan"}
+                  (
+                    max by(node,endpoint) (
+                      label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wan",url!="none"}) + 1), "endpoint", "wan", "node", ".*")
+                      * on() group_left() probe_success{job="blackbox-http",endpoint="${serviceName}-wan"}
+                    )
+                    or
+                    max by(node,endpoint) (
+                      label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wan",url!="none"}) + 1), "endpoint", "wan", "node", ".*")
+                      * 0 - 1
+                    )
                   )
                   or
-                  max by(node,endpoint) (
-                    label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wan",url!="none"}) + 1), "endpoint", "wan", "node", ".*")
-                    * 0 - 1
-                  )
-                )
-                or
-                (
-                  max by(node,endpoint) (
-                    label_replace(
-                      label_replace(probe_success{job="blackbox-http",endpoint=~"${serviceName}-wg-.*"}, "node", "$1", "endpoint", "${serviceName}-wg-(.*)"),
-                      "endpoint", "wireguard", "endpoint", ".*"
+                  (
+                    max by(node,endpoint) (
+                      label_replace(
+                        label_replace(probe_success{job="blackbox-http",endpoint=~"${serviceName}-wg-.*"}, "node", "$1", "endpoint", "${serviceName}-wg-(.*)"),
+                        "endpoint", "wireguard", "endpoint", ".*"
+                      )
+                    )
+                    or
+                    max by(node,endpoint) (
+                      label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wireguard",url!="none"}) + 1), "endpoint", "wireguard", "node", ".*")
+                      * 0 - 1
                     )
                   )
                   or
                   max by(node,endpoint) (
-                    label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wireguard",url!="none"}) + 1), "endpoint", "wireguard", "node", ".*")
+                    label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="tor",url!="none"}) + 1), "endpoint", "tor", "node", ".*")
                     * 0 - 1
                   )
-                )
-                or
-                max by(node,endpoint) (
-                  label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="tor",url!="none"}) + 1), "endpoint", "tor", "node", ".*")
-                  * 0 - 1
-                )
+                ) != 0
               )
               * on(node,endpoint) group_left(status,url)
               (0 * max by(node,endpoint,status,url) (alanix_service_endpoint_active{service="${serviceName}",node!="",url!="none"}) + 1)
@@ -465,6 +521,10 @@ let
                           standby = {
                             text = "standby";
                             color = "orange";
+                          };
+                          error = {
+                            text = "error";
+                            color = "red";
                           };
                         };
                       }
@@ -754,7 +814,9 @@ in
     networking.firewall = lib.mkMerge [
       (serviceAccess.mkAccessFirewallConfig { inherit cfg; })
       {
-        interfaces.${cfg.nodeExporterInterface}.allowedTCPPorts = [ cfg.nodeExporterPort ];
+        interfaces.${cfg.nodeExporterInterface}.allowedTCPPorts =
+          [ cfg.nodeExporterPort ]
+          ++ lib.optional (cfg.prometheusListenAddress != "127.0.0.1" && cfg.prometheusListenAddress != "::1") cfg.prometheusPort;
       }
     ];
 
@@ -977,7 +1039,11 @@ in
             job_name = "node";
             static_configs = map (scrapeTarget: {
               targets = [ scrapeTarget.target ];
-              labels.node = scrapeTarget.node;
+              labels = {
+                node = scrapeTarget.node;
+                private_ip = scrapeTarget.privateIp;
+                public_host = if scrapeTarget.publicHost != null then scrapeTarget.publicHost else "none";
+              };
             }) cfg.scrapeTargets;
           }
         ]
