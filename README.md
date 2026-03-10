@@ -292,34 +292,6 @@ sops secrets/secrets.yaml
 ./scripts/update-sops-keys.sh
 ```
 
-- To deploy from your laptop in the secure-node-friendly way:
-  Commit your changes first. The deploy script pushes git, SSHes into each
-  host, pulls the branch there, then runs `doas nixos-rebuild` if available or
-  falls back to `sudo nixos-rebuild`.
-
-```bash
-git add .
-git commit -m "Describe change"
-./scripts/deploy-hosts.sh randy-big-nixos
-```
-
-- To deploy more than one host:
-
-```bash
-./scripts/deploy-hosts.sh randy-big-nixos alan-big-nixos
-```
-
-- To dry-run the rebuild on remote hosts:
-
-```bash
-./scripts/deploy-hosts.sh --action dry-activate randy-big-nixos
-```
-
-- To skip the initial `git push` and deploy whatever branch state is already on
-  the remote:
-
-```bash
-./scripts/deploy-hosts.sh --no-push randy-big-nixos
 ```
 
 - Server hosts explicitly disable idle suspend and sleep in
