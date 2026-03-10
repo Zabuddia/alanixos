@@ -79,9 +79,10 @@ in
     nodeExporterPort = cluster.services.dashboard.nodeExporterPort;
     nodeExporterInterface = cluster.services.dashboard.nodeExporterInterface;
     metricsInterval = cluster.services.dashboard.metricsInterval;
-    scrapeTargets = lib.mapAttrsToList (_: node:
-      "${node.vpnIP}:${toString cluster.services.dashboard.nodeExporterPort}"
-    ) cluster.nodes;
+    scrapeTargets = lib.mapAttrsToList (nodeName: node: {
+      target = "${node.vpnIP}:${toString cluster.services.dashboard.nodeExporterPort}";
+      node = nodeName;
+    }) cluster.nodes;
     inherit endpointChecks;
     inherit serviceDirectory;
 

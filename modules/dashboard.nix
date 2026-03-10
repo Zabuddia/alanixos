@@ -214,6 +214,88 @@ let
           overrides = [ ];
         };
       }
+      {
+        id = 7;
+        type = "table";
+        title = "Node Reachability";
+        datasource = {
+          type = "prometheus";
+          uid = "prometheus";
+        };
+        gridPos = {
+          h = 7;
+          w = 24;
+          x = 0;
+          y = 24;
+        };
+        targets = [
+          {
+            refId = "A";
+            expr = "up{job=\"node\"}";
+            format = "table";
+            instant = true;
+          }
+        ];
+        transformations = [
+          {
+            id = "organize";
+            options = {
+              excludeByName = {
+                Time = true;
+                __name__ = true;
+                job = true;
+              };
+              indexByName = {
+                node = 0;
+                instance = 1;
+                Value = 2;
+              };
+              renameByName = {
+                node = "Node";
+                instance = "Target";
+                Value = "Reachable";
+              };
+            };
+          }
+        ];
+        fieldConfig = {
+          defaults = { };
+          overrides = [
+            {
+              matcher = {
+                id = "byName";
+                options = "Reachable";
+              };
+              properties = [
+                {
+                  id = "mappings";
+                  value = [
+                    {
+                      type = "value";
+                      options = {
+                        "0" = {
+                          text = "offline";
+                          color = "red";
+                        };
+                        "1" = {
+                          text = "online";
+                          color = "green";
+                        };
+                      };
+                    }
+                  ];
+                }
+                {
+                  id = "custom.cellOptions";
+                  value = {
+                    type = "color-background";
+                  };
+                }
+              ];
+            }
+          ];
+        };
+      }
     ];
   };
 
@@ -241,7 +323,7 @@ let
           targets = [
             {
               refId = "B";
-              expr = "max by(node,endpoint,status,url,icon) (alanix_service_endpoint_active{service=\"${serviceName}\",url!=\"none\"})";
+              expr = "max by(node,endpoint,status,url) (alanix_service_endpoint_active{service=\"${serviceName}\",url!=\"none\"})";
               format = "table";
               instant = true;
             }
@@ -257,14 +339,12 @@ let
                   __name__ = true;
                 };
                 indexByName = {
-                  icon = 0;
-                  node = 1;
-                  endpoint = 2;
-                  status = 3;
-                  url = 4;
+                  node = 0;
+                  endpoint = 1;
+                  status = 2;
+                  url = 3;
                 };
                 renameByName = {
-                  icon = "Icon";
                   node = "Node";
                   endpoint = "Endpoint";
                   status = "Status";
@@ -276,20 +356,6 @@ let
           fieldConfig = {
             defaults = { };
             overrides = [
-              {
-                matcher = {
-                  id = "byName";
-                  options = "icon";
-                };
-                properties = [
-                  {
-                    id = "custom.cellOptions";
-                    value = {
-                      type = "image";
-                    };
-                  }
-                ];
-              }
               {
                 matcher = {
                   id = "byName";
@@ -488,9 +554,14 @@ in
     };
 
     scrapeTargets = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
+      type = lib.types.listOf (lib.types.submodule {
+        options = {
+          target = lib.mkOption { type = lib.types.str; };
+          node = lib.mkOption { type = lib.types.str; };
+        };
+      });
       default = [ ];
-      description = "Prometheus scrape targets for node_exporter endpoints (host:port).";
+      description = "Prometheus scrape targets for node_exporter endpoints with node labels.";
     };
 
     endpointChecks = lib.mkOption {
@@ -639,24 +710,18 @@ in
           local endpoint="$3"
           local status="$4"
           local url="$5"
-          local icon="$6"
-          local active="$7"
+          local active="$6"
 
           if [ -z "$url" ]; then
             url="none"
           fi
 
-          if [ -z "$icon" ]; then
-            icon="none"
-          fi
-
-          printf 'alanix_service_endpoint_active{service="%s",node="%s",endpoint="%s",status="%s",url="%s",icon="%s"} %s\n' \
+          printf 'alanix_service_endpoint_active{service="%s",node="%s",endpoint="%s",status="%s",url="%s"} %s\n' \
             "$(esc_label "$service")" \
             "$(esc_label "$node")" \
             "$(esc_label "$endpoint")" \
             "$(esc_label "$status")" \
             "$(esc_label "$url")" \
-            "$(esc_label "$icon")" \
             "$active"
         }
 
@@ -734,22 +799,9 @@ in
               fi
             fi
 
-            preferred_icon_base=""
-            if [ -n "$wan_url" ]; then
-              preferred_icon_base="$wan_url"
-            elif [ -n "$wg_url" ]; then
-              preferred_icon_base="$wg_url"
-            elif [ -n "$tor_url" ]; then
-              preferred_icon_base="$tor_url"
-            fi
-            preferred_icon=""
-            if [ -n "$preferred_icon_base" ]; then
-              preferred_icon="''${preferred_icon_base%/}/favicon.ico"
-            fi
-
-            emit_endpoint_metric "$service_name" "$node_name" "wan" "$role_status" "$wan_url" "$preferred_icon" "$role_active"
-            emit_endpoint_metric "$service_name" "$node_name" "wireguard" "$role_status" "$wg_url" "$preferred_icon" "$role_active"
-            emit_endpoint_metric "$service_name" "$node_name" "tor" "$role_status" "$tor_url" "$preferred_icon" "$role_active"
+            emit_endpoint_metric "$service_name" "$node_name" "wan" "$role_status" "$wan_url" "$role_active"
+            emit_endpoint_metric "$service_name" "$node_name" "wireguard" "$role_status" "$wg_url" "$role_active"
+            emit_endpoint_metric "$service_name" "$node_name" "tor" "$role_status" "$tor_url" "$role_active"
           done
 
           printf '# HELP alanix_backup_last_success_seconds Last successful backup completion time (Unix seconds).\n'
@@ -796,7 +848,10 @@ in
         [
           {
             job_name = "node";
-            static_configs = [ { targets = cfg.scrapeTargets; } ];
+            static_configs = map (scrapeTarget: {
+              targets = [ scrapeTarget.target ];
+              labels.node = scrapeTarget.node;
+            }) cfg.scrapeTargets;
           }
         ]
         ++ lib.optional (cfg.endpointChecks != [ ]) blackboxScrapeConfig;
