@@ -878,12 +878,6 @@ in
             public_ip="none"
             if [ -n "$public_host" ]; then
               resolved_ip="$(getent ahostsv4 "$public_host" 2>/dev/null | awk 'NR==1 { print $1 }')"
-              if [ -z "$resolved_ip" ]; then
-                resolved_ip="$(dig +short A "$public_host" @1.1.1.1 2>/dev/null | awk 'NF { print; exit }')"
-              fi
-              if [ -z "$resolved_ip" ]; then
-                resolved_ip="$(dig +short A "$public_host" 2>/dev/null | awk 'NF { print; exit }')"
-              fi
               if [ -n "$resolved_ip" ]; then
                 public_ip="$resolved_ip"
               fi

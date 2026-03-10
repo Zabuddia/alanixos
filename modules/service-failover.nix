@@ -140,8 +140,8 @@ let
             fi
           done
 
-          echo "No active remote node detected for ${v.name} sync" >&2
-          exit 1
+          echo "No active remote node detected for ${v.name} sync; skipping" >&2
+          exit 0
         '';
       };
     }
@@ -371,8 +371,8 @@ let
           fi
 
           if [ "$sync_result" -eq 2 ]; then
-            echo "${v.name} failover: refusing takeover because sync from current active node failed" >&2
-            return 1
+            echo "${v.name} failover: sync from current active node failed; continuing takeover to avoid prolonged standby" >&2
+            return 0
           fi
 
           return 0

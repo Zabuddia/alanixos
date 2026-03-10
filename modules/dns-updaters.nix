@@ -142,11 +142,27 @@ in
                 API="https://api.cloudflare.com/client/v4"
                 AUTH=(-H "Authorization: Bearer $API_TOKEN" -H "Content-Type: application/json")
 
-                ZONE_ID="$(curl_retry "''${AUTH[@]}" "$API/zones?name=$ZONE" | jq -er '.result[0].id')"
+                ZONE_JSON="$(curl_retry "''${AUTH[@]}" "$API/zones?name=$ZONE" || true)"
+                ZONE_ID="$(printf '%s' "$ZONE_JSON" | jq -er '.result[0].id' 2>/dev/null || true)"
+                if [ -z "$ZONE_ID" ]; then
+                  echo "DNS updater: could not resolve Cloudflare zone id for '$ZONE'; skipping this run" >&2
+                  exit 0
+                fi
 
                 for RECORD in "''${RECORDS[@]}"; do
-                  RECORDS_JSON="$(curl_retry "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records?type=A&name=$RECORD" | jq -c '.result')"
+                  RECORDS_JSON="$(curl_retry "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records?type=A&name=$RECORD" | jq -c '.result' 2>/dev/null || true)"
+                  if [ -z "$RECORDS_JSON" ]; then
+                    echo "DNS updater: could not query existing record set for '$RECORD'; skipping record" >&2
+                    continue
+                  fi
+
                   RECORD_COUNT="$(printf '%s' "$RECORDS_JSON" | jq -r 'length')"
+                  case "$RECORD_COUNT" in
+                    ""|*[!0-9]*)
+                      echo "DNS updater: invalid record count for '$RECORD'; skipping record" >&2
+                      continue
+                      ;;
+                  esac
 
                   BODY="$(jq -n \
                     --arg type "A" \
@@ -157,18 +173,28 @@ in
                     '{type: $type, name: $name, content: $content, ttl: $ttl, proxied: $proxied}')"
 
                   if [ "$RECORD_COUNT" = "0" ]; then
-                    curl_retry -X POST "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records" --data "$BODY" >/dev/null
+                    if ! curl_retry -X POST "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records" --data "$BODY" >/dev/null; then
+                      echo "DNS updater: failed to create record '$RECORD'; skipping record" >&2
+                    fi
                     continue
                   fi
 
-                  RECORD_ID="$(printf '%s' "$RECORDS_JSON" | jq -er '.[0].id')"
-                  curl_retry -X PATCH "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records/$RECORD_ID" --data "$BODY" >/dev/null
+                  RECORD_ID="$(printf '%s' "$RECORDS_JSON" | jq -er '.[0].id' 2>/dev/null || true)"
+                  if [ -z "$RECORD_ID" ]; then
+                    echo "DNS updater: failed to parse record id for '$RECORD'; skipping record" >&2
+                    continue
+                  fi
+
+                  if ! curl_retry -X PATCH "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records/$RECORD_ID" --data "$BODY" >/dev/null; then
+                    echo "DNS updater: failed to update record '$RECORD'; skipping record" >&2
+                    continue
+                  fi
 
                   # Keep exactly one A record per name to avoid split DNS answers.
                   if [ "$RECORD_COUNT" -gt 1 ]; then
                     while IFS= read -r EXTRA_ID; do
                       [ -n "$EXTRA_ID" ] || continue
-                      curl_retry -X DELETE "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records/$EXTRA_ID" >/dev/null
+                      curl_retry -X DELETE "''${AUTH[@]}" "$API/zones/$ZONE_ID/dns_records/$EXTRA_ID" >/dev/null || true
                     done < <(printf '%s' "$RECORDS_JSON" | jq -r '.[1:][]?.id')
                   fi
                 done
