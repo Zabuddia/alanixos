@@ -37,6 +37,13 @@
         wireguardPublicKey = "YD/m4D7uTGFnWBEACTkc7MnY7yG0yvRVAEJKqOQ91UE=";
         wireguardEndpointHost = "randy-big-nixos-wg.fifefin.com";
       };
+
+      alan-node-nixos = {
+        vpnIP = "10.100.0.3";
+        priority = 30;
+        wireguardPublicKey = "h1BHaYvuyK54GGL5eIKOjYaG1+dgxyMuqWVVJ0S2mRM=";
+        wireguardEndpointHost = "alan-node-nixos-wg.fifefin.com";
+      };
     };
 
     services.filebrowser = {

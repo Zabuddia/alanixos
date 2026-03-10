@@ -65,6 +65,17 @@
           disko = false;
         };
       };
+      alan-node-nixos = mkHost {
+        hostname = "alan-node-nixos";
+        system = "x86_64-linux";
+
+        features = {
+          home-manager = true;
+          sops = true;
+          nix-bitcoin = false;
+          disko = false;
+        };
+      };
     };
   };
 }
