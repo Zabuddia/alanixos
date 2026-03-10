@@ -322,5 +322,9 @@ git commit -m "Describe change"
 ./scripts/deploy-hosts.sh --no-push randy-big-nixos
 ```
 
+- Server hosts explicitly disable idle suspend and sleep in
+  `hosts/common/core/server-power.nix` so a graphical session cannot suspend a
+  machine that is meant to stay online.
+
 - If you later split secrets by scope, narrow the `creationRules` in
   `secrets/keys.nix` so each host only gets the secrets it actually needs.

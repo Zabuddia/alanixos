@@ -230,5 +230,5 @@ EOF
 for host in "${hosts[@]}"; do
   ssh_target="${ssh_targets[$host]:-${default_user}@${host}}"
   echo "Deploying ${host} via ${ssh_target}"
-  ssh "$ssh_target" bash -s -- "$remote_repo" "$branch" "$host" "$action" <<<"$remote_script"
+  ssh -tt "$ssh_target" bash -s -- "$remote_repo" "$branch" "$host" "$action" <<<"$remote_script"
 done
