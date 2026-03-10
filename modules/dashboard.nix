@@ -877,7 +877,10 @@ in
 
             public_ip="none"
             if [ -n "$public_host" ]; then
-              resolved_ip="$(getent ahostsv4 "$public_host" 2>/dev/null | awk 'NR==1 { print $1 }')"
+              resolved_ip=""
+              if command -v getent >/dev/null 2>&1; then
+                resolved_ip="$(getent ahostsv4 "$public_host" 2>/dev/null | awk 'NR==1 { print $1 }' || true)"
+              fi
               if [ -n "$resolved_ip" ]; then
                 public_ip="$resolved_ip"
               fi
