@@ -1,7 +1,5 @@
 { config, ... }:
 {
-  nix.settings.trusted-users = [ "root" "buddia" ];
-
   users.mutableUsers = false;
 
   users.users.buddia = {

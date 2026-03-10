@@ -418,6 +418,13 @@ in
       ];
     };
 
+    # Keep local PostgreSQL stopped on standby when this node is not active.
+    systemd.services.postgresql.wantedBy =
+      lib.mkIf (!cfg.active && cfg.database.createLocally) (lib.mkForce []);
+
+    systemd.services.postgresql-setup.wantedBy =
+      lib.mkIf (!cfg.active && cfg.database.createLocally) (lib.mkForce []);
+
     systemd.services.immich-machine-learning = lib.mkIf cfg.machineLearning.enable {
       partOf = [ "immich-server.service" ];
       wantedBy = lib.mkIf (!cfg.active) (lib.mkForce []);

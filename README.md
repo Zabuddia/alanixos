@@ -292,9 +292,14 @@ sops secrets/secrets.yaml
 ./scripts/update-sops-keys.sh
 ```
 
-- To deploy a host directly from your laptop without logging into it first:
+- To deploy from your laptop in the secure-node-friendly way:
+  Commit your changes first. The deploy script pushes git, SSHes into each
+  host, pulls the branch there, then runs `doas nixos-rebuild` if available or
+  falls back to `sudo nixos-rebuild`.
 
 ```bash
+git add .
+git commit -m "Describe change"
 ./scripts/deploy-hosts.sh randy-big-nixos
 ```
 
@@ -304,10 +309,17 @@ sops secrets/secrets.yaml
 ./scripts/deploy-hosts.sh randy-big-nixos alan-big-nixos
 ```
 
-- If your laptop is weak or you want the server to do its own build:
+- To dry-run the rebuild on remote hosts:
 
 ```bash
-./scripts/deploy-hosts.sh --build-on-target randy-big-nixos
+./scripts/deploy-hosts.sh --action dry-activate randy-big-nixos
+```
+
+- To skip the initial `git push` and deploy whatever branch state is already on
+  the remote:
+
+```bash
+./scripts/deploy-hosts.sh --no-push randy-big-nixos
 ```
 
 - If you later split secrets by scope, narrow the `creationRules` in
