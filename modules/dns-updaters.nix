@@ -103,15 +103,14 @@ in
           description = "DNS updater job '${name}'";
           after = [ "network-online.target" "sops-install-secrets.service" ];
           wants = [ "network-online.target" "sops-install-secrets.service" ];
-          serviceConfig =
-            {
-              Type = "oneshot";
-              User = "root";
-              Group = "root";
-            }
-            // lib.optionalAttrs (updater.runOnlyWhenPathExists != null) {
-              ConditionPathExists = updater.runOnlyWhenPathExists;
-            };
+          unitConfig = lib.optionalAttrs (updater.runOnlyWhenPathExists != null) {
+            ConditionPathExists = updater.runOnlyWhenPathExists;
+          };
+          serviceConfig = {
+            Type = "oneshot";
+            User = "root";
+            Group = "root";
+          };
           path = [ pkgs.curl pkgs.jq pkgs.coreutils ];
           script = ''
             set -euo pipefail
