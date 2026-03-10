@@ -58,7 +58,7 @@ let
           h = 8;
           w = 12;
           x = 0;
-          y = 0;
+          y = 7;
         };
         targets = [
           {
@@ -88,7 +88,7 @@ let
           h = 8;
           w = 12;
           x = 12;
-          y = 0;
+          y = 7;
         };
         targets = [
           {
@@ -118,7 +118,7 @@ let
           h = 8;
           w = 12;
           x = 0;
-          y = 8;
+          y = 15;
         };
         targets = [
           {
@@ -148,7 +148,7 @@ let
           h = 8;
           w = 12;
           x = 12;
-          y = 8;
+          y = 15;
         };
         targets = [
           {
@@ -174,7 +174,7 @@ let
           h = 8;
           w = 12;
           x = 0;
-          y = 16;
+          y = 23;
         };
         targets = [
           {
@@ -200,7 +200,7 @@ let
           h = 8;
           w = 12;
           x = 12;
-          y = 16;
+          y = 23;
         };
         targets = [
           {
@@ -226,12 +226,12 @@ let
           h = 7;
           w = 24;
           x = 0;
-          y = 24;
+          y = 0;
         };
         targets = [
           {
             refId = "A";
-            expr = "up{job=\"node\"}";
+            expr = "max by(node,instance) (up{job=\"node\",node!=\"\"})";
             format = "table";
             instant = true;
           }
@@ -301,116 +301,202 @@ let
 
   serviceTilePanels =
     let
-      mkTile = idx: entry:
+      mkPanels = idx: entry:
         let
           x = (idx - (builtins.div idx 2) * 2) * 12;
-          y = (builtins.div idx 2) * 10;
+          y = (builtins.div idx 2) * 11;
           serviceName = entry.service;
+          wanExpr =
+            if entry.wanUrl != null then
+              "max(probe_success{job=\"blackbox-http\",endpoint=\"${serviceName}-wan\"})"
+            else
+              "vector(-1)";
         in
-        {
-          id = 100 + idx;
-          type = "table";
-          title = "Service: ${serviceName}";
-          datasource = {
-            type = "prometheus";
-            uid = "prometheus";
-          };
-          gridPos = {
-            h = 10;
-            w = 12;
-            inherit x y;
-          };
-          targets = [
-            {
-              refId = "B";
-              expr = "max by(node,endpoint,status,url) (alanix_service_endpoint_active{service=\"${serviceName}\",url!=\"none\"})";
-              format = "table";
-              instant = true;
-            }
-          ];
-          transformations = [
-            {
-              id = "organize";
-              options = {
-                excludeByName = {
-                  Time = true;
-                  Value = true;
-                  service = true;
-                  __name__ = true;
-                };
-                indexByName = {
-                  node = 0;
-                  endpoint = 1;
-                  status = 2;
-                  url = 3;
-                };
-                renameByName = {
-                  node = "Node";
-                  endpoint = "Endpoint";
-                  status = "Status";
-                  url = "URL";
-                };
-              };
-            }
-          ];
-          fieldConfig = {
-            defaults = { };
-            overrides = [
+        [
+          {
+            id = 1000 + idx;
+            type = "stat";
+            title = "Service: ${serviceName} WAN";
+            datasource = {
+              type = "prometheus";
+              uid = "prometheus";
+            };
+            gridPos = {
+              h = 2;
+              w = 12;
+              inherit x y;
+            };
+            targets = [
               {
-                matcher = {
-                  id = "byName";
-                  options = "status";
-                };
-                properties = [
-                  {
-                    id = "mappings";
-                    value = [
-                      {
-                        type = "value";
-                        options = {
-                          active = {
-                            text = "active";
-                            color = "green";
-                          };
-                          standby = {
-                            text = "standby";
-                            color = "orange";
-                          };
-                        };
-                      }
-                    ];
-                  }
-                  {
-                    id = "custom.cellOptions";
-                    value = {
-                      type = "color-background";
-                    };
-                  }
-                ];
-              }
-              {
-                matcher = {
-                  id = "byName";
-                  options = "url";
-                };
-                properties = [
-                  {
-                    id = "links";
-                    value = [
-                      {
-                        title = "Open";
-                        url = "\${__value.raw}";
-                        targetBlank = true;
-                      }
-                    ];
-                  }
-                ];
+                refId = "A";
+                expr = wanExpr;
+                instant = true;
               }
             ];
-          };
-        };
+            fieldConfig = {
+              defaults = {
+                min = -1;
+                max = 1;
+                decimals = 0;
+              };
+              overrides = [
+                {
+                  matcher = {
+                    id = "byName";
+                    options = "Value";
+                  };
+                  properties = [
+                    {
+                      id = "mappings";
+                      value = [
+                        {
+                          type = "value";
+                          options = {
+                            "-1" = {
+                              text = "no wan";
+                              color = "gray";
+                            };
+                            "0" = {
+                              text = "down";
+                              color = "red";
+                            };
+                            "1" = {
+                              text = "up";
+                              color = "green";
+                            };
+                          };
+                        }
+                      ];
+                    }
+                    {
+                      id = "color";
+                      value = {
+                        mode = "thresholds";
+                      };
+                    }
+                  ];
+                }
+              ];
+            };
+            options = {
+              colorMode = "background";
+              graphMode = "none";
+              justifyMode = "auto";
+              orientation = "horizontal";
+              reduceOptions = {
+                calcs = [ "lastNotNull" ];
+                fields = "";
+                values = false;
+              };
+              textMode = "auto";
+            };
+          }
+          {
+            id = 2000 + idx;
+            type = "table";
+            title = "Service: ${serviceName}";
+            datasource = {
+              type = "prometheus";
+              uid = "prometheus";
+            };
+            gridPos = {
+              h = 9;
+              w = 12;
+              x = x;
+              y = y + 2;
+            };
+            targets = [
+              {
+                refId = "B";
+                expr = "max by(node,endpoint,status,url) (alanix_service_endpoint_active{service=\"${serviceName}\",url!=\"none\"})";
+                format = "table";
+                instant = true;
+              }
+            ];
+            transformations = [
+              {
+                id = "organize";
+                options = {
+                  excludeByName = {
+                    Time = true;
+                    Value = true;
+                    service = true;
+                    __name__ = true;
+                  };
+                  indexByName = {
+                    node = 0;
+                    endpoint = 1;
+                    status = 2;
+                    url = 3;
+                  };
+                  renameByName = {
+                    node = "Node";
+                    endpoint = "Endpoint";
+                    status = "Status";
+                    url = "URL";
+                  };
+                };
+              }
+            ];
+            fieldConfig = {
+              defaults = { };
+              overrides = [
+                {
+                  matcher = {
+                    id = "byName";
+                    options = "status";
+                  };
+                  properties = [
+                    {
+                      id = "mappings";
+                      value = [
+                        {
+                          type = "value";
+                          options = {
+                            active = {
+                              text = "active";
+                              color = "green";
+                            };
+                            standby = {
+                              text = "standby";
+                              color = "orange";
+                            };
+                          };
+                        }
+                      ];
+                    }
+                    {
+                      id = "custom.cellOptions";
+                      value = {
+                        type = "color-background";
+                      };
+                    }
+                  ];
+                }
+                {
+                  matcher = {
+                    id = "byName";
+                    options = "url";
+                  };
+                  properties = [
+                    {
+                      id = "links";
+                      value = [
+                        {
+                          title = "Open";
+                          url = "\${__value.raw}";
+                          targetBlank = true;
+                        }
+                      ];
+                    }
+                  ];
+                }
+              ];
+            };
+          }
+        ];
     in
-    lib.imap0 mkTile cfg.serviceDirectory;
+    lib.concatLists (lib.imap0 mkPanels cfg.serviceDirectory);
 
   serviceStatsDashboard = {
     id = null;
