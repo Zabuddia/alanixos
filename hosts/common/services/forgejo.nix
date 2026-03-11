@@ -26,11 +26,11 @@ in
       canonicalRootUrl = cluster.services.forgejo.wanAccess.canonicalRootUrl;
     };
 
-    wireguardAccess = {
-      enable = cluster.services.forgejo.wireguardAccess.enable;
-      listenAddress = cluster.nodes.${hostname}.vpnIP;
-      port = cluster.services.forgejo.wireguardAccess.port;
-      interface = "wg0";
+    clusterAccess = {
+      enable = cluster.services.forgejo.clusterAccess.enable;
+      listenAddress = cluster.nodes.${hostname}.clusterAddress;
+      port = cluster.services.forgejo.clusterAccess.port;
+      interface = cluster.transport.interface;
     };
 
     torAccess = {

@@ -100,7 +100,7 @@ in
       description = ''
         Optional cookie domain for Invidious SID/PREFS cookies.
         Leave null to make cookies host-only so login works consistently across
-        multiple entrypoints (for example WAN domain, WireGuard IP, and .onion).
+        multiple entrypoints (for example WAN domain, cluster-private IP, and .onion).
       '';
     };
 
@@ -225,10 +225,10 @@ in
 
     wanAccess = serviceAccess.mkWanAccessOptions { serviceTitle = "Invidious"; };
 
-    wireguardAccess = serviceAccess.mkWireguardAccessOptions {
+    clusterAccess = serviceAccess.mkClusterAccessOptions {
       serviceTitle = "Invidious";
       defaultPort = 8092;
-      defaultInterface = "wg0";
+      defaultInterface = "tailscale0";
     };
 
     torAccess = serviceAccess.mkTorAccessOptions {

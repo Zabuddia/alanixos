@@ -5,14 +5,12 @@
     ../common/core/secrets.nix
     ../common/core/server-power.nix
     ../common/core/users.nix
-    ../common/core/wireguard.nix
     ../common/services/filebrowser.nix
     ../common/services/forgejo.nix
     ../common/services/invidious.nix
     ../common/services/immich.nix
     ../common/services/vaultwarden.nix
     ../common/services/dashboard.nix
-    ../common/core/dynamic-dns.nix
     ../common/services/failover/filebrowser.nix
     ../common/services/failover/dashboard.nix
     ../common/services/failover/forgejo.nix
@@ -60,7 +58,6 @@
   environment.systemPackages = with pkgs; [
     age
     sops
-    wireguard-tools
     git
     curl
     wget

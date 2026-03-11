@@ -41,11 +41,11 @@ in
       openFirewall = cluster.services.invidious.wanAccess.openFirewall;
     };
 
-    wireguardAccess = {
-      enable = cluster.services.invidious.wireguardAccess.enable;
-      listenAddress = cluster.nodes.${hostname}.vpnIP;
-      port = cluster.services.invidious.wireguardAccess.port;
-      interface = "wg0";
+    clusterAccess = {
+      enable = cluster.services.invidious.clusterAccess.enable;
+      listenAddress = cluster.nodes.${hostname}.clusterAddress;
+      port = cluster.services.invidious.clusterAccess.port;
+      interface = cluster.transport.interface;
     };
 
     torAccess = {

@@ -54,11 +54,11 @@ in
       openFirewall = cluster.services.immich.wanAccess.openFirewall;
     };
 
-    wireguardAccess = {
-      enable = cluster.services.immich.wireguardAccess.enable;
-      listenAddress = cluster.nodes.${hostname}.vpnIP;
-      port = cluster.services.immich.wireguardAccess.port;
-      interface = "wg0";
+    clusterAccess = {
+      enable = cluster.services.immich.clusterAccess.enable;
+      listenAddress = cluster.nodes.${hostname}.clusterAddress;
+      port = cluster.services.immich.clusterAccess.port;
+      interface = cluster.transport.interface;
     };
 
     torAccess = {

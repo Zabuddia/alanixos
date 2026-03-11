@@ -13,20 +13,20 @@ let
       url = "https://${svc.wanAccess.domain}";
     };
 
-  mkWireguardEndpoints =
+  mkClusterEndpoints =
     serviceName:
     let
       svc = cluster.services.${serviceName};
     in
-    lib.optionals (svc.enable && svc.wireguardAccess.enable) (
+    lib.optionals (svc.enable && svc.clusterAccess.enable) (
       lib.mapAttrsToList (nodeName: node: {
-        name = "${serviceName}-wg-${nodeName}";
-        url = "http://${node.vpnIP}:${toString svc.wireguardAccess.port}";
+        name = "${serviceName}-cluster-${nodeName}";
+        url = "http://${node.clusterAddress}:${toString svc.clusterAccess.port}";
       }) cluster.nodes
     );
 
   endpointChecks = lib.concatLists (
-    map (serviceName: mkWanEndpoint serviceName ++ mkWireguardEndpoints serviceName) serviceNames
+    map (serviceName: mkWanEndpoint serviceName ++ mkClusterEndpoints serviceName) serviceNames
   );
 
   serviceDirectory = lib.map (serviceName:
@@ -47,9 +47,9 @@ let
           "https://${svc.wanAccess.domain}"
         else
           null;
-      wireguardUrl =
-        if svc.wireguardAccess.enable then
-          "http://${cluster.nodes.${hostname}.vpnIP}:${toString svc.wireguardAccess.port}"
+      clusterUrl =
+        if svc.clusterAccess.enable then
+          "http://${cluster.nodes.${hostname}.clusterAddress}:${toString svc.clusterAccess.port}"
         else
           null;
       torServiceName = if svc.torAccess.enable then svc.torAccess.onionServiceName else null;
@@ -72,18 +72,18 @@ in
     openFirewall = false;
     adminUser = cluster.services.dashboard.adminUser;
     adminPasswordSecret = cluster.services.dashboard.adminPasswordSecret;
-    prometheusListenAddress = cluster.nodes.${hostname}.vpnIP;
+    prometheusListenAddress = cluster.nodes.${hostname}.clusterAddress;
     prometheusPort = cluster.services.dashboard.prometheusPort;
     blackboxPort = cluster.services.dashboard.blackboxPort;
-    nodeExporterListenAddress = cluster.nodes.${hostname}.vpnIP;
+    nodeExporterListenAddress = cluster.nodes.${hostname}.clusterAddress;
     nodeExporterPort = cluster.services.dashboard.nodeExporterPort;
     nodeExporterInterface = cluster.services.dashboard.nodeExporterInterface;
     metricsInterval = cluster.services.dashboard.metricsInterval;
     scrapeTargets = lib.mapAttrsToList (nodeName: node: {
-      target = "${node.vpnIP}:${toString cluster.services.dashboard.nodeExporterPort}";
+      target = "${node.clusterAddress}:${toString cluster.services.dashboard.nodeExporterPort}";
       node = nodeName;
-      privateIp = node.vpnIP;
-      publicHost = node.wireguardEndpointHost or null;
+      clusterAddress = node.clusterAddress;
+      clusterDnsName = node.clusterDnsName;
     }) cluster.nodes;
     inherit endpointChecks;
     inherit serviceDirectory;
@@ -94,11 +94,11 @@ in
       openFirewall = cluster.services.dashboard.wanAccess.openFirewall;
     };
 
-    wireguardAccess = {
-      enable = cluster.services.dashboard.wireguardAccess.enable;
-      listenAddress = cluster.nodes.${hostname}.vpnIP;
-      port = cluster.services.dashboard.wireguardAccess.port;
-      interface = "wg0";
+    clusterAccess = {
+      enable = cluster.services.dashboard.clusterAccess.enable;
+      listenAddress = cluster.nodes.${hostname}.clusterAddress;
+      port = cluster.services.dashboard.clusterAccess.port;
+      interface = cluster.transport.interface;
     };
 
     torAccess = {

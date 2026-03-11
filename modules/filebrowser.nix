@@ -106,10 +106,10 @@ in
 
     wanAccess = serviceAccess.mkWanAccessOptions { serviceTitle = "File Browser"; };
 
-    wireguardAccess = serviceAccess.mkWireguardAccessOptions {
+    clusterAccess = serviceAccess.mkClusterAccessOptions {
       serviceTitle = "File Browser";
       defaultPort = 8089;
-      defaultInterface = "wg0";
+      defaultInterface = "tailscale0";
     };
 
     torAccess = serviceAccess.mkTorAccessOptions {

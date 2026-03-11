@@ -39,31 +39,31 @@
       };
     };
 
-  mkWireguardAccessOptions =
+  mkClusterAccessOptions =
     {
       serviceTitle,
       defaultPort,
-      defaultInterface ? "wg0",
+      defaultInterface ? "tailscale0",
     }:
     {
-      enable = lib.mkEnableOption "WireGuard-only access path for ${serviceTitle}";
+      enable = lib.mkEnableOption "private cluster-only access path for ${serviceTitle}";
 
       listenAddress = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
-        description = "WireGuard-side address to bind for internal access (for example 10.100.0.2).";
+        description = "Private cluster-side address to bind for internal access.";
       };
 
       port = lib.mkOption {
         type = lib.types.port;
         default = defaultPort;
-        description = "WireGuard-only Caddy listener port.";
+        description = "Private cluster-only Caddy listener port.";
       };
 
       interface = lib.mkOption {
         type = lib.types.str;
         default = defaultInterface;
-        description = "Firewall interface for WireGuard-only access.";
+        description = "Firewall interface for private cluster-only access.";
       };
     };
 
@@ -146,8 +146,8 @@
         message = "${modulePathPrefix}.wanAccess.domain must be set when wanAccess is enabled.";
       }
       {
-        assertion = !(cfg.wireguardAccess.enable && cfg.wireguardAccess.listenAddress == null);
-        message = "${modulePathPrefix}.wireguardAccess.listenAddress must be set when wireguardAccess is enabled.";
+        assertion = !(cfg.clusterAccess.enable && cfg.clusterAccess.listenAddress == null);
+        message = "${modulePathPrefix}.clusterAccess.listenAddress must be set when clusterAccess is enabled.";
       }
       {
         assertion = !(cfg.torAccess.enable && cfg.torAccess.secretKeySecret != null && !hasSopsSecrets);
@@ -179,14 +179,14 @@
       (lib.mkIf (cfg.wanAccess.enable && cfg.wanAccess.openFirewall) {
         allowedTCPPorts = [ 80 443 ];
       })
-      (lib.mkIf cfg.wireguardAccess.enable {
+      (lib.mkIf cfg.clusterAccess.enable {
         interfaces =
-          lib.genAttrs [ cfg.wireguardAccess.interface ] (_: { allowedTCPPorts = [ cfg.wireguardAccess.port ]; });
+          lib.genAttrs [ cfg.clusterAccess.interface ] (_: { allowedTCPPorts = [ cfg.clusterAccess.port ]; });
       })
     ];
 
   mkAccessCaddyConfig = { cfg, upstreamPort }:
-    lib.mkIf (cfg.wanAccess.enable || cfg.wireguardAccess.enable || cfg.torAccess.enable) {
+    lib.mkIf (cfg.wanAccess.enable || cfg.clusterAccess.enable || cfg.torAccess.enable) {
       enable = true;
       virtualHosts = lib.mkMerge [
         (lib.mkIf cfg.wanAccess.enable {
@@ -195,8 +195,8 @@
             reverse_proxy 127.0.0.1:${toString upstreamPort}
           '';
         })
-        (lib.mkIf cfg.wireguardAccess.enable {
-          "http://${cfg.wireguardAccess.listenAddress}:${toString cfg.wireguardAccess.port}".extraConfig = ''
+        (lib.mkIf cfg.clusterAccess.enable {
+          "http://${cfg.clusterAccess.listenAddress}:${toString cfg.clusterAccess.port}".extraConfig = ''
             encode zstd gzip
             reverse_proxy 127.0.0.1:${toString upstreamPort}
           '';

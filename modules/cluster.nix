@@ -25,10 +25,18 @@ in
       };
     };
 
-    wgSubnetCIDR = lib.mkOption {
-      type = lib.types.str;
-      default = "10.100.0.0/24";
-      description = "WireGuard subnet CIDR used for inter-node traffic.";
+    transport = {
+      provider = lib.mkOption {
+        type = lib.types.enum [ "tailscale" ];
+        default = "tailscale";
+        description = "Private overlay used for inter-node cluster traffic.";
+      };
+
+      interface = lib.mkOption {
+        type = lib.types.str;
+        default = "tailscale0";
+        description = "Network interface carrying private inter-node cluster traffic.";
+      };
     };
 
     syncSshKeySecret = lib.mkOption {
@@ -45,9 +53,9 @@ in
     nodes = lib.mkOption {
       type = lib.types.attrsOf (lib.types.submodule ({ config, ... }: {
         options = {
-          vpnIP = lib.mkOption {
+          clusterAddress = lib.mkOption {
             type = lib.types.str;
-            description = "WireGuard VPN IP for this node.";
+            description = "Private overlay address used for inter-node cluster traffic on this node.";
           };
 
           priority = lib.mkOption {
@@ -55,54 +63,15 @@ in
             description = "Lower number means higher priority for active role.";
           };
 
-          site = lib.mkOption {
+          clusterDnsName = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             default = null;
-            description = "Optional site/NAT group name used to prefer LAN WireGuard endpoints for peers in the same location.";
-          };
-
-          wireguardPublicKey = lib.mkOption {
-            type = lib.types.str;
-          };
-
-          wireguardEndpointHost = lib.mkOption {
-            type = lib.types.str;
-            description = "Publicly advertised WireGuard endpoint hostname or IP.";
-          };
-
-          wireguardListenPort = lib.mkOption {
-            type = lib.types.port;
-            default = 51820;
-            description = "Local UDP port this node's WireGuard interface listens on.";
-          };
-
-          wireguardPublicEndpointPort = lib.mkOption {
-            type = lib.types.port;
-            default = config.wireguardListenPort;
-            description = "Publicly advertised WireGuard endpoint port. This can differ from the local listen port when a router rewrites external ports.";
-          };
-
-          wireguardLanEndpointHost = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
-            default = null;
-            description = "Optional LAN/private hostname or IP that same-site peers should use instead of the public endpoint.";
-          };
-
-          wireguardLanEndpointPort = lib.mkOption {
-            type = lib.types.port;
-            default = config.wireguardListenPort;
-            description = "LAN/private WireGuard endpoint port used by same-site peers.";
-          };
-
-          ddnsRecord = lib.mkOption {
-            type = lib.types.str;
-            default = config.wireguardEndpointHost;
-            description = "FQDN record this node keeps updated to its public IP.";
+            description = "Optional stable private-overlay DNS name used for SSH/control traffic.";
           };
 
           sshTarget = lib.mkOption {
             type = lib.types.str;
-            default = "root@${config.vpnIP}";
+            default = "root@${config.clusterAddress}";
             description = "SSH target used for inter-node sync/control.";
           };
         };
@@ -121,13 +90,13 @@ in
         clientPort = lib.mkOption {
           type = lib.types.port;
           default = 2379;
-          description = "TCP port etcd listens on for client traffic over WireGuard.";
+          description = "TCP port etcd listens on for client traffic over the private cluster transport.";
         };
 
         peerPort = lib.mkOption {
           type = lib.types.port;
           default = 2380;
-          description = "TCP port etcd listens on for peer replication traffic over WireGuard.";
+          description = "TCP port etcd listens on for peer replication traffic over the private cluster transport.";
         };
 
         heartbeatIntervalMs = lib.mkOption {
@@ -263,17 +232,17 @@ in
         };
       };
 
-      wireguardAccess = {
+      clusterAccess = {
         enable = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Enable a WireGuard-only access endpoint for filebrowser.";
+          description = "Enable a private cluster-only access endpoint for filebrowser.";
         };
 
         port = lib.mkOption {
           type = lib.types.port;
           default = 8089;
-          description = "WireGuard-only access port exposed by Caddy.";
+          description = "Private cluster-only access port exposed by Caddy.";
         };
       };
 
@@ -509,17 +478,17 @@ in
         };
       };
 
-      wireguardAccess = {
+      clusterAccess = {
         enable = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Enable a WireGuard-only access endpoint for forgejo.";
+          description = "Enable a private cluster-only access endpoint for forgejo.";
         };
 
         port = lib.mkOption {
           type = lib.types.port;
           default = 8090;
-          description = "WireGuard-only access port exposed by Caddy.";
+          description = "Private cluster-only access port exposed by Caddy.";
         };
       };
 
@@ -778,17 +747,17 @@ in
         };
       };
 
-      wireguardAccess = {
+      clusterAccess = {
         enable = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Enable a WireGuard-only access endpoint for invidious.";
+          description = "Enable a private cluster-only access endpoint for invidious.";
         };
 
         port = lib.mkOption {
           type = lib.types.port;
           default = 8092;
-          description = "WireGuard-only access port exposed by Caddy.";
+          description = "Private cluster-only access port exposed by Caddy.";
         };
       };
 
@@ -996,17 +965,17 @@ in
         };
       };
 
-      wireguardAccess = {
+      clusterAccess = {
         enable = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Enable a WireGuard-only access endpoint for vaultwarden.";
+          description = "Enable a private cluster-only access endpoint for vaultwarden.";
         };
 
         port = lib.mkOption {
           type = lib.types.port;
           default = 8091;
-          description = "WireGuard-only access port exposed by Caddy.";
+          description = "Private cluster-only access port exposed by Caddy.";
         };
       };
 
@@ -1351,17 +1320,17 @@ in
         };
       };
 
-      wireguardAccess = {
+      clusterAccess = {
         enable = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Enable a WireGuard-only access endpoint for immich.";
+          description = "Enable a private cluster-only access endpoint for immich.";
         };
 
         port = lib.mkOption {
           type = lib.types.port;
           default = 8093;
-          description = "WireGuard-only access port exposed by Caddy.";
+          description = "Private cluster-only access port exposed by Caddy.";
         };
       };
 
@@ -1521,7 +1490,7 @@ in
 
       nodeExporterInterface = lib.mkOption {
         type = lib.types.str;
-        default = "wg0";
+        default = "tailscale0";
       };
 
       metricsInterval = lib.mkOption {
@@ -1567,17 +1536,17 @@ in
         };
       };
 
-      wireguardAccess = {
+      clusterAccess = {
         enable = lib.mkOption {
           type = lib.types.bool;
           default = true;
-          description = "Enable a WireGuard-only access endpoint for dashboard.";
+          description = "Enable a private cluster-only access endpoint for dashboard.";
         };
 
         port = lib.mkOption {
           type = lib.types.port;
           default = 8094;
-          description = "WireGuard-only access port exposed by Caddy.";
+          description = "Private cluster-only access port exposed by Caddy.";
         };
       };
 

@@ -70,10 +70,10 @@ in
       };
     };
 
-    wireguardAccess = serviceAccess.mkWireguardAccessOptions {
+    clusterAccess = serviceAccess.mkClusterAccessOptions {
       serviceTitle = "Forgejo";
       defaultPort = 8090;
-      defaultInterface = "wg0";
+      defaultInterface = "tailscale0";
     };
 
     torAccess = serviceAccess.mkTorAccessOptions {

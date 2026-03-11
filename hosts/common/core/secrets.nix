@@ -12,13 +12,6 @@
     mode = "0400";
   };
 
-  sops.secrets."wireguard-private-keys/${hostname}" = {
-    sopsFile = ../../../secrets/secrets.yaml;
-    owner = "root";
-    group = "root";
-    mode = "0400";
-  };
-
   sops.secrets."cloudflare/api-token" = {
     sopsFile = ../../../secrets/secrets.yaml;
     owner = "root";

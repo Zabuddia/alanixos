@@ -73,7 +73,7 @@ in
       }
     ];
 
-    alanix.dnsUpdaters.wireguard-endpoint = {
+    alanix.dnsUpdaters.host-endpoint = {
       enable = true;
       provider = cfg.provider;
       zone = cfg.zone;

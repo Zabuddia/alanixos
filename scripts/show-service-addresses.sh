@@ -7,7 +7,7 @@ usage() {
   cat <<'EOF'
 Usage: ./scripts/show-service-addresses.sh [host]
 
-Print WAN, WireGuard, and Tor onion addresses for every cluster service.
+Print WAN, cluster-private, and Tor onion addresses for every cluster service.
 If an address type is not enabled or unavailable, prints "none".
 EOF
 }
@@ -41,7 +41,7 @@ failover_json="$(
   failover_json="{}"
 }
 
-vpn_ip="$(jq -r --arg host "$host" '.nodes[$host].vpnIP // empty' <<<"$cluster_json")"
+cluster_addr="$(jq -r --arg host "$host" '.nodes[$host].clusterAddress // empty' <<<"$cluster_json")"
 
 read_onion_cmd='
   shopt -s nullglob
@@ -69,7 +69,7 @@ while IFS='=' read -r name addr; do
   onion_by_name["$name"]="$addr"
 done <<<"$onion_lines"
 
-printf "%-14s %-8s %-62s %-28s %s\n" "service" "role" "onion" "wireguard" "wan"
+printf "%-14s %-8s %-62s %-28s %s\n" "service" "role" "onion" "cluster" "wan"
 printf "%-14s %-8s %-62s %-28s %s\n" "------" "----" "-----" "---------" "---"
 
 while IFS= read -r svc; do
@@ -95,11 +95,11 @@ while IFS= read -r svc; do
     fi
   fi
 
-  wg="none"
-  if [[ "$enabled" == "true" ]] && [[ "$(jq -r --arg s "$svc" '.services[$s].wireguardAccess.enable // false' <<<"$cluster_json")" == "true" ]]; then
-    wg_port="$(jq -r --arg s "$svc" '.services[$s].wireguardAccess.port // empty' <<<"$cluster_json")"
-    if [[ -n "$vpn_ip" && -n "$wg_port" ]]; then
-      wg="http://${vpn_ip}:${wg_port}"
+  cluster_url="none"
+  if [[ "$enabled" == "true" ]] && [[ "$(jq -r --arg s "$svc" '.services[$s].clusterAccess.enable // false' <<<"$cluster_json")" == "true" ]]; then
+    cluster_port="$(jq -r --arg s "$svc" '.services[$s].clusterAccess.port // empty' <<<"$cluster_json")"
+    if [[ -n "$cluster_addr" && -n "$cluster_port" ]]; then
+      cluster_url="http://${cluster_addr}:${cluster_port}"
     fi
   fi
 
@@ -111,5 +111,5 @@ while IFS= read -r svc; do
     fi
   fi
 
-  printf "%-14s %-8s %-62s %-28s %s\n" "$svc" "$role" "$onion" "$wg" "$wan"
+  printf "%-14s %-8s %-62s %-28s %s\n" "$svc" "$role" "$onion" "$cluster_url" "$wan"
 done < <(jq -r '.services | keys[]' <<<"$cluster_json")

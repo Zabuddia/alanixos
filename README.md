@@ -286,7 +286,7 @@ sops secrets/secrets.yaml
 ### First 3-Node Cluster Bootstrap
 
 Once `alan-big-nixos`, `randy-big-nixos`, and `alan-node-nixos` all exist in
-the repo and have their WireGuard and `sops` secrets in place, do the first
+the repo and have their Tailscale and `sops` secrets in place, do the first
 `etcd` rollout like this.
 
 Run on your editor machine:

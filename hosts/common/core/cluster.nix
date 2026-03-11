@@ -9,7 +9,10 @@
 
   alanix.cluster = {
     domain = "fifefin.com";
-    wgSubnetCIDR = "10.100.0.0/24";
+    transport = {
+      provider = "tailscale";
+      interface = "tailscale0";
+    };
     dns = {
       provider = "cloudflare";
       apiTokenSecret = "cloudflare/api-token";
@@ -25,29 +28,21 @@
 
     nodes = {
       alan-big-nixos = {
-        vpnIP = "10.100.0.1";
+        clusterAddress = "100.114.75.73";
+        clusterDnsName = "alan-big-nixos.tailbb2802.ts.net";
         priority = 10;
-        site = "alan-site";
-        wireguardPublicKey = "19Kloz2N3r2ksivuyLNtSplbDxS1kneNzVNRFhnQoCA=";
-        wireguardEndpointHost = "alan-big-nixos-wg.fifefin.com";
-        wireguardLanEndpointHost = "fd7a:115c:a1e0::839:4b49";
       };
 
       randy-big-nixos = {
-        vpnIP = "10.100.0.2";
+        clusterAddress = "100.105.249.114";
+        clusterDnsName = "randy-big-nixos.tailbb2802.ts.net";
         priority = 20;
-        wireguardPublicKey = "YD/m4D7uTGFnWBEACTkc7MnY7yG0yvRVAEJKqOQ91UE=";
-        wireguardEndpointHost = "randy-big-nixos-wg.fifefin.com";
       };
 
       alan-node-nixos = {
-        vpnIP = "10.100.0.3";
+        clusterAddress = "100.100.112.3";
+        clusterDnsName = "alan-node-nixos.tailbb2802.ts.net";
         priority = 30;
-        site = "alan-site";
-        wireguardPublicKey = "h1BHaYvuyK54GGL5eIKOjYaG1+dgxyMuqWVVJ0S2mRM=";
-        wireguardEndpointHost = "alan-node-nixos-wg.fifefin.com";
-        wireguardPublicEndpointPort = 51821;
-        wireguardLanEndpointHost = "fd7a:115c:a1e0::d139:7003";
       };
     };
 
@@ -87,7 +82,7 @@
         domain = "filebrowser.fifefin.com";
         openFirewall = true;
       };
-      wireguardAccess = {
+      clusterAccess = {
         enable = true;
         port = 8089;
       };
@@ -127,7 +122,7 @@
         openFirewall = true;
         canonicalRootUrl = null;
       };
-      wireguardAccess = {
+      clusterAccess = {
         enable = true;
         port = 8090;
       };
@@ -199,7 +194,7 @@
         domain = "invidious.fifefin.com";
         openFirewall = true;
       };
-      wireguardAccess = {
+      clusterAccess = {
         enable = true;
         port = 8092;
       };
@@ -278,7 +273,7 @@
         domain = "immich.fifefin.com";
         openFirewall = true;
       };
-      wireguardAccess = {
+      clusterAccess = {
         enable = true;
         port = 8093;
       };
@@ -317,7 +312,7 @@
       prometheusPort = 9090;
       blackboxPort = 9115;
       nodeExporterPort = 9100;
-      nodeExporterInterface = "wg0";
+      nodeExporterInterface = "tailscale0";
       metricsInterval = "1m";
       dataPaths = [
         "/var/lib/grafana"
@@ -329,7 +324,7 @@
         domain = "dashboard.fifefin.com";
         openFirewall = true;
       };
-      wireguardAccess = {
+      clusterAccess = {
         enable = true;
         port = 8094;
       };
@@ -364,7 +359,7 @@
         domain = "vaultwarden.fifefin.com";
         openFirewall = true;
       };
-      wireguardAccess = {
+      clusterAccess = {
         enable = true;
         port = 8091;
       };

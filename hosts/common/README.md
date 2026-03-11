@@ -1,7 +1,7 @@
 # `hosts/common` Layout
 
 - `core/`
-  - Cluster-wide shared configuration and host basics (`cluster`, `wireguard`, `dynamic-dns`, `secrets`, `users`).
+  - Cluster-wide shared configuration and host basics (`cluster`, `secrets`, `users`).
 - `services/`
   - Service wrappers that map `alanix.cluster.services.*` into `alanix.*` module settings.
 - `services/failover/`
@@ -26,14 +26,13 @@ Current failover policy:
 
 Control-plane groundwork:
 - `alanix.cluster.controlPlane.etcd` is the intended shared consensus layer for 3+ identical nodes.
-- It is meant to run only over WireGuard and only with an odd number of members.
+- It is meant to run only over the private cluster transport and only with an odd number of members.
 - It is now enabled for the three declared nodes: `alan-big-nixos`, `randy-big-nixos`, and `alan-node-nixos`.
 - First bootstrap should be rolled out to all three nodes close together while `initialClusterState = "new"`.
 - Verify quorum on any node with `alanix-etcd-health` and inspect members with `alanix-etcd-members`.
 
-WireGuard topology notes:
-- `wireguardListenPort` is the node's local UDP listen port.
-- `wireguardPublicEndpointPort` is the externally advertised UDP port and can differ when NAT/port-forwarding rewrites ports.
-- For nodes in the same site/NAT, set `site` and `wireguardLanEndpointHost` so they use a LAN/private endpoint instead of hairpinning through the public address.
-- If `.local` discovery is unreliable, prefer a stable private overlay endpoint such as a Tailscale IP or MagicDNS name for `wireguardLanEndpointHost`.
-- If the local network already uses CGNAT-style `100.64.0.0/10` addressing, prefer Tailscale IPv6 addresses for `wireguardLanEndpointHost` to avoid overlapping IPv4 routes.
+Cluster transport notes:
+- The repo currently uses Tailscale as the private inter-node transport.
+- `alanix.cluster.transport.interface` controls which interface cluster-only ports open on.
+- `alanix.cluster.nodes.<name>.clusterAddress` is the address etcd, failover checks, backups, and private service access use.
+- `alanix.cluster.nodes.<name>.clusterDnsName` is the preferred private DNS name for inter-node SSH/control traffic.

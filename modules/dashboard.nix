@@ -232,7 +232,7 @@ let
         targets = [
           {
             refId = "A";
-            expr = "max by(node,private_ip,public_host,instance) (up{job=\"node\",node!=\"\"})";
+            expr = "max by(node,cluster_address,cluster_dns,instance) (up{job=\"node\",node!=\"\"})";
             format = "table";
             instant = true;
           }
@@ -246,18 +246,18 @@ let
                 __name__ = true;
                 job = true;
                 instance = true;
-                public_ip = true;
+                cluster_dns_ip = true;
               };
               indexByName = {
                 node = 0;
-                private_ip = 1;
-                public_host = 2;
+                cluster_address = 1;
+                cluster_dns = 2;
                 Value = 3;
               };
               renameByName = {
                 node = "Node";
-                private_ip = "WireGuard IP";
-                public_host = "Public Host";
+                cluster_address = "Cluster IP";
+                cluster_dns = "Cluster DNS";
                 Value = "Reachable";
               };
             };
@@ -324,12 +324,12 @@ let
               )
               or
               label_replace(
-                label_replace(probe_success{job="blackbox-http",endpoint=~"${serviceName}-wg-.*"}, "node", "$1", "endpoint", "${serviceName}-wg-(.*)"),
-                "endpoint", "wireguard", "endpoint", ".*"
+                label_replace(probe_success{job="blackbox-http",endpoint=~"${serviceName}-cluster-.*"}, "node", "$1", "endpoint", "${serviceName}-cluster-(.*)"),
+                "endpoint", "cluster", "endpoint", ".*"
               )
               or
               (
-                label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="wireguard",url!="none"}) + 1), "endpoint", "wireguard", "node", ".*")
+                label_replace((0 * max by(node) (alanix_service_endpoint_active{service="${serviceName}",node!="",endpoint="cluster",url!="none"}) + 1), "endpoint", "cluster", "node", ".*")
                 * 0 - 1
               )
               or
@@ -642,7 +642,7 @@ in
     nodeExporterListenAddress = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
-      description = "Address node_exporter listens on (typically this node's WireGuard IP).";
+      description = "Address node_exporter listens on (typically this node's private cluster address).";
     };
 
     nodeExporterPort = lib.mkOption {
@@ -652,7 +652,7 @@ in
 
     nodeExporterInterface = lib.mkOption {
       type = lib.types.str;
-      default = "wg0";
+      default = "tailscale0";
       description = "Interface to open for node_exporter scraping.";
     };
 
@@ -671,8 +671,8 @@ in
         options = {
           target = lib.mkOption { type = lib.types.str; };
           node = lib.mkOption { type = lib.types.str; };
-          privateIp = lib.mkOption { type = lib.types.str; };
-          publicHost = lib.mkOption {
+          clusterAddress = lib.mkOption { type = lib.types.str; };
+          clusterDnsName = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             default = null;
           };
@@ -711,7 +711,7 @@ in
             default = null;
           };
 
-          wireguardUrl = lib.mkOption {
+          clusterUrl = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             default = null;
           };
@@ -733,10 +733,10 @@ in
 
     wanAccess = serviceAccess.mkWanAccessOptions { serviceTitle = "Dashboard"; };
 
-    wireguardAccess = serviceAccess.mkWireguardAccessOptions {
+    clusterAccess = serviceAccess.mkClusterAccessOptions {
       serviceTitle = "Dashboard";
       defaultPort = 8094;
-      defaultInterface = "wg0";
+      defaultInterface = "tailscale0";
     };
 
     torAccess = serviceAccess.mkTorAccessOptions {
@@ -850,7 +850,7 @@ in
         SERVICE_DIRECTORY=()
         ${lib.concatStringsSep "\n" (map (entry:
           let
-            tuple = "${entry.service}|${entry.wanUrl or ""}|${entry.wireguardUrl or ""}|${entry.torServiceName or ""}|${entry.torScheme or ""}";
+            tuple = "${entry.service}|${entry.wanUrl or ""}|${entry.clusterUrl or ""}|${entry.torServiceName or ""}|${entry.torScheme or ""}";
           in
           ''SERVICE_DIRECTORY+=(${lib.escapeShellArg tuple})''
         ) cfg.serviceDirectory)}
@@ -858,7 +858,7 @@ in
         SCRAPE_TARGETS=()
         ${lib.concatStringsSep "\n" (map (entry:
           let
-            tuple = "${entry.target}|${entry.node}|${entry.privateIp}|${entry.publicHost or ""}";
+            tuple = "${entry.target}|${entry.node}|${entry.clusterAddress}|${entry.clusterDnsName or ""}";
           in
           ''SCRAPE_TARGETS+=(${lib.escapeShellArg tuple})''
         ) cfg.scrapeTargets)}
@@ -871,27 +871,27 @@ in
           printf '# HELP alanix_node_reachability_info Node metadata for reachability table.\n'
           printf '# TYPE alanix_node_reachability_info gauge\n'
           for row in "''${SCRAPE_TARGETS[@]}"; do
-            IFS='|' read -r node_target node_id private_ip public_host <<< "$row"
+            IFS='|' read -r node_target node_id cluster_address cluster_dns <<< "$row"
             [ -n "$node_target" ] || continue
             [ -n "$node_id" ] || continue
 
-            public_ip="none"
-            if [ -n "$public_host" ]; then
+            resolved_cluster_ip="none"
+            if [ -n "$cluster_dns" ]; then
               resolved_ip=""
               if command -v getent >/dev/null 2>&1; then
-                resolved_ip="$(getent ahostsv4 "$public_host" 2>/dev/null | awk 'NR==1 { print $1 }' || true)"
+                resolved_ip="$(getent ahostsv4 "$cluster_dns" 2>/dev/null | awk 'NR==1 { print $1 }' || true)"
               fi
               if [ -n "$resolved_ip" ]; then
-                public_ip="$resolved_ip"
+                resolved_cluster_ip="$resolved_ip"
               fi
             fi
 
-            printf 'alanix_node_reachability_info{node="%s",instance="%s",private_ip="%s",public_ip="%s",public_host="%s"} 1\n' \
+            printf 'alanix_node_reachability_info{node="%s",instance="%s",cluster_address="%s",cluster_dns_ip="%s",cluster_dns="%s"} 1\n' \
               "$(esc_label "$node_id")" \
               "$(esc_label "$node_target")" \
-              "$(esc_label "$private_ip")" \
-              "$(esc_label "$public_ip")" \
-              "$(esc_label "$public_host")"
+              "$(esc_label "$cluster_address")" \
+              "$(esc_label "$resolved_cluster_ip")" \
+              "$(esc_label "$cluster_dns")"
           done
 
           printf '# HELP alanix_service_up Service unit health (1=active, 0=inactive).\n'
@@ -929,7 +929,7 @@ in
           printf '# TYPE alanix_service_endpoint_active gauge\n'
 
           for row in "''${SERVICE_DIRECTORY[@]}"; do
-            IFS='|' read -r service_name wan_url wg_url tor_service_name tor_scheme <<< "$row"
+            IFS='|' read -r service_name wan_url cluster_url tor_service_name tor_scheme <<< "$row"
             [ -n "$service_name" ] || continue
 
             marker="/run/alanix-''${service_name}-failover/active"
@@ -956,7 +956,7 @@ in
             fi
 
             emit_endpoint_metric "$service_name" "$node_name" "wan" "$role_status" "$wan_url" "$role_active"
-            emit_endpoint_metric "$service_name" "$node_name" "wireguard" "$role_status" "$wg_url" "$role_active"
+            emit_endpoint_metric "$service_name" "$node_name" "cluster" "$role_status" "$cluster_url" "$role_active"
             emit_endpoint_metric "$service_name" "$node_name" "tor" "$role_status" "$tor_url" "$role_active"
           done
 
@@ -1008,8 +1008,8 @@ in
               targets = [ scrapeTarget.target ];
               labels = {
                 node = scrapeTarget.node;
-                private_ip = scrapeTarget.privateIp;
-                public_host = if scrapeTarget.publicHost != null then scrapeTarget.publicHost else "none";
+                cluster_address = scrapeTarget.clusterAddress;
+                cluster_dns = if scrapeTarget.clusterDnsName != null then scrapeTarget.clusterDnsName else "none";
               };
             }) cfg.scrapeTargets;
           }

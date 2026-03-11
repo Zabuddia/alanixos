@@ -3,7 +3,7 @@ let
   cfg = config.alanix.serviceFailover;
   enabledInstances = lib.filterAttrs (_: inst: inst.enable) cfg.instances;
 
-  mkNodeTuple = nodes: name: "${name}|${toString nodes.${name}.priority}|${nodes.${name}.vpnIP}|${nodes.${name}.sshTarget}";
+  mkNodeTuple = nodes: name: "${name}|${toString nodes.${name}.priority}|${nodes.${name}.clusterAddress}|${nodes.${name}.sshTarget}";
 
   mkInstance = name: inst:
     let
@@ -39,13 +39,20 @@ let
   instances = lib.mapAttrs mkInstance enabledInstances;
 
   syncFirewallOpen = lib.any
-    (v: v.inst.sync.enable && v.inst.sync.openFirewallOnWg)
+    (v: v.inst.sync.enable && v.inst.sync.openFirewallOnClusterInterface)
     (builtins.attrValues instances);
+
+  syncFirewallInterfaces = lib.unique (
+    lib.flatten (lib.mapAttrsToList (_: v:
+      lib.optional (v.inst.sync.enable && v.inst.sync.openFirewallOnClusterInterface)
+        v.inst.sync.firewallInterface
+    ) instances)
+  );
 
   rootAuthorizedSyncKeys = lib.unique (
     lib.flatten (lib.mapAttrsToList (_: v:
       lib.optional (v.inst.sync.enable && v.inst.sync.authorizedPublicKey != null)
-        "from=\"${v.inst.sync.allowedFromCIDR}\" ${v.inst.sync.authorizedPublicKey}"
+        "from=\"${lib.concatStringsSep "," v.inst.sync.authorizedSourcePatterns}\" ${v.inst.sync.authorizedPublicKey}"
     ) instances)
   );
 
@@ -561,13 +568,18 @@ in
                   description = "Lower value means preferred active node.";
                 };
 
-                vpnIP = lib.mkOption {
+                clusterAddress = lib.mkOption {
                   type = lib.types.str;
+                };
+
+                clusterDnsName = lib.mkOption {
+                  type = lib.types.nullOr lib.types.str;
+                  default = null;
                 };
 
                 sshTarget = lib.mkOption {
                   type = lib.types.str;
-                  default = "root@${config.vpnIP}";
+                  default = "root@${config.clusterAddress}";
                 };
               };
             }));
@@ -599,15 +611,22 @@ in
               description = "Public key allowed for root SSH from cluster peers.";
             };
 
-            allowedFromCIDR = lib.mkOption {
-              type = lib.types.str;
-              default = "10.100.0.0/24";
+            authorizedSourcePatterns = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              description = "SSH source patterns allowed to use the sync key for root access.";
             };
 
-            openFirewallOnWg = lib.mkOption {
+            firewallInterface = lib.mkOption {
+              type = lib.types.str;
+              default = "tailscale0";
+              description = "Firewall interface used for private cluster sync/control traffic.";
+            };
+
+            openFirewallOnClusterInterface = lib.mkOption {
               type = lib.types.bool;
               default = true;
-              description = "Open SSH on wg0 to allow sync/control traffic.";
+              description = "Open SSH on the private cluster interface to allow sync/control traffic.";
             };
           };
 
@@ -686,6 +705,14 @@ in
           assertion = v.inst.sync.sshKeySecret != null;
           message = "alanix.serviceFailover.instances.${name}.sync.sshKeySecret must be set when sync is enabled.";
         }
+        ++ lib.optional v.inst.sync.enable {
+          assertion = v.inst.sync.authorizedPublicKey != null;
+          message = "alanix.serviceFailover.instances.${name}.sync.authorizedPublicKey must be set when sync is enabled.";
+        }
+        ++ lib.optional v.inst.sync.enable {
+          assertion = v.inst.sync.authorizedSourcePatterns != [ ];
+          message = "alanix.serviceFailover.instances.${name}.sync.authorizedSourcePatterns must not be empty when sync is enabled.";
+        }
         ++ lib.optional v.inst.dns.enable {
           assertion = v.inst.dns.tokenSecret != null;
           message = "alanix.serviceFailover.instances.${name}.dns.tokenSecret must be set when dns is enabled.";
@@ -702,8 +729,14 @@ in
       pkgs.netcat-openbsd
     ];
 
-    networking.firewall.interfaces.wg0.allowedTCPPorts =
-      lib.mkIf syncFirewallOpen [ 22 ];
+    networking.firewall.interfaces =
+      lib.mkIf syncFirewallOpen
+        (builtins.listToAttrs (map
+          (iface: {
+            name = iface;
+            value.allowedTCPPorts = [ 22 ];
+          })
+          syncFirewallInterfaces));
 
     users.users.root.openssh.authorizedKeys.keys =
       lib.mkIf (rootAuthorizedSyncKeys != []) rootAuthorizedSyncKeys;

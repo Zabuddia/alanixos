@@ -162,13 +162,18 @@ in
                   description = "Lower value means higher priority.";
                 };
 
-                vpnIP = lib.mkOption {
+                clusterAddress = lib.mkOption {
                   type = lib.types.str;
+                };
+
+                clusterDnsName = lib.mkOption {
+                  type = lib.types.nullOr lib.types.str;
+                  default = null;
                 };
 
                 sshTarget = lib.mkOption {
                   type = lib.types.str;
-                  default = "root@${config.vpnIP}";
+                  default = "root@${config.clusterAddress}";
                 };
               };
             }));

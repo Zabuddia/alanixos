@@ -91,10 +91,10 @@ in
 
     wanAccess = serviceAccess.mkWanAccessOptions { serviceTitle = "Vaultwarden"; };
 
-    wireguardAccess = serviceAccess.mkWireguardAccessOptions {
+    clusterAccess = serviceAccess.mkClusterAccessOptions {
       serviceTitle = "Vaultwarden";
       defaultPort = 8091;
-      defaultInterface = "wg0";
+      defaultInterface = "tailscale0";
     };
 
     torAccess = serviceAccess.mkTorAccessOptions {

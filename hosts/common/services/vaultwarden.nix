@@ -28,11 +28,11 @@ in
       openFirewall = cluster.services.vaultwarden.wanAccess.openFirewall;
     };
 
-    wireguardAccess = {
-      enable = cluster.services.vaultwarden.wireguardAccess.enable;
-      listenAddress = cluster.nodes.${hostname}.vpnIP;
-      port = cluster.services.vaultwarden.wireguardAccess.port;
-      interface = "wg0";
+    clusterAccess = {
+      enable = cluster.services.vaultwarden.clusterAccess.enable;
+      listenAddress = cluster.nodes.${hostname}.clusterAddress;
+      port = cluster.services.vaultwarden.clusterAccess.port;
+      interface = cluster.transport.interface;
     };
 
     torAccess = {

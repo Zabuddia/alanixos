@@ -24,8 +24,9 @@ in
     paths = svc.dataPaths;
     sshKeySecret = cluster.syncSshKeySecret;
     authorizedPublicKey = cluster.syncPublicKey;
-    allowedFromCIDR = cluster.wgSubnetCIDR;
-    openFirewallOnWg = true;
+    authorizedSourcePatterns = lib.unique (map (node: node.clusterAddress) (builtins.attrValues nodes));
+    firewallInterface = cluster.transport.interface;
+    openFirewallOnClusterInterface = true;
   };
 
   dns = {

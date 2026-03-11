@@ -25,11 +25,11 @@ in
       openFirewall = cluster.services.filebrowser.wanAccess.openFirewall;
     };
 
-    wireguardAccess = {
-      enable = cluster.services.filebrowser.wireguardAccess.enable;
-      listenAddress = cluster.nodes.${hostname}.vpnIP;
-      port = cluster.services.filebrowser.wireguardAccess.port;
-      interface = "wg0";
+    clusterAccess = {
+      enable = cluster.services.filebrowser.clusterAccess.enable;
+      listenAddress = cluster.nodes.${hostname}.clusterAddress;
+      port = cluster.services.filebrowser.clusterAccess.port;
+      interface = cluster.transport.interface;
     };
 
     torAccess = {

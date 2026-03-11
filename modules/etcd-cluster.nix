@@ -5,12 +5,13 @@ let
   nodeNames = lib.sort builtins.lessThan (builtins.attrNames cluster.nodes);
   nodeCount = builtins.length nodeNames;
   localNode = cluster.nodes.${hostname} or null;
+  clusterInterface = cluster.transport.interface;
   endpointUrls = map
-    (nodeName: "http://${cluster.nodes.${nodeName}.vpnIP}:${toString cfg.clientPort}")
+    (nodeName: "http://${cluster.nodes.${nodeName}.clusterAddress}:${toString cfg.clientPort}")
     nodeNames;
   endpointList = lib.concatStringsSep "," endpointUrls;
   initialCluster = map
-    (nodeName: "${nodeName}=http://${cluster.nodes.${nodeName}.vpnIP}:${toString cfg.peerPort}")
+    (nodeName: "${nodeName}=http://${cluster.nodes.${nodeName}.clusterAddress}:${toString cfg.peerPort}")
     nodeNames;
 in
 {
@@ -40,11 +41,11 @@ in
       dataDir = cfg.dataDir;
       listenClientUrls = [
         "http://127.0.0.1:${toString cfg.clientPort}"
-        "http://${localNode.vpnIP}:${toString cfg.clientPort}"
+        "http://${localNode.clusterAddress}:${toString cfg.clientPort}"
       ];
-      advertiseClientUrls = [ "http://${localNode.vpnIP}:${toString cfg.clientPort}" ];
-      listenPeerUrls = [ "http://${localNode.vpnIP}:${toString cfg.peerPort}" ];
-      initialAdvertisePeerUrls = [ "http://${localNode.vpnIP}:${toString cfg.peerPort}" ];
+      advertiseClientUrls = [ "http://${localNode.clusterAddress}:${toString cfg.clientPort}" ];
+      listenPeerUrls = [ "http://${localNode.clusterAddress}:${toString cfg.peerPort}" ];
+      initialAdvertisePeerUrls = [ "http://${localNode.clusterAddress}:${toString cfg.peerPort}" ];
       inherit initialCluster;
       initialClusterState = cfg.initialClusterState;
       initialClusterToken = cfg.initialClusterToken;
@@ -58,8 +59,23 @@ in
     };
 
     systemd.services.etcd = {
-      requires = [ "wireguard-wg0.service" ];
-      after = [ "wireguard-wg0.service" ];
+      wants = [ "network-online.target" "tailscaled.service" ];
+      after = [ "network-online.target" "tailscaled.service" ];
+      serviceConfig.ExecStartPre = [
+        "${pkgs.writeShellScript "alanix-wait-for-cluster-interface" ''
+          set -euo pipefail
+
+          for _ in $("${pkgs.coreutils}/bin/seq" 1 60); do
+            if "${pkgs.iproute2}/bin/ip" -o addr show dev ${lib.escapeShellArg clusterInterface} | "${pkgs.gnugrep}/bin/grep" -F ${lib.escapeShellArg localNode.clusterAddress} >/dev/null 2>&1; then
+              exit 0
+            fi
+            "${pkgs.coreutils}/bin/sleep" 1
+          done
+
+          echo "Timed out waiting for ${clusterInterface} to have ${localNode.clusterAddress}" >&2
+          exit 1
+        ''}"
+      ];
     };
 
     environment.systemPackages = [
@@ -86,7 +102,7 @@ in
       })
     ];
 
-    networking.firewall.interfaces.wg0.allowedTCPPorts = [
+    networking.firewall.interfaces.${clusterInterface}.allowedTCPPorts = [
       cfg.clientPort
       cfg.peerPort
     ];

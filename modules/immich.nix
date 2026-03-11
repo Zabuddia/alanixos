@@ -251,10 +251,10 @@ in
 
     wanAccess = serviceAccess.mkWanAccessOptions { serviceTitle = "Immich"; };
 
-    wireguardAccess = serviceAccess.mkWireguardAccessOptions {
+    clusterAccess = serviceAccess.mkClusterAccessOptions {
       serviceTitle = "Immich";
       defaultPort = 8093;
-      defaultInterface = "wg0";
+      defaultInterface = "tailscale0";
     };
 
     torAccess = serviceAccess.mkTorAccessOptions {
