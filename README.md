@@ -304,14 +304,34 @@ ssh buddia@randy-big-nixos 'cd ~/.nixos && git pull --ff-only && if command -v d
 ssh buddia@alan-node-nixos 'cd ~/.nixos && git pull --ff-only && if command -v doas >/dev/null 2>&1; then doas nixos-rebuild switch --flake ~/.nixos#alan-node-nixos; else sudo nixos-rebuild switch --flake ~/.nixos#alan-node-nixos; fi'
 ```
 
-The first bootstrap still uses `initialClusterState = "new"`, so the important
-thing is to get all three nodes onto the new config as one rollout.
+The first bootstrap still uses `initialClusterState = "new"`, but `etcd` is now
+allowed to wait indefinitely for quorum instead of being killed by the default
+systemd startup timeout. The important thing is that all three nodes eventually
+land on the same config.
 
 After that, verify the control plane from any node:
 
 ```bash
+alanix-etcd-local-health
 alanix-etcd-health
 alanix-etcd-members
+```
+
+If you change the cluster transport addresses after `etcd` has already been
+bootstrapped, `etcd` will still have the old peer URLs in `/var/lib/etcd`. In
+that case, rebuild all nodes onto the new config first, then stop `etcd` on
+all nodes, remove `/var/lib/etcd`, and start `etcd` again on all three nodes.
+
+For the current repo state, that reset is safe because `etcd` is only acting as
+control-plane groundwork and is not yet the source of truth for application
+data.
+
+The failover controller is also now `etcd`-driven. Useful commands on any node:
+
+```bash
+alanix-failover-status
+systemctl status forgejo-role-controller
+systemctl status immich-role-controller
 ```
 
 - `.sops.yaml` is generated from `secrets/keys.nix`. Do not hand-edit

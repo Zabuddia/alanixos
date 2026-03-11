@@ -14,9 +14,11 @@ in
   inherit activeDetectionFallbackPort;
   requireServiceEnableOptionPath = [ "alanix" serviceName "enable" ];
 
-  checkInterval = "15s";
-  failureThreshold = 4;
-  higherUnhealthyThreshold = 20;
+  checkInterval = "10s";
+  failureThreshold = 3;
+  campaignDelayStepSeconds = 20;
+  leaderInfoStaleSeconds = 45;
+  lockTtlSeconds = 30;
 
   sync = {
     enable = true;

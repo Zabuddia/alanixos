@@ -1,39 +1,60 @@
 { config, lib, pkgs, hostname, ... }:
 let
+  cluster = config.alanix.cluster;
+  etcdCfg = cluster.controlPlane.etcd;
   cfg = config.alanix.serviceFailover;
   enabledInstances = lib.filterAttrs (_: inst: inst.enable) cfg.instances;
 
-  mkNodeTuple = nodes: name: "${name}|${toString nodes.${name}.priority}|${nodes.${name}.clusterAddress}|${nodes.${name}.sshTarget}";
+  sortNodeNames = nodes:
+    lib.sort
+      (a: b:
+        let
+          aPriority = nodes.${a}.priority;
+          bPriority = nodes.${b}.priority;
+        in
+        if aPriority == bPriority then a < b else aPriority < bPriority)
+      (builtins.attrNames nodes);
+
+  indexOf = needle: list:
+    let
+      go = idx: xs:
+        if xs == [] then 0
+        else if builtins.head xs == needle then idx
+        else go (idx + 1) (builtins.tail xs);
+    in
+    go 0 list;
 
   mkInstance = name: inst:
     let
       localNodeName = inst.nodeName;
       nodes = inst.nodes;
       localNode = nodes.${localNodeName} or null;
+      orderedNodeNames = sortNodeNames nodes;
       localPriority = if localNode == null then 0 else localNode.priority;
-
-      orderedNodeNames =
-        lib.sort (a: b: nodes.${a}.priority < nodes.${b}.priority) (builtins.attrNames nodes);
-
-      higherNodeNames = lib.filter (n: nodes.${n}.priority < localPriority) orderedNodeNames;
-      lowerNodeNames = lib.filter (n: nodes.${n}.priority > localPriority) orderedNodeNames;
-      remoteNodeNames = lib.filter (n: n != localNodeName) orderedNodeNames;
-
-      higherNodeTuples = map (mkNodeTuple nodes) higherNodeNames;
-      lowerNodeTuples = map (mkNodeTuple nodes) lowerNodeNames;
-      remoteNodeTuples = map (mkNodeTuple nodes) remoteNodeNames;
-
+      localRank = if localNode == null then 0 else indexOf localNodeName orderedNodeNames;
+      localClusterAddress = if localNode == null then "" else localNode.clusterAddress;
+      localSshTarget = if localNode == null then "" else localNode.sshTarget;
       serviceUnits =
         [ inst.serviceUnit ]
         ++ lib.optional (inst.edgeUnit != null) inst.edgeUnit;
       serviceUnitsEscaped = lib.concatStringsSep " " (map lib.escapeShellArg serviceUnits);
-      unitChecksExpr = lib.concatStringsSep " && "
-        ([ "test -f '$ACTIVE_MARKER'" ] ++ map (u: "systemctl -q is-active ${u}") serviceUnits);
-
       syncPathsEscaped = lib.concatStringsSep " " (map lib.escapeShellArg inst.sync.paths);
     in
     {
-      inherit name inst localNodeName localPriority higherNodeTuples lowerNodeTuples remoteNodeTuples serviceUnitsEscaped unitChecksExpr syncPathsEscaped;
+      inherit
+        name
+        inst
+        localNodeName
+        localPriority
+        localRank
+        localClusterAddress
+        localSshTarget
+        serviceUnitsEscaped
+        syncPathsEscaped
+        ;
+      leaderInfoKey = "/alanix/failover/${name}/leader";
+      lockName = "/alanix/failover/${name}/lock";
+      campaignDelaySeconds = inst.campaignDelayStepSeconds * localRank;
     };
 
   instances = lib.mapAttrs mkInstance enabledInstances;
@@ -78,78 +99,116 @@ let
     lib.optional v.inst.sync.enable {
       name = "${v.name}-sync";
       value = {
-        description = "Sync ${v.name} data from currently active node";
-        after = [ "network-online.target" "sops-install-secrets.service" ];
-        wants = [ "network-online.target" "sops-install-secrets.service" ];
+        description = "Sync ${v.name} standby data from the current etcd-elected leader";
+        after = [ "network-online.target" "etcd.service" "sops-install-secrets.service" ];
+        wants = [ "network-online.target" "etcd.service" "sops-install-secrets.service" ];
+        path = [
+          config.services.etcd.package
+          pkgs.coreutils
+          pkgs.openssh
+          pkgs.rsync
+        ];
         serviceConfig = {
           Type = "oneshot";
           User = "root";
           Group = "root";
-        };
-        path = [ pkgs.rsync pkgs.openssh pkgs.coreutils pkgs.iputils pkgs.netcat-openbsd ];
-        script = ''
-          set -euo pipefail
+          ExecStart = pkgs.writeShellScript "alanix-${v.name}-sync" ''
+            set -euo pipefail
 
-          STATE_DIR=${lib.escapeShellArg v.inst.stateDir}
-          ACTIVE_MARKER=${lib.escapeShellArg v.inst.activeMarkerPath}
-          FALLBACK_PORT=${if v.inst.activeDetectionFallbackPort == null then "\"\"" else toString v.inst.activeDetectionFallbackPort}
-          KNOWN_HOSTS="$STATE_DIR/known_hosts"
-          SSH_KEY=${lib.escapeShellArg config.sops.secrets.${v.inst.sync.sshKeySecret}.path}
-          SYNC_PATHS=(${v.syncPathsEscaped})
+            STATE_DIR=${lib.escapeShellArg v.inst.stateDir}
+            ACTIVE_MARKER=${lib.escapeShellArg v.inst.activeMarkerPath}
+            KNOWN_HOSTS="$STATE_DIR/known_hosts"
+            ETCD_ENDPOINT=${lib.escapeShellArg "http://127.0.0.1:${toString etcdCfg.clientPort}"}
+            LEADER_INFO_KEY=${lib.escapeShellArg v.leaderInfoKey}
+            LOCAL_NODE_NAME=${lib.escapeShellArg v.localNodeName}
+            LEADER_INFO_STALE_SECONDS=${toString v.inst.leaderInfoStaleSeconds}
+            SSH_KEY=${lib.escapeShellArg config.sops.secrets.${v.inst.sync.sshKeySecret}.path}
+            SYNC_PATHS=(${v.syncPathsEscaped})
 
-          REMOTE_NODES=()
-          ${lib.concatStringsSep "\n" (map (tuple: ''REMOTE_NODES+=(${lib.escapeShellArg tuple})'') v.remoteNodeTuples)}
+            mkdir -p "$STATE_DIR"
 
-          [ -f "$ACTIVE_MARKER" ] && exit 0
+            etcdctl_quick() {
+              etcdctl --endpoints "$ETCD_ENDPOINT" --dial-timeout=3s --command-timeout=8s "$@"
+            }
 
-          ssh_cmd() {
-            ssh -i "$SSH_KEY" \
-              -o IdentitiesOnly=yes \
-              -o BatchMode=yes \
-              -o ConnectTimeout=8 \
-              -o StrictHostKeyChecking=accept-new \
-              -o UserKnownHostsFile="$KNOWN_HOSTS" \
-              "$@"
-          }
+            wait_for_local_etcd() {
+              local tries=0
+              while [ "$tries" -lt 12 ]; do
+                if etcdctl_quick endpoint health >/dev/null 2>&1; then
+                  return 0
+                fi
+                tries=$((tries + 1))
+                sleep 5
+              done
+              return 1
+            }
 
-          node_is_active() {
-            local ip="$1"
-            local target="$2"
-            if ssh_cmd "$target" "true" >/dev/null 2>&1; then
-              ssh_cmd "$target" "${v.unitChecksExpr}" >/dev/null 2>&1
-              return $?
-            fi
+            read_leader_value() {
+              etcdctl_quick get "$LEADER_INFO_KEY" --print-value-only 2>/dev/null || true
+            }
 
-            if [ -n "$FALLBACK_PORT" ]; then
-              ping -q -c1 -W2 "$ip" >/dev/null 2>&1 && nc -z -w2 "$ip" "$FALLBACK_PORT" >/dev/null 2>&1
-              return $?
-            fi
+            leader_value_is_fresh() {
+              local value="$1"
+              local leader_name leader_priority leader_address leader_target leader_timestamp now age
 
-            return 1
-          }
+              [ -n "$value" ] || return 1
+              IFS='|' read -r leader_name leader_priority leader_address leader_target leader_timestamp <<< "$value"
+              [ -n "$leader_timestamp" ] || return 1
+              case "$leader_timestamp" in
+                ""|*[!0-9]*) return 1 ;;
+              esac
 
-          sync_from_target() {
-            local target="$1"
-            local rsync_ssh
-            rsync_ssh="ssh -i $SSH_KEY -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$KNOWN_HOSTS"
+              now="$(date +%s)"
+              age=$((now - leader_timestamp))
+              if [ "$age" -lt 0 ]; then
+                age=0
+              fi
 
-            for p in "''${SYNC_PATHS[@]}"; do
-              mkdir -p "$p"
-              rsync -aHAX --delete -e "$rsync_ssh" "$target:$p/" "$p/"
-            done
-          }
+              [ "$age" -le "$LEADER_INFO_STALE_SECONDS" ]
+            }
 
-          for node in "''${REMOTE_NODES[@]}"; do
-            IFS='|' read -r _name _priority ip ssh_target <<< "$node"
-            if node_is_active "$ip" "$ssh_target"; then
-              sync_from_target "$ssh_target"
+            ssh_cmd() {
+              ssh -i "$SSH_KEY" \
+                -o IdentitiesOnly=yes \
+                -o BatchMode=yes \
+                -o ConnectTimeout=8 \
+                -o StrictHostKeyChecking=accept-new \
+                -o UserKnownHostsFile="$KNOWN_HOSTS" \
+                "$@"
+            }
+
+            sync_from_target() {
+              local target="$1"
+              local rsync_ssh
+              rsync_ssh="ssh -i $SSH_KEY -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$KNOWN_HOSTS"
+
+              for p in "''${SYNC_PATHS[@]}"; do
+                mkdir -p "$p"
+                rsync -aHAX --delete -e "$rsync_ssh" "$target:$p/" "$p/"
+              done
+            }
+
+            [ -f "$ACTIVE_MARKER" ] && exit 0
+            wait_for_local_etcd || exit 0
+
+            leader_value="$(read_leader_value)"
+            if ! leader_value_is_fresh "$leader_value"; then
+              echo "No fresh leader metadata found for ${v.name} sync; skipping" >&2
               exit 0
             fi
-          done
 
-          echo "No active remote node detected for ${v.name} sync; skipping" >&2
-          exit 0
-        '';
+            IFS='|' read -r leader_name _leader_priority _leader_address leader_target _leader_timestamp <<< "$leader_value"
+            [ "$leader_name" = "$LOCAL_NODE_NAME" ] && exit 0
+
+            if ssh_cmd "$leader_target" "true" >/dev/null 2>&1; then
+              sync_from_target "$leader_target"
+              exit 0
+            fi
+
+            echo "Leader ${v.name} sync target is unreachable: $leader_target" >&2
+            exit 0
+          '';
+        };
       };
     }
   ) instances));
@@ -158,10 +217,10 @@ let
     lib.optional v.inst.sync.enable {
       name = "${v.name}-sync";
       value = {
-        description = "Periodic ${v.name} sync";
+        description = "Periodic ${v.name} standby sync";
         wantedBy = [ "timers.target" ];
         timerConfig = {
-          OnBootSec = "30s";
+          OnBootSec = "45s";
           OnUnitActiveSec = v.inst.sync.interval;
           Unit = "${v.name}-sync.service";
         };
@@ -172,323 +231,334 @@ let
   roleServices = builtins.listToAttrs (lib.mapAttrsToList (_: v: {
     name = "${v.name}-role-controller";
     value = {
-      description = "${v.name} role controller (auto failover + manual failback)";
-      after = [ "network-online.target" ] ++ lib.optional v.inst.sync.enable "sops-install-secrets.service";
-      wants = [ "network-online.target" ] ++ lib.optional v.inst.sync.enable "sops-install-secrets.service";
+      description = "${v.name} role controller (etcd leader lock, automatic failover, manual failback)";
+      after = [ "network-online.target" "etcd.service" ] ++ lib.optional v.inst.sync.enable "sops-install-secrets.service";
+      wants = [ "network-online.target" "etcd.service" ] ++ lib.optional v.inst.sync.enable "sops-install-secrets.service";
+      requires = [ "etcd.service" ];
+      path = [
+        config.services.etcd.package
+        pkgs.coreutils
+        pkgs.openssh
+        pkgs.rsync
+        pkgs.systemd
+      ];
       serviceConfig = {
-        Type = "oneshot";
+        Type = "simple";
         User = "root";
         Group = "root";
-      };
-      path = [ pkgs.iputils pkgs.netcat-openbsd pkgs.systemd pkgs.coreutils pkgs.openssh pkgs.rsync ];
-      script = ''
-        set -euo pipefail
+        Restart = "always";
+        RestartSec = "5s";
+        ExecStart = pkgs.writeShellScript "alanix-${v.name}-role-controller" ''
+          set -euo pipefail
 
-        STATE_DIR=${lib.escapeShellArg v.inst.stateDir}
-        ACTIVE_MARKER=${lib.escapeShellArg v.inst.activeMarkerPath}
-        FAIL_FILE="$STATE_DIR/fail-count"
-        UNHEALTHY_FAIL_FILE="$STATE_DIR/higher-unhealthy-count"
-        FALLBACK_PORT=${if v.inst.activeDetectionFallbackPort == null then "\"\"" else toString v.inst.activeDetectionFallbackPort}
-        KNOWN_HOSTS="$STATE_DIR/known_hosts"
+          STATE_DIR=${lib.escapeShellArg v.inst.stateDir}
+          ACTIVE_MARKER=${lib.escapeShellArg v.inst.activeMarkerPath}
+          KNOWN_HOSTS="$STATE_DIR/known_hosts"
+          ETCD_ENDPOINT=${lib.escapeShellArg "http://127.0.0.1:${toString etcdCfg.clientPort}"}
+          LEADER_INFO_KEY=${lib.escapeShellArg v.leaderInfoKey}
+          LOCK_NAME=${lib.escapeShellArg v.lockName}
+          CHECK_INTERVAL=${lib.escapeShellArg v.inst.checkInterval}
+          LOCK_TTL_SECONDS=${toString v.inst.lockTtlSeconds}
+          LEADER_INFO_STALE_SECONDS=${toString v.inst.leaderInfoStaleSeconds}
+          FAILURE_THRESHOLD=${toString v.inst.failureThreshold}
+          CAMPAIGN_DELAY_SECONDS=${toString v.campaignDelaySeconds}
 
-        SERVICE_UNITS=(${v.serviceUnitsEscaped})
-        SERVICE_UNIT=${lib.escapeShellArg v.inst.serviceUnit}
-        LOCAL_NODE_NAME=${lib.escapeShellArg v.localNodeName}
-        LOCAL_PRIORITY=${toString v.localPriority}
+          SERVICE_UNITS=(${v.serviceUnitsEscaped})
+          SERVICE_UNIT=${lib.escapeShellArg v.inst.serviceUnit}
+          LOCAL_NODE_NAME=${lib.escapeShellArg v.localNodeName}
+          LOCAL_LEADER_PREFIX=${lib.escapeShellArg "${v.localNodeName}|${toString v.localPriority}|${v.localClusterAddress}|${v.localSshTarget}"}
 
-        HIGHER_NODES=()
-        ${lib.concatStringsSep "\n" (map (tuple: ''HIGHER_NODES+=(${lib.escapeShellArg tuple})'') v.higherNodeTuples)}
+          ${lib.optionalString v.inst.sync.enable ''
+            SSH_KEY=${lib.escapeShellArg config.sops.secrets.${v.inst.sync.sshKeySecret}.path}
+            SYNC_PATHS=(${v.syncPathsEscaped})
+          ''}
 
-        LOWER_NODES=()
-        ${lib.concatStringsSep "\n" (map (tuple: ''LOWER_NODES+=(${lib.escapeShellArg tuple})'') v.lowerNodeTuples)}
+          mkdir -p "$STATE_DIR"
 
-        REMOTE_NODES=()
-        ${lib.concatStringsSep "\n" (map (tuple: ''REMOTE_NODES+=(${lib.escapeShellArg tuple})'') v.remoteNodeTuples)}
+          LOCK_PID=""
 
-        mkdir -p "$STATE_DIR"
-
-        ${if v.inst.sync.enable then ''
-          SSH_KEY=${lib.escapeShellArg config.sops.secrets.${v.inst.sync.sshKeySecret}.path}
-          SYNC_PATHS=(${v.syncPathsEscaped})
-
-          ssh_cmd() {
-            ssh -i "$SSH_KEY" \
-              -o IdentitiesOnly=yes \
-              -o BatchMode=yes \
-              -o ConnectTimeout=8 \
-              -o StrictHostKeyChecking=accept-new \
-              -o UserKnownHostsFile="$KNOWN_HOSTS" \
-              "$@"
+          etcdctl_quick() {
+            etcdctl --endpoints "$ETCD_ENDPOINT" --dial-timeout=3s --command-timeout=8s "$@"
           }
 
-          node_reachable() {
-            local ip="$1"
-            local _target="$2"
-            ping -q -c1 -W2 "$ip" >/dev/null 2>&1
+          read_leader_value() {
+            etcdctl_quick get "$LEADER_INFO_KEY" --print-value-only 2>/dev/null || true
           }
 
-          node_is_active() {
-            local ip="$1"
-            local target="$2"
-            if ssh_cmd "$target" "true" >/dev/null 2>&1; then
-              ssh_cmd "$target" "${v.unitChecksExpr}" >/dev/null 2>&1
-              return $?
+          parse_leader_value() {
+            local value="$1"
+            leader_name=""
+            leader_priority=""
+            leader_address=""
+            leader_target=""
+            leader_timestamp=""
+            IFS='|' read -r leader_name leader_priority leader_address leader_target leader_timestamp <<< "$value"
+          }
+
+          leader_value_is_fresh() {
+            local value="$1"
+            local now age
+
+            [ -n "$value" ] || return 1
+            parse_leader_value "$value"
+            [ -n "$leader_timestamp" ] || return 1
+            case "$leader_timestamp" in
+              ""|*[!0-9]*) return 1 ;;
+            esac
+
+            now="$(date +%s)"
+            age=$((now - leader_timestamp))
+            if [ "$age" -lt 0 ]; then
+              age=0
             fi
 
-            if [ -n "$FALLBACK_PORT" ]; then
-              ping -q -c1 -W2 "$ip" >/dev/null 2>&1 && nc -z -w2 "$ip" "$FALLBACK_PORT" >/dev/null 2>&1
-              return $?
-            fi
-
-            return 1
+            [ "$age" -le "$LEADER_INFO_STALE_SECONDS" ]
           }
 
-          sync_from_target() {
-            local target="$1"
-            local rsync_ssh
-            rsync_ssh="ssh -i $SSH_KEY -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$KNOWN_HOSTS"
+          fresh_remote_leader_present() {
+            local value
+            value="$(read_leader_value)"
+            if ! leader_value_is_fresh "$value"; then
+              return 1
+            fi
+            [ "$leader_name" != "$LOCAL_NODE_NAME" ]
+          }
 
-            for p in "''${SYNC_PATHS[@]}"; do
-              mkdir -p "$p"
-              rsync -aHAX --delete -e "$rsync_ssh" "$target:$p/" "$p/"
+          stop_local() {
+            for unit in "''${SERVICE_UNITS[@]}"; do
+              systemctl stop "$unit" || true
+            done
+            rm -f "$ACTIVE_MARKER"
+          }
+
+          wait_for_local_etcd() {
+            until etcdctl_quick endpoint health >/dev/null 2>&1; do
+              stop_local
+              sleep "$CHECK_INTERVAL"
             done
           }
 
-          # Return codes:
-          # 0 = active lower-priority node exists and sync succeeded
-          # 1 = no active lower-priority node found (safe to continue)
-          # 2 = active lower-priority node exists but sync failed
-          maybe_sync_from_active_lower() {
-            for node in "''${LOWER_NODES[@]}"; do
-              IFS='|' read -r _name _priority ip ssh_target <<< "$node"
-              if node_is_active "$ip" "$ssh_target"; then
-                if sync_from_target "$ssh_target"; then
-                  return 0
+          release_lock() {
+            if [ -n "$LOCK_PID" ]; then
+              kill "$LOCK_PID" >/dev/null 2>&1 || true
+              wait "$LOCK_PID" >/dev/null 2>&1 || true
+              LOCK_PID=""
+            fi
+          }
+
+          delete_local_leader_info() {
+            local value
+            value="$(read_leader_value)"
+            if leader_value_is_fresh "$value" && [ "$leader_name" = "$LOCAL_NODE_NAME" ]; then
+              etcdctl_quick del "$LEADER_INFO_KEY" >/dev/null 2>&1 || true
+            fi
+          }
+
+          cleanup_local() {
+            stop_local
+            delete_local_leader_info
+            release_lock
+          }
+
+          trap 'cleanup_local' EXIT INT TERM
+
+          start_local() {
+            touch "$ACTIVE_MARKER"
+
+            systemctl start "$SERVICE_UNIT"
+            if ! systemctl -q is-active "$SERVICE_UNIT"; then
+              rm -f "$ACTIVE_MARKER"
+              return 1
+            fi
+
+            for unit in "''${SERVICE_UNITS[@]}"; do
+              if [ "$unit" != "$SERVICE_UNIT" ]; then
+                systemctl start "$unit"
+                if ! systemctl -q is-active "$unit"; then
+                  rm -f "$ACTIVE_MARKER"
+                  return 1
                 fi
-                echo "${v.name} failover: sync from active lower-priority node failed: $ssh_target" >&2
-                return 2
               fi
             done
-            return 1
-          }
-        '' else ''
-          node_reachable() {
-            local ip="$1"
-            local _target="$2"
-            ping -q -c1 -W2 "$ip" >/dev/null 2>&1
+
+            ${lib.optionalString v.inst.dns.enable ''
+              systemctl start alanix-dns-updater-${v.inst.dns.jobName}.service || true
+            ''}
           }
 
-          node_is_active() {
-            local ip="$1"
-            local _target="$2"
-            if [ -n "$FALLBACK_PORT" ]; then
-              ping -q -c1 -W2 "$ip" >/dev/null 2>&1 && nc -z -w2 "$ip" "$FALLBACK_PORT" >/dev/null 2>&1
-              return $?
-            fi
-            return 1
+          local_is_serving() {
+            for unit in "''${SERVICE_UNITS[@]}"; do
+              systemctl -q is-active "$unit" || return 1
+            done
+            return 0
           }
 
-          maybe_sync_from_active_lower() {
-            for node in "''${LOWER_NODES[@]}"; do
-              IFS='|' read -r _name _priority ip ssh_target <<< "$node"
-              if node_is_active "$ip" "$ssh_target"; then
+          publish_leader_info() {
+            local now
+            now="$(date +%s)"
+            etcdctl_quick put "$LEADER_INFO_KEY" "$LOCAL_LEADER_PREFIX|$now" >/dev/null
+          }
+
+          ${if v.inst.sync.enable then ''
+            ssh_cmd() {
+              ssh -i "$SSH_KEY" \
+                -o IdentitiesOnly=yes \
+                -o BatchMode=yes \
+                -o ConnectTimeout=8 \
+                -o StrictHostKeyChecking=accept-new \
+                -o UserKnownHostsFile="$KNOWN_HOSTS" \
+                "$@"
+            }
+
+            sync_from_target() {
+              local target="$1"
+              local rsync_ssh
+              rsync_ssh="ssh -i $SSH_KEY -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$KNOWN_HOSTS"
+
+              for p in "''${SYNC_PATHS[@]}"; do
+                mkdir -p "$p"
+                rsync -aHAX --delete -e "$rsync_ssh" "$target:$p/" "$p/"
+              done
+            }
+
+            maybe_sync_from_previous_leader() {
+              local value="$1"
+
+              if ! leader_value_is_fresh "$value"; then
                 return 0
               fi
-            done
-            return 1
-          }
-        ''}
 
-        stop_local() {
-          for unit in "''${SERVICE_UNITS[@]}"; do
-            systemctl stop "$unit" || true
-          done
-          rm -f "$ACTIVE_MARKER"
-        }
+              if [ "$leader_name" = "$LOCAL_NODE_NAME" ]; then
+                return 0
+              fi
 
-        start_local() {
-          touch "$ACTIVE_MARKER"
+              if ssh_cmd "$leader_target" "true" >/dev/null 2>&1; then
+                sync_from_target "$leader_target" || echo "${v.name} failover: best-effort pre-start sync from $leader_target failed" >&2
+              fi
+            }
+          '' else ''
+            maybe_sync_from_previous_leader() {
+              return 0
+            }
+          ''}
 
-          systemctl start "$SERVICE_UNIT"
-          if ! systemctl -q is-active "$SERVICE_UNIT"; then
-            rm -f "$ACTIVE_MARKER"
-            return 1
-          fi
+          wait_for_lock_acquisition() {
+            local lock_output="$STATE_DIR/lock.out"
 
-          for unit in "''${SERVICE_UNITS[@]}"; do
-            if [ "$unit" != "$SERVICE_UNIT" ]; then
-              systemctl start "$unit"
-              if ! systemctl -q is-active "$unit"; then
-                rm -f "$ACTIVE_MARKER"
+            : > "$lock_output"
+            etcdctl --endpoints "$ETCD_ENDPOINT" --dial-timeout=3s lock "$LOCK_NAME" --ttl="$LOCK_TTL_SECONDS" >"$lock_output" 2>&1 &
+            LOCK_PID=$!
+
+            while true; do
+              if ! kill -0 "$LOCK_PID" >/dev/null 2>&1; then
+                wait "$LOCK_PID" >/dev/null 2>&1 || true
+                LOCK_PID=""
                 return 1
               fi
-            fi
-          done
-          ${lib.optionalString v.inst.dns.enable ''
-            systemctl start alanix-dns-updater-${v.inst.dns.jobName}.service || true
-          ''}
-        }
 
-        local_is_serving() {
-          for unit in "''${SERVICE_UNITS[@]}"; do
-            systemctl -q is-active "$unit" || return 1
-          done
-          return 0
-        }
+              if [ -s "$lock_output" ]; then
+                return 0
+              fi
 
-        better_candidate() {
-          local candidate_name="$1"
-          local candidate_priority="$2"
-          local current_name="$3"
-          local current_priority="$4"
+              if fresh_remote_leader_present; then
+                release_lock
+                return 1
+              fi
 
-          if [ -z "$current_priority" ]; then
+              sleep 1
+            done
+          }
+
+          maybe_delay_for_preference() {
+            local remaining="$CAMPAIGN_DELAY_SECONDS"
+
+            while [ "$remaining" -gt 0 ]; do
+              if fresh_remote_leader_present; then
+                return 1
+              fi
+              sleep 1
+              remaining=$((remaining - 1))
+            done
+
             return 0
-          fi
+          }
 
-          if [ "$candidate_priority" -lt "$current_priority" ]; then
-            return 0
-          fi
+          while true; do
+            wait_for_local_etcd
 
-          if [ "$candidate_priority" -eq "$current_priority" ] && [[ "$candidate_name" < "$current_name" ]]; then
-            return 0
-          fi
-
-          return 1
-        }
-
-        remote_active_beats_local() {
-          local candidate_name="$1"
-          local candidate_priority="$2"
-
-          if [ "$candidate_priority" -lt "$LOCAL_PRIORITY" ]; then
-            return 0
-          fi
-
-          if [ "$candidate_priority" -eq "$LOCAL_PRIORITY" ] && [[ "$candidate_name" < "$LOCAL_NODE_NAME" ]]; then
-            return 0
-          fi
-
-          return 1
-        }
-
-        pre_promotion_sync_guard() {
-          local sync_result=0
-          if maybe_sync_from_active_lower; then
-            sync_result=0
-          else
-            sync_result=$?
-          fi
-
-          case "$sync_result" in
-            0)
-              echo "${v.name} failover: lower-priority node is still active; keeping local node on standby" >&2
-              return 1
-              ;;
-            1)
-              return 0
-              ;;
-            2)
-              echo "${v.name} failover: sync from active lower-priority node failed; refusing promotion" >&2
-              return 1
-              ;;
-          esac
-        }
-
-        best_remote_active_name=""
-        best_remote_active_priority=""
-        for node in "''${REMOTE_NODES[@]}"; do
-          IFS='|' read -r name priority ip ssh_target <<< "$node"
-          if node_is_active "$ip" "$ssh_target"; then
-            if better_candidate "$name" "$priority" "$best_remote_active_name" "$best_remote_active_priority"; then
-              best_remote_active_name="$name"
-              best_remote_active_priority="$priority"
-            fi
-          fi
-        done
-
-        if [ -n "$best_remote_active_name" ]; then
-          echo 0 > "$FAIL_FILE"
-          echo 0 > "$UNHEALTHY_FAIL_FILE"
-
-          if remote_active_beats_local "$best_remote_active_name" "$best_remote_active_priority"; then
-            if [ -f "$ACTIVE_MARKER" ] || local_is_serving; then
+            if fresh_remote_leader_present; then
               stop_local
+              sleep "$CHECK_INTERVAL"
+              continue
             fi
-            exit 0
-          fi
 
-          if [ -f "$ACTIVE_MARKER" ] && ! local_is_serving; then
-            rm -f "$ACTIVE_MARKER"
-          fi
+            if ! maybe_delay_for_preference; then
+              stop_local
+              sleep "$CHECK_INTERVAL"
+              continue
+            fi
 
-          # A lower-priority node is currently active. Stay on standby until a
-          # manual failback is performed.
-          exit 0
-        fi
+            previous_leader_value="$(read_leader_value)"
 
-        if [ -f "$ACTIVE_MARKER" ]; then
-          echo 0 > "$FAIL_FILE"
-          echo 0 > "$UNHEALTHY_FAIL_FILE"
-          if ! local_is_serving; then
-            systemctl reset-failed "$SERVICE_UNIT" || true
-            start_local
-          fi
-          exit 0
-        fi
+            if ! wait_for_lock_acquisition; then
+              sleep "$CHECK_INTERVAL"
+              continue
+            fi
 
-        higher_reachable=0
-        for node in "''${HIGHER_NODES[@]}"; do
-          IFS='|' read -r _name _priority ip ssh_target <<< "$node"
-          if node_reachable "$ip" "$ssh_target"; then
-            higher_reachable=1
-          fi
-        done
+            maybe_sync_from_previous_leader "$previous_leader_value"
 
-        unreachable_count=0
-        if [ -f "$FAIL_FILE" ]; then
-          unreachable_count="$(cat "$FAIL_FILE" || echo 0)"
-        fi
+            if ! start_local; then
+              cleanup_local
+              sleep "$CHECK_INTERVAL"
+              continue
+            fi
 
-        unhealthy_count=0
-        if [ -f "$UNHEALTHY_FAIL_FILE" ]; then
-          unhealthy_count="$(cat "$UNHEALTHY_FAIL_FILE" || echo 0)"
-        fi
+            etcd_failures=0
+            service_failures=0
 
-        if [ "$higher_reachable" -eq 1 ]; then
-          echo 0 > "$FAIL_FILE"
-          unhealthy_count=$((unhealthy_count + 1))
-          echo "$unhealthy_count" > "$UNHEALTHY_FAIL_FILE"
+            while true; do
+              if ! kill -0 "$LOCK_PID" >/dev/null 2>&1; then
+                echo "${v.name} failover: leadership lock process exited" >&2
+                break
+              fi
 
-          if [ "$unhealthy_count" -lt ${toString v.inst.higherUnhealthyThreshold} ]; then
-            exit 0
-          fi
-        else
-          echo 0 > "$UNHEALTHY_FAIL_FILE"
-          unreachable_count=$((unreachable_count + 1))
-          echo "$unreachable_count" > "$FAIL_FILE"
+              if etcdctl_quick endpoint health >/dev/null 2>&1; then
+                etcd_failures=0
+              else
+                etcd_failures=$((etcd_failures + 1))
+                if [ "$etcd_failures" -ge "$FAILURE_THRESHOLD" ]; then
+                  echo "${v.name} failover: local etcd unhealthy, relinquishing leadership" >&2
+                  break
+                fi
+              fi
 
-          if [ "$unreachable_count" -lt ${toString v.inst.failureThreshold} ]; then
-            exit 0
-          fi
-        fi
+              if local_is_serving; then
+                service_failures=0
+              else
+                service_failures=$((service_failures + 1))
+                if [ "$service_failures" -ge "$FAILURE_THRESHOLD" ]; then
+                  echo "${v.name} failover: local service failed health checks" >&2
+                  break
+                fi
+              fi
 
-        if pre_promotion_sync_guard; then
-          start_local
-        fi
-      '';
-    };
-  }) instances);
+              if publish_leader_info; then
+                etcd_failures=0
+              else
+                etcd_failures=$((etcd_failures + 1))
+                if [ "$etcd_failures" -ge "$FAILURE_THRESHOLD" ]; then
+                  echo "${v.name} failover: unable to publish leader metadata" >&2
+                  break
+                fi
+              fi
 
-  roleTimers = builtins.listToAttrs (lib.mapAttrsToList (_: v: {
-    name = "${v.name}-role-controller";
-    value = {
-      description = "${v.name} role control loop";
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnBootSec = "20s";
-        OnUnitActiveSec = v.inst.checkInterval;
-        Unit = "${v.name}-role-controller.service";
+              sleep "$CHECK_INTERVAL"
+            done
+
+            cleanup_local
+            sleep "$CHECK_INTERVAL"
+          done
+        '';
       };
     };
   }) instances);
@@ -534,24 +604,47 @@ in
           activeDetectionFallbackPort = lib.mkOption {
             type = lib.types.nullOr lib.types.port;
             default = null;
-            description = "Optional fallback TCP port check when SSH active check fails.";
+            description = "Legacy no-op option kept for compatibility with older failover definitions.";
           };
 
           checkInterval = lib.mkOption {
             type = lib.types.str;
             default = "15s";
+            description = "Leadership controller loop interval.";
           };
 
           failureThreshold = lib.mkOption {
             type = lib.types.ints.positive;
             default = 4;
-            description = "Consecutive unreachable checks before local promotion.";
+            description = "Consecutive unhealthy leadership checks before a local active node relinquishes control.";
           };
 
           higherUnhealthyThreshold = lib.mkOption {
             type = lib.types.ints.positive;
             default = 20;
-            description = "Consecutive unhealthy checks before promoting while higher-priority node is reachable.";
+            description = "Legacy no-op option kept for compatibility with older role-controller settings.";
+          };
+
+          campaignDelayStepSeconds = lib.mkOption {
+            type = lib.types.ints.unsigned;
+            default = 20;
+            description = ''
+              Extra delay, in seconds, added per priority rank before this node
+              campaigns for leadership. Lower-priority nodes wait longer, so the
+              preferred node wins initial placement without automatic failback.
+            '';
+          };
+
+          leaderInfoStaleSeconds = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 45;
+            description = "How old leader metadata may be before standbys ignore it and begin campaigning.";
+          };
+
+          lockTtlSeconds = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 30;
+            description = "etcd lock session TTL for this failover instance.";
           };
 
           requireServiceEnableOptionPath = lib.mkOption {
@@ -726,7 +819,25 @@ in
 
     environment.systemPackages = [
       pkgs.rsync
-      pkgs.netcat-openbsd
+      (pkgs.writeShellApplication {
+        name = "alanix-failover-status";
+        runtimeInputs = [ config.services.etcd.package pkgs.coreutils ];
+        text = ''
+          endpoint="http://127.0.0.1:${toString etcdCfg.clientPort}"
+
+          if ! etcdctl --endpoints "$endpoint" --dial-timeout=3s --command-timeout=8s endpoint health >/dev/null 2>&1; then
+            echo "Local etcd endpoint is not healthy at $endpoint" >&2
+            exit 1
+          fi
+
+          prefix="/alanix/failover/"
+          while IFS= read -r key; do
+            value="$(etcdctl --endpoints "$endpoint" --dial-timeout=3s --command-timeout=8s get "$key" --print-value-only 2>/dev/null || true)"
+            [ -n "$value" ] || continue
+            printf '%s -> %s\n' "$key" "$value"
+          done < <(etcdctl --endpoints "$endpoint" --dial-timeout=3s --command-timeout=8s get "$prefix" --prefix --keys-only --print-value-only 2>/dev/null | sort -u)
+        '';
+      })
     ];
 
     networking.firewall.interfaces =
@@ -744,6 +855,6 @@ in
     alanix.dnsUpdaters = dnsUpdaterDefs;
 
     systemd.services = syncServices // roleServices;
-    systemd.timers = syncTimers // roleTimers;
+    systemd.timers = syncTimers;
   };
 }

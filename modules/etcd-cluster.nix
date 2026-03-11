@@ -61,8 +61,11 @@ in
     systemd.services.etcd = {
       wants = [ "network-online.target" "tailscaled.service" ];
       after = [ "network-online.target" "tailscaled.service" ];
-      serviceConfig.ExecStartPre = [
-        "${pkgs.writeShellScript "alanix-wait-for-cluster-interface" ''
+      unitConfig.StartLimitIntervalSec = 0;
+      serviceConfig = {
+        TimeoutStartSec = "infinity";
+        ExecStartPre = [
+          "${pkgs.writeShellScript "alanix-wait-for-cluster-interface" ''
           set -euo pipefail
 
           for _ in $("${pkgs.coreutils}/bin/seq" 1 60); do
@@ -74,8 +77,9 @@ in
 
           echo "Timed out waiting for ${clusterInterface} to have ${localNode.clusterAddress}" >&2
           exit 1
-        ''}"
-      ];
+          ''}"
+        ];
+      };
     };
 
     environment.systemPackages = [
@@ -98,6 +102,13 @@ in
         runtimeInputs = [ config.services.etcd.package ];
         text = ''
           exec etcdctl --endpoints ${lib.escapeShellArg endpointList} member list --write-out=table
+        '';
+      })
+      (pkgs.writeShellApplication {
+        name = "alanix-etcd-local-health";
+        runtimeInputs = [ config.services.etcd.package ];
+        text = ''
+          exec etcdctl --endpoints ${lib.escapeShellArg "http://127.0.0.1:${toString cfg.clientPort}"} endpoint health
         '';
       })
     ];

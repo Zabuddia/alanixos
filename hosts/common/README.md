@@ -20,16 +20,20 @@ When adding a new clustered service:
 
 Current failover policy:
 - Automatic failover, manual failback.
-- A node stays standby while any remote node is already active.
-- Higher-priority nodes do not automatically reclaim a service after they return.
-- Promotion is blocked if a lower-priority active node is still detected or if pre-promotion sync fails.
+- Service leadership is coordinated through `etcd` instead of timer-driven ping checks.
+- A node stays standby while a fresh remote leader record exists for that service.
+- Higher-priority nodes wait less time before campaigning, so they win initial placement, but they do not automatically reclaim a service after they return.
+- Standby nodes sync from the currently published leader over SSH.
+- The active node relinquishes leadership if its local `etcd` endpoint stops committing health checks or the managed service stops passing local unit checks.
 
 Control-plane groundwork:
 - `alanix.cluster.controlPlane.etcd` is the intended shared consensus layer for 3+ identical nodes.
 - It is meant to run only over the private cluster transport and only with an odd number of members.
 - It is now enabled for the three declared nodes: `alan-big-nixos`, `randy-big-nixos`, and `alan-node-nixos`.
-- First bootstrap should be rolled out to all three nodes close together while `initialClusterState = "new"`.
-- Verify quorum on any node with `alanix-etcd-health` and inspect members with `alanix-etcd-members`.
+- On first bootstrap, rebuild all three nodes onto the same config. `etcd` now waits indefinitely for quorum instead of being killed by the default systemd startup timeout.
+- Verify the local endpoint first with `alanix-etcd-local-health`, then cluster quorum with `alanix-etcd-health`, and inspect members with `alanix-etcd-members`.
+- If the transport addresses change after `etcd` has already been bootstrapped, the existing `/var/lib/etcd` state must be replaced or the member URLs must be updated explicitly. At the current stage, a wipe/rebootstrap is acceptable because `etcd` is not yet carrying application state.
+- `alanix-failover-status` prints the currently published leader metadata for each failover-managed service.
 
 Cluster transport notes:
 - The repo currently uses Tailscale as the private inter-node transport.
