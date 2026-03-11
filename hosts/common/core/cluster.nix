@@ -30,7 +30,7 @@
         site = "alan-site";
         wireguardPublicKey = "19Kloz2N3r2ksivuyLNtSplbDxS1kneNzVNRFhnQoCA=";
         wireguardEndpointHost = "alan-big-nixos-wg.fifefin.com";
-        wireguardLanEndpointHost = "100.114.75.73";
+        wireguardLanEndpointHost = "fd7a:115c:a1e0::839:4b49";
       };
 
       randy-big-nixos = {
@@ -47,7 +47,7 @@
         wireguardPublicKey = "h1BHaYvuyK54GGL5eIKOjYaG1+dgxyMuqWVVJ0S2mRM=";
         wireguardEndpointHost = "alan-node-nixos-wg.fifefin.com";
         wireguardPublicEndpointPort = 51821;
-        wireguardLanEndpointHost = "100.100.112.3";
+        wireguardLanEndpointHost = "fd7a:115c:a1e0::d139:7003";
       };
     };
 

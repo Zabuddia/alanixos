@@ -36,3 +36,4 @@ WireGuard topology notes:
 - `wireguardPublicEndpointPort` is the externally advertised UDP port and can differ when NAT/port-forwarding rewrites ports.
 - For nodes in the same site/NAT, set `site` and `wireguardLanEndpointHost` so they use a LAN/private endpoint instead of hairpinning through the public address.
 - If `.local` discovery is unreliable, prefer a stable private overlay endpoint such as a Tailscale IP or MagicDNS name for `wireguardLanEndpointHost`.
+- If the local network already uses CGNAT-style `100.64.0.0/10` addressing, prefer Tailscale IPv6 addresses for `wireguardLanEndpointHost` to avoid overlapping IPv4 routes.

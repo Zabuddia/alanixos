@@ -2,6 +2,12 @@
 let
   cluster = config.alanix.cluster;
   localNode = cluster.nodes.${hostname};
+  formatEndpoint =
+    endpointHost: endpointPort:
+    if builtins.match ".*:.*" endpointHost != null then
+      "[${endpointHost}]:${toString endpointPort}"
+    else
+      "${endpointHost}:${toString endpointPort}";
   peerEndpoint =
     peerNode:
     let
@@ -21,7 +27,7 @@ let
         else
           peerNode.wireguardPublicEndpointPort;
     in
-    "${endpointHost}:${toString endpointPort}";
+    formatEndpoint endpointHost endpointPort;
   sameSitePeersMissingLan =
     lib.attrNames (lib.filterAttrs
       (nodeName: peerNode:
