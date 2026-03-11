@@ -15,7 +15,7 @@
       apiTokenSecret = "cloudflare/api-token";
     };
     controlPlane.etcd = {
-      enable = false;
+      enable = true;
       heartbeatIntervalMs = 1500;
       electionTimeoutMs = 15000;
       initialClusterState = "new";

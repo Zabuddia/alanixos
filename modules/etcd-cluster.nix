@@ -1,10 +1,14 @@
-{ config, lib, hostname, ... }:
+{ config, lib, pkgs, hostname, ... }:
 let
   cluster = config.alanix.cluster;
   cfg = cluster.controlPlane.etcd;
   nodeNames = lib.sort builtins.lessThan (builtins.attrNames cluster.nodes);
   nodeCount = builtins.length nodeNames;
   localNode = cluster.nodes.${hostname} or null;
+  endpointUrls = map
+    (nodeName: "http://${cluster.nodes.${nodeName}.vpnIP}:${toString cfg.clientPort}")
+    nodeNames;
+  endpointList = lib.concatStringsSep "," endpointUrls;
   initialCluster = map
     (nodeName: "${nodeName}=http://${cluster.nodes.${nodeName}.vpnIP}:${toString cfg.peerPort}")
     nodeNames;
@@ -52,6 +56,38 @@ in
         AUTO_COMPACTION_RETENTION = cfg.autoCompactionRetention;
       };
     };
+
+    systemd.services.etcd = {
+      requires = [ "wireguard-wg0.service" ];
+      after = [ "wireguard-wg0.service" ];
+    };
+
+    environment.systemPackages = [
+      (pkgs.writeShellApplication {
+        name = "alanix-etcdctl";
+        runtimeInputs = [ config.services.etcd.package ];
+        text = ''
+          export ETCDCTL_API=3
+          exec etcdctl --endpoints ${lib.escapeShellArg endpointList} "$@"
+        '';
+      })
+      (pkgs.writeShellApplication {
+        name = "alanix-etcd-health";
+        runtimeInputs = [ config.services.etcd.package ];
+        text = ''
+          export ETCDCTL_API=3
+          exec etcdctl --endpoints ${lib.escapeShellArg endpointList} endpoint status --cluster --write-out=table
+        '';
+      })
+      (pkgs.writeShellApplication {
+        name = "alanix-etcd-members";
+        runtimeInputs = [ config.services.etcd.package ];
+        text = ''
+          export ETCDCTL_API=3
+          exec etcdctl --endpoints ${lib.escapeShellArg endpointList} member list --write-out=table
+        '';
+      })
+    ];
 
     networking.firewall.interfaces.wg0.allowedTCPPorts = [
       cfg.clientPort

@@ -27,4 +27,6 @@ Current failover policy:
 Control-plane groundwork:
 - `alanix.cluster.controlPlane.etcd` is the intended shared consensus layer for 3+ identical nodes.
 - It is meant to run only over WireGuard and only with an odd number of members.
-- Leave it disabled until the third node exists and is declared in `alanix.cluster.nodes`.
+- It is now enabled for the three declared nodes: `alan-big-nixos`, `randy-big-nixos`, and `alan-node-nixos`.
+- First bootstrap should be rolled out to all three nodes close together while `initialClusterState = "new"`.
+- Verify quorum on any node with `alanix-etcd-health` and inspect members with `alanix-etcd-members`.

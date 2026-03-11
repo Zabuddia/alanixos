@@ -283,6 +283,37 @@ sops secrets/secrets.yaml
 
 ## Notes
 
+### First 3-Node Cluster Bootstrap
+
+Once `alan-big-nixos`, `randy-big-nixos`, and `alan-node-nixos` all exist in
+the repo and have their WireGuard and `sops` secrets in place, do the first
+`etcd` rollout like this.
+
+Run on your editor machine:
+
+```bash
+cd "$REPO"
+git push
+```
+
+Then rebuild all three cluster nodes without a long gap between them:
+
+```bash
+ssh buddia@alan-big-nixos 'cd ~/.nixos && git pull --ff-only && if command -v doas >/dev/null 2>&1; then doas nixos-rebuild switch --flake ~/.nixos#alan-big-nixos; else sudo nixos-rebuild switch --flake ~/.nixos#alan-big-nixos; fi'
+ssh buddia@randy-big-nixos 'cd ~/.nixos && git pull --ff-only && if command -v doas >/dev/null 2>&1; then doas nixos-rebuild switch --flake ~/.nixos#randy-big-nixos; else sudo nixos-rebuild switch --flake ~/.nixos#randy-big-nixos; fi'
+ssh buddia@alan-node-nixos 'cd ~/.nixos && git pull --ff-only && if command -v doas >/dev/null 2>&1; then doas nixos-rebuild switch --flake ~/.nixos#alan-node-nixos; else sudo nixos-rebuild switch --flake ~/.nixos#alan-node-nixos; fi'
+```
+
+The first bootstrap still uses `initialClusterState = "new"`, so the important
+thing is to get all three nodes onto the new config as one rollout.
+
+After that, verify the control plane from any node:
+
+```bash
+alanix-etcd-health
+alanix-etcd-members
+```
+
 - `.sops.yaml` is generated from `secrets/keys.nix`. Do not hand-edit
   `.sops.yaml`.
 - When recipients change, always run:
@@ -290,8 +321,6 @@ sops secrets/secrets.yaml
 ```bash
 ./scripts/generate-sops-config.sh
 ./scripts/update-sops-keys.sh
-```
-
 ```
 
 - Server hosts explicitly disable idle suspend and sleep in
