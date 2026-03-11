@@ -63,6 +63,7 @@ in
       after = [ "network-online.target" "tailscaled.service" ];
       unitConfig.StartLimitIntervalSec = 0;
       serviceConfig = {
+        Type = lib.mkForce "simple";
         TimeoutStartSec = "infinity";
         ExecStartPre = [
           "${pkgs.writeShellScript "alanix-wait-for-cluster-interface" ''
