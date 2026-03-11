@@ -43,6 +43,7 @@
         priority = 30;
         wireguardPublicKey = "h1BHaYvuyK54GGL5eIKOjYaG1+dgxyMuqWVVJ0S2mRM=";
         wireguardEndpointHost = "alan-node-nixos-wg.fifefin.com";
+        wireguardListenPort = 51821;
       };
     };
 

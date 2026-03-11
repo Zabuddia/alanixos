@@ -11,6 +11,7 @@ in
   my.wireguard = {
     enable = true;
     nodeName = hostname;
+    listenPort = cluster.nodes.${hostname}.wireguardListenPort;
     privateKeyFile = config.sops.secrets."wireguard-private-keys/${hostname}".path;
     nodes = lib.mapAttrs (_: node: {
       vpnIP = node.vpnIP;

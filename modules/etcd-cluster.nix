@@ -67,7 +67,6 @@ in
         name = "alanix-etcdctl";
         runtimeInputs = [ config.services.etcd.package ];
         text = ''
-          export ETCDCTL_API=3
           exec etcdctl --endpoints ${lib.escapeShellArg endpointList} "$@"
         '';
       })
@@ -75,7 +74,6 @@ in
         name = "alanix-etcd-health";
         runtimeInputs = [ config.services.etcd.package ];
         text = ''
-          export ETCDCTL_API=3
           exec etcdctl --endpoints ${lib.escapeShellArg endpointList} endpoint status --cluster --write-out=table
         '';
       })
@@ -83,7 +81,6 @@ in
         name = "alanix-etcd-members";
         runtimeInputs = [ config.services.etcd.package ];
         text = ''
-          export ETCDCTL_API=3
           exec etcdctl --endpoints ${lib.escapeShellArg endpointList} member list --write-out=table
         '';
       })
