@@ -30,3 +30,10 @@ Control-plane groundwork:
 - It is now enabled for the three declared nodes: `alan-big-nixos`, `randy-big-nixos`, and `alan-node-nixos`.
 - First bootstrap should be rolled out to all three nodes close together while `initialClusterState = "new"`.
 - Verify quorum on any node with `alanix-etcd-health` and inspect members with `alanix-etcd-members`.
+
+WireGuard topology notes:
+- `wireguardListenPort` is the node's local UDP listen port.
+- `wireguardPublicEndpointPort` is the externally advertised UDP port and can differ when NAT/port-forwarding rewrites ports.
+- For nodes in the same site/NAT, set `site` and `wireguardLanEndpointHost` so they use a LAN/private endpoint instead of hairpinning through the public address.
+- `hosts/common/core/local-discovery.nix` enables Avahi/mDNS so same-site nodes can use stable `.local` names without router control.
+- This only works when the nodes share a local broadcast domain and the network allows multicast/client-to-client traffic.

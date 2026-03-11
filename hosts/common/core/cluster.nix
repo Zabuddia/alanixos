@@ -27,8 +27,10 @@
       alan-big-nixos = {
         vpnIP = "10.100.0.1";
         priority = 10;
+        site = "alan-site";
         wireguardPublicKey = "19Kloz2N3r2ksivuyLNtSplbDxS1kneNzVNRFhnQoCA=";
         wireguardEndpointHost = "alan-big-nixos-wg.fifefin.com";
+        wireguardLanEndpointHost = "alan-big-nixos.local";
       };
 
       randy-big-nixos = {
@@ -41,9 +43,11 @@
       alan-node-nixos = {
         vpnIP = "10.100.0.3";
         priority = 30;
+        site = "alan-site";
         wireguardPublicKey = "h1BHaYvuyK54GGL5eIKOjYaG1+dgxyMuqWVVJ0S2mRM=";
         wireguardEndpointHost = "alan-node-nixos-wg.fifefin.com";
-        wireguardListenPort = 51821;
+        wireguardPublicEndpointPort = 51821;
+        wireguardLanEndpointHost = "alan-node-nixos.local";
       };
     };
 

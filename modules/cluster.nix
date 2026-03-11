@@ -55,17 +55,43 @@ in
             description = "Lower number means higher priority for active role.";
           };
 
+          site = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "Optional site/NAT group name used to prefer LAN WireGuard endpoints for peers in the same location.";
+          };
+
           wireguardPublicKey = lib.mkOption {
             type = lib.types.str;
           };
 
           wireguardEndpointHost = lib.mkOption {
             type = lib.types.str;
+            description = "Publicly advertised WireGuard endpoint hostname or IP.";
           };
 
           wireguardListenPort = lib.mkOption {
             type = lib.types.port;
             default = 51820;
+            description = "Local UDP port this node's WireGuard interface listens on.";
+          };
+
+          wireguardPublicEndpointPort = lib.mkOption {
+            type = lib.types.port;
+            default = config.wireguardListenPort;
+            description = "Publicly advertised WireGuard endpoint port. This can differ from the local listen port when a router rewrites external ports.";
+          };
+
+          wireguardLanEndpointHost = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "Optional LAN/private hostname or IP that same-site peers should use instead of the public endpoint.";
+          };
+
+          wireguardLanEndpointPort = lib.mkOption {
+            type = lib.types.port;
+            default = config.wireguardListenPort;
+            description = "LAN/private WireGuard endpoint port used by same-site peers.";
           };
 
           ddnsRecord = lib.mkOption {
