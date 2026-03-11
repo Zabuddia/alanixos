@@ -3,7 +3,6 @@
   imports = [
     ./hardware-configuration.nix
     ../common/core/secrets.nix
-    ../common/core/local-discovery.nix
     ../common/core/server-power.nix
     ../common/core/users.nix
     ../common/core/wireguard.nix
