@@ -18,6 +18,11 @@
     mode = "0400";
   };
 
+  sops.templates."cloudflare-env" = {
+    content = "CLOUDFLARE_API_TOKEN=${config.sops.placeholder."cloudflare/api-token"}";
+    owner = "cloudflare-ddns";
+  };
+
   sops.secrets."wireguard-private-keys/randy-big-nixos" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
