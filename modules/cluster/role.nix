@@ -51,13 +51,18 @@ let
     stop_units=(${lib.concatStringsSep " " (map lib.escapeShellArg stopUnits)})
     state_dir=/var/lib/alanix/role-state
     last_role_file="$state_dir/last-role"
+    last_active_node_file="$state_dir/last-active-node"
     failure_file="$state_dir/last-start-failures"
     previous_role=unknown
+    previous_active_node=unknown
     failed_units=()
 
     ${lib.getExe' pkgs.coreutils "mkdir"} -p "$state_dir"
     if [ -r "$last_role_file" ]; then
       IFS= read -r previous_role < "$last_role_file"
+    fi
+    if [ -r "$last_active_node_file" ]; then
+      IFS= read -r previous_active_node < "$last_active_node_file"
     fi
 
     unit_exists() {
@@ -88,10 +93,14 @@ let
         start_unit "$unit"
       done
 
-      if [ "$previous_role" != "active" ] && ${lib.getExe' pkgs.systemd "systemctl"} list-unit-files alanix-restore-on-activate.service >/dev/null 2>&1; then
+      if [ "$previous_active_node" != ${lib.escapeShellArg cluster.currentNodeName} ] && ${lib.getExe' pkgs.systemd "systemctl"} list-unit-files alanix-restore-on-activate.service >/dev/null 2>&1; then
         if ! ${lib.getExe' pkgs.systemd "systemctl"} start alanix-restore-on-activate.service; then
           echo "alanix-role-sync: failed to run alanix-restore-on-activate.service" >&2
           failed_units+=("alanix-restore-on-activate.service")
+          printf '%s\n' "''${failed_units[@]}" > "$failure_file"
+          printf '%s\n' ${lib.escapeShellArg cluster.role} > "$last_role_file"
+          printf '%s\n' ${lib.escapeShellArg cluster.activeNodeName} > "$last_active_node_file"
+          exit 1
         fi
       fi
 
@@ -105,6 +114,7 @@ let
     fi
 
     printf '%s\n' ${lib.escapeShellArg cluster.role} > "$last_role_file"
+    printf '%s\n' ${lib.escapeShellArg cluster.activeNodeName} > "$last_active_node_file"
 
     if [ "''${#failed_units[@]}" -gt 0 ]; then
       printf '%s\n' "''${failed_units[@]}" > "$failure_file"

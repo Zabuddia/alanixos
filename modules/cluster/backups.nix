@@ -297,15 +297,6 @@ let
       fi
     }
 
-    format_epoch() {
-      local epoch="$1"
-      if [ -z "$epoch" ] || [ "$epoch" = "0" ]; then
-        printf '%s' "-"
-      else
-        ${pkgs.coreutils}/bin/date -d "@$epoch" '+%a %Y-%m-%d %H:%M:%S %Z'
-      fi
-    }
-
     format_duration() {
       local start_us="$1"
       local end_us="$2"
@@ -341,9 +332,6 @@ let
       unset svc_props timer_props
       declare -A svc_props=()
       declare -A timer_props=()
-      timer_line=""
-      timer_next_epoch=""
-      timer_last_epoch=""
 
       while IFS='=' read -r key value; do
         svc_props["$key"]="$value"
@@ -363,21 +351,10 @@ let
       done < <(
         ${pkgs.systemd}/bin/systemctl show "$timer" \
           -p ActiveState \
+          -p NextElapseUSecRealtime \
+          -p LastTriggerUSec \
           --no-pager 2>/dev/null || true
       )
-
-      timer_line="$(${pkgs.systemd}/bin/systemctl list-timers "$timer" --all --legend=false --plain --timestamp=unix --no-pager 2>/dev/null | ${pkgs.coreutils}/bin/head -n 1 || true)"
-      if [ -n "$timer_line" ]; then
-        while IFS= read -r epoch; do
-          epoch="''${epoch#@}"
-          if [ -z "$timer_next_epoch" ]; then
-            timer_next_epoch="$epoch"
-          elif [ -z "$timer_last_epoch" ]; then
-            timer_last_epoch="$epoch"
-            break
-          fi
-        done < <(printf '%s\n' "$timer_line" | ${pkgs.gnugrep}/bin/grep -o '@[0-9]\+')
-      fi
 
       result="''${svc_props[Result]:-}"
       active_state="''${svc_props[ActiveState]:-unknown}"
@@ -398,10 +375,10 @@ let
 
       last_run="$(format_value "''${svc_props[ExecMainExitTimestamp]:-}")"
       if [ "$last_run" = "-" ]; then
-        last_run="$(format_epoch "$timer_last_epoch")"
+        last_run="$(format_value "''${timer_props[LastTriggerUSec]:-}")"
       fi
 
-      next_run="$(format_epoch "$timer_next_epoch")"
+      next_run="$(format_value "''${timer_props[NextElapseUSecRealtime]:-}")"
 
       printf '%-34s %-10s %-8s %-26s %s\n' "$job" "$result" "$duration" "$last_run" "$next_run"
     done
@@ -411,45 +388,55 @@ let
     set -euo pipefail
 
     PASSWORD_FILE=${lib.escapeShellArg resticPasswordPath}
+    STATE_DIR=/var/lib/alanix/role-state
+    LAST_RESTORE_FILE="$STATE_DIR/last-restore"
+
+    ${pkgs.coreutils}/bin/mkdir -p "$STATE_DIR"
+    : > "$LAST_RESTORE_FILE"
 
     find_latest_source() {
       local service_name="$1"
       local best_source=""
       local best_epoch="-1"
       local best_time=""
+      local inspect_error=0
 
       ${lib.concatMapStringsSep "\n" (
         sourceNode:
         ''
           repo="${incomingBaseDir}/''${service_name}/${sourceNode}"
           if [ -d "$repo" ]; then
-            latest_info="$(
-              RESTIC_PASSWORD_FILE="$PASSWORD_FILE" \
-                ${lib.getExe pkgs.restic} -r "$repo" snapshots --json 2>/dev/null \
-                | ${lib.getExe pkgs.jq} -r '
-                    if length == 0 then
-                      empty
-                    else
-                      max_by(.time | fromdateiso8601)
-                      | [.time, (.time | fromdateiso8601)]
-                      | @tsv
-                    end
-                  ' 2>/dev/null || true
-            )"
+            latest_json="$(RESTIC_PASSWORD_FILE="$PASSWORD_FILE" ${lib.getExe pkgs.restic} -r "$repo" snapshots --latest 1 --json 2>/dev/null || true)"
+            if [ -z "$latest_json" ]; then
+              echo "Failed to inspect local backup repository for ''${service_name} from ${sourceNode}" >&2
+              inspect_error=1
+              continue
+            fi
 
-            if [ -n "$latest_info" ]; then
-              latest_time="''${latest_info%%	*}"
-              latest_epoch="''${latest_info##*	}"
+            latest_time="$(printf '%s\n' "$latest_json" | ${lib.getExe pkgs.jq} -r 'if length == 0 then empty else .[0].time end' 2>/dev/null || true)"
+            if [ -z "$latest_time" ]; then
+              continue
+            fi
 
-              if [ "$latest_epoch" -gt "$best_epoch" ]; then
-                best_source=${lib.escapeShellArg sourceNode}
-                best_epoch="$latest_epoch"
-                best_time="$latest_time"
-              fi
+            latest_epoch="$(${lib.getExe' pkgs.coreutils "date"} -d "$latest_time" +%s 2>/dev/null || true)"
+            if [ -z "$latest_epoch" ]; then
+              echo "Unable to parse snapshot time '$latest_time' for ''${service_name} from ${sourceNode}" >&2
+              inspect_error=1
+              continue
+            fi
+
+            if [ "$latest_epoch" -gt "$best_epoch" ]; then
+              best_source=${lib.escapeShellArg sourceNode}
+              best_epoch="$latest_epoch"
+              best_time="$latest_time"
             fi
           fi
         ''
       ) restoreSourceNodes}
+
+      if [ "$inspect_error" -ne 0 ] && [ -z "$best_source" ]; then
+        return 1
+      fi
 
       if [ -n "$best_source" ]; then
         printf '%s\t%s\n' "$best_source" "$best_time"
@@ -459,14 +446,20 @@ let
     ${lib.concatMapStringsSep "\n" (
       serviceName:
       ''
-        latest_source_info="$(find_latest_source ${lib.escapeShellArg serviceName})"
+        if ! latest_source_info="$(find_latest_source ${lib.escapeShellArg serviceName})"; then
+          echo "Failed to inspect local snapshots for ${serviceName}." >&2
+          exit 1
+        fi
+
         if [ -n "$latest_source_info" ]; then
           source_node="''${latest_source_info%%	*}"
           snapshot_time="''${latest_source_info##*	}"
           echo "Restoring ${serviceName} from $source_node (latest snapshot at $snapshot_time)..."
           ${restoreScriptPaths.${serviceName}} "$source_node" latest
+          printf '%s\t%s\t%s\n' ${lib.escapeShellArg serviceName} "$source_node" "$snapshot_time" >> "$LAST_RESTORE_FILE"
         else
           echo "No local snapshots available for ${serviceName}; leaving current state in place."
+          printf '%s\t%s\t%s\n' ${lib.escapeShellArg serviceName} "-" "-" >> "$LAST_RESTORE_FILE"
         fi
       ''
     ) (builtins.attrNames backupServices)}
