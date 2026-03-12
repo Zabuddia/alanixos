@@ -33,19 +33,6 @@ let
       null
     else
       "http://${cfg.companion.listenAddress}/companion";
-  hasLegacyDefaultHome = cfg.settings ? default_home;
-  hasLegacyFeedMenu = cfg.settings ? feed_menu;
-  hasDefaultUserPreferences = cfg.settings ? default_user_preferences;
-  invidiousSettingsBase = builtins.removeAttrs cfg.settings [ "default_home" "feed_menu" ];
-  invidiousDefaultUserPreferences =
-    (if hasDefaultUserPreferences then cfg.settings.default_user_preferences else {})
-    // lib.optionalAttrs hasLegacyDefaultHome { default_home = cfg.settings.default_home; }
-    // lib.optionalAttrs hasLegacyFeedMenu { feed_menu = cfg.settings.feed_menu; };
-  effectiveInvidiousSettings =
-    invidiousSettingsBase
-    // lib.optionalAttrs (hasDefaultUserPreferences || hasLegacyDefaultHome || hasLegacyFeedMenu) {
-      default_user_preferences = invidiousDefaultUserPreferences;
-    };
   invidiousCompanionSource = inputs.invidious-companion-src;
   defaultInvidiousPackage = pkgs-unstable.invidious;
   invidiousCompanionPackage = pkgs.writeShellApplication {
@@ -235,10 +222,6 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    warnings = lib.optionals (hasLegacyDefaultHome || hasLegacyFeedMenu) [
-      "alanix.invidious.settings.default_home/feed_menu are legacy top-level keys; move them under alanix.invidious.settings.default_user_preferences.* (they are auto-migrated for now)."
-    ];
-
     assertions =
       (lib.flatten (lib.mapAttrsToList (uname: u:
         let
@@ -339,7 +322,7 @@ in
       port = cfg.port;
       nginx.enable = false;
       domain = cfg.cookieDomain;
-      settings = effectiveInvidiousSettings // lib.optionalAttrs cfg.companion.enable {
+      settings = cfg.settings // lib.optionalAttrs cfg.companion.enable {
         invidious_companion = [
           {
             private_url = companionPrivateUrl;

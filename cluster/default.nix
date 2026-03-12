@@ -8,6 +8,32 @@
     dns = {
       provider = "cloudflare";
       apiTokenSecret = "cloudflare/api-token";
+      publicIpv4Urls = [
+        "https://api.ipify.org"
+        "https://ipv4.icanhazip.com"
+      ];
+      endpointRecord = {
+        proxied = false;
+        ttl = 60;
+        timerConfig = {
+          OnBootSec = "30s";
+          OnUnitInactiveSec = "5m";
+          AccuracySec = "30s";
+          RandomizedDelaySec = "0";
+          Persistent = true;
+        };
+      };
+      serviceRecords = {
+        proxied = false;
+        ttl = 60;
+        timerConfig = {
+          OnBootSec = "30s";
+          OnUnitInactiveSec = "2m";
+          AccuracySec = "30s";
+          RandomizedDelaySec = "0";
+          Persistent = true;
+        };
+      };
     };
 
     wireguard = {
@@ -23,8 +49,13 @@
       sshUser = "cluster-backup";
       passwordSecret = "restic/cluster-password";
       incomingBaseDir = "/var/backups/restic";
-      schedule = "hourly";
-      randomizedDelaySec = "10m";
+      timerConfig = {
+        OnActiveSec = "15m";
+        OnUnitInactiveSec = "15m";
+        AccuracySec = "1m";
+        RandomizedDelaySec = "0";
+        Persistent = true;
+      };
       prunePolicy = [
         "--keep-hourly 24"
         "--keep-daily 7"
@@ -116,11 +147,17 @@
 
       backup = {
         enable = true;
-        schedule = "hourly";
         paths = [
           "/var/lib/filebrowser"
           "/srv/filebrowser"
         ];
+        timerConfig = {
+          OnActiveSec = "10m";
+          OnUnitInactiveSec = "10m";
+          AccuracySec = "30s";
+          RandomizedDelaySec = "0";
+          Persistent = true;
+        };
         restoreCommand = "";
       };
     };
@@ -175,8 +212,14 @@
 
       backup = {
         enable = true;
-        schedule = "hourly";
         paths = [ "/var/lib/forgejo" ];
+        timerConfig = {
+          OnActiveSec = "5m";
+          OnUnitInactiveSec = "5m";
+          AccuracySec = "30s";
+          RandomizedDelaySec = "0";
+          Persistent = true;
+        };
         restoreCommand = "";
       };
     };
@@ -258,8 +301,14 @@
 
       backup = {
         enable = true;
-        schedule = "hourly";
         paths = [ "/var/lib/immich" ];
+        timerConfig = {
+          OnActiveSec = "1h";
+          OnUnitInactiveSec = "1h";
+          AccuracySec = "5m";
+          RandomizedDelaySec = "0";
+          Persistent = true;
+        };
         prepareCommand = ''
           install -d -m 0750 -o root -g root /var/lib/immich/_cluster-backup
           runuser -u postgres -- pg_dump \
@@ -350,8 +399,14 @@
 
       backup = {
         enable = true;
-        schedule = "hourly";
         paths = [ "/var/lib/invidious" ];
+        timerConfig = {
+          OnActiveSec = "10m";
+          OnUnitInactiveSec = "10m";
+          AccuracySec = "30s";
+          RandomizedDelaySec = "0";
+          Persistent = true;
+        };
         prepareCommand = ''
           install -d -m 0750 -o root -g root /var/lib/invidious/_cluster-backup
           runuser -u postgres -- pg_dump \

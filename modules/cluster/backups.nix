@@ -35,6 +35,10 @@ let
   };
 
   serviceBackupPaths = service: service.backup.paths;
+  servicePersistentPaths = service: service.state.persistentPaths;
+
+  restoreSourceNodes =
+    builtins.attrNames (lib.filterAttrs (name: _: name != cluster.currentNodeName) cluster.nodes);
 
   prunePolicyFor =
     service:
@@ -43,12 +47,12 @@ let
     else
       defaults.prunePolicy;
 
-  scheduleFor =
+  timerConfigFor =
     service:
-    if service.backup ? schedule then
-      service.backup.schedule
+    if service.backup ? timerConfig && service.backup.timerConfig != null then
+      service.backup.timerConfig
     else
-      defaults.schedule;
+      defaults.timerConfig;
 
   mkBackupJob = serviceName: service: receiverName: receiverNode: {
     name = "${serviceName}-to-${receiverName}";
@@ -60,11 +64,7 @@ let
       paths = serviceBackupPaths service;
       extraOptions = [ sftpCommand ];
       pruneOpts = prunePolicyFor service;
-      timerConfig = {
-        OnCalendar = scheduleFor service;
-        RandomizedDelaySec = defaults.randomizedDelaySec;
-        Persistent = true;
-      };
+      timerConfig = timerConfigFor service;
       backupPrepareCommand =
         if service.backup ? prepareCommand then
           service.backup.prepareCommand
@@ -110,7 +110,7 @@ let
   incomingAuthorizedSources =
     lib.concatStringsSep "," (map (node: node.vpnIp) (builtins.attrValues receiverNodes));
 
-  restoreScriptFor =
+  restoreScriptPackageFor =
     serviceName: service:
     pkgs.writeShellScriptBin "alanix-restore-${serviceName}" ''
       set -euo pipefail
@@ -136,6 +136,19 @@ let
         fi
       done
 
+      for restore_path in ${lib.concatStringsSep " " (map lib.escapeShellArg (servicePersistentPaths service))}; do
+        case "$restore_path" in
+          ""|"/"|"/etc"|"/home"|"/nix"|"/root"|"/srv"|"/var")
+            echo "Refusing to wipe unsafe restore path: $restore_path" >&2
+            exit 1
+            ;;
+        esac
+
+        if [ -e "$restore_path" ] || [ -L "$restore_path" ]; then
+          ${pkgs.coreutils}/bin/rm -rf --one-file-system "$restore_path"
+        fi
+      done
+
       RESTIC_PASSWORD_FILE="$PASSWORD_FILE" \
         ${lib.getExe pkgs.restic} -r "$REPOSITORY" restore "$SNAPSHOT" --target /
 
@@ -145,10 +158,80 @@ let
       echo "Review restored data, then start the service units if appropriate."
     '';
 
-  restoreScripts =
-    map
-      (serviceName: restoreScriptFor serviceName backupServices.${serviceName})
-      (builtins.attrNames backupServices);
+  restoreScriptPackages =
+    lib.mapAttrs restoreScriptPackageFor backupServices;
+
+  restoreScriptPaths =
+    lib.mapAttrs
+      (serviceName: pkg: "${pkg}/bin/alanix-restore-${serviceName}")
+      restoreScriptPackages;
+
+  restoreScripts = builtins.attrValues restoreScriptPackages;
+
+  restoreOnActivateScript = pkgs.writeShellScript "alanix-restore-on-activate" ''
+    set -euo pipefail
+
+    PASSWORD_FILE=${lib.escapeShellArg resticPasswordPath}
+
+    find_latest_source() {
+      local service_name="$1"
+      local best_source=""
+      local best_epoch="-1"
+      local best_time=""
+
+      ${lib.concatMapStringsSep "\n" (
+        sourceNode:
+        ''
+          repo="${incomingBaseDir}/''${service_name}/${sourceNode}"
+          if [ -d "$repo" ]; then
+            latest_info="$(
+              RESTIC_PASSWORD_FILE="$PASSWORD_FILE" \
+                ${lib.getExe pkgs.restic} -r "$repo" snapshots --json 2>/dev/null \
+                | ${lib.getExe pkgs.jq} -r '
+                    if length == 0 then
+                      empty
+                    else
+                      max_by(.time | fromdateiso8601)
+                      | [.time, (.time | fromdateiso8601)]
+                      | @tsv
+                    end
+                  ' 2>/dev/null || true
+            )"
+
+            if [ -n "$latest_info" ]; then
+              latest_time="''${latest_info%%	*}"
+              latest_epoch="''${latest_info##*	}"
+
+              if [ "$latest_epoch" -gt "$best_epoch" ]; then
+                best_source=${lib.escapeShellArg sourceNode}
+                best_epoch="$latest_epoch"
+                best_time="$latest_time"
+              fi
+            fi
+          fi
+        ''
+      ) restoreSourceNodes}
+
+      if [ -n "$best_source" ]; then
+        printf '%s\t%s\n' "$best_source" "$best_time"
+      fi
+    }
+
+    ${lib.concatMapStringsSep "\n" (
+      serviceName:
+      ''
+        latest_source_info="$(find_latest_source ${lib.escapeShellArg serviceName})"
+        if [ -n "$latest_source_info" ]; then
+          source_node="''${latest_source_info%%	*}"
+          snapshot_time="''${latest_source_info##*	}"
+          echo "Restoring ${serviceName} from $source_node (latest snapshot at $snapshot_time)..."
+          ${restoreScriptPaths.${serviceName}} "$source_node" latest
+        else
+          echo "No local snapshots available for ${serviceName}; leaving current state in place."
+        fi
+      ''
+    ) (builtins.attrNames backupServices)}
+  '';
 
   resticServicePathExtensions =
     builtins.listToAttrs (
@@ -192,7 +275,25 @@ in
 
     services.restic.backups = outgoingJobs;
 
-    systemd.services = resticServicePathExtensions;
+    systemd.services =
+      resticServicePathExtensions
+      // {
+        alanix-restore-on-activate = {
+          description = "Restore latest Alanix backups before serving on promotion";
+          path = [
+            pkgs.coreutils
+            pkgs.jq
+            pkgs.postgresql
+            pkgs.restic
+            pkgs.systemd
+            pkgs.util-linux
+          ];
+          serviceConfig = {
+            Type = "oneshot";
+          };
+          script = builtins.readFile restoreOnActivateScript;
+        };
+    };
 
     environment.systemPackages = restoreScripts;
   };

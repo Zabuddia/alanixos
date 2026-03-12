@@ -5,6 +5,7 @@ let
   serviceList = builtins.attrValues enabledServices;
   anyTorServices = lib.any (service: service.access.tor.enable) serviceList;
   anyWanServices = lib.any (service: service.access.wan.enable) serviceList;
+  anyCloudflareServiceDns = cluster.settings.dns.provider == "cloudflare" && anyWanServices;
   backupEnabledServices =
     lib.filterAttrs (_: service: service.backup.enable) enabledServices;
   backupTimerUnits =
@@ -15,34 +16,58 @@ let
           (builtins.attrNames cluster.backupReceivers))
       (builtins.attrNames backupEnabledServices);
 
-  startUnits = lib.unique (
+  preRestoreUnits = lib.unique (
     lib.optionals (enabledServices ? immich && enabledServices.immich.database.createLocally) [ "postgresql.service" ]
     ++ lib.optionals (enabledServices ? invidious && enabledServices.invidious.database.createLocally) [ "postgresql.service" ]
-    ++ lib.optionals (enabledServices ? immich && enabledServices.immich.redis.enable && enabledServices.immich.redis.host == null) [ "redis-immich.service" ]
-    ++ lib.optionals anyTorServices [
-      "alanix-tor-secret-keys.service"
-      "tor.service"
-    ]
-    ++ lib.optionals anyWanServices [ "caddy.service" ]
+  );
+
+  postRestoreUnits = lib.unique (
+    lib.optionals (enabledServices ? immich && enabledServices.immich.redis.enable && enabledServices.immich.redis.host == null) [ "redis-immich.service" ]
     ++ lib.optionals (enabledServices ? filebrowser) [ "filebrowser.service" ]
     ++ lib.optionals (enabledServices ? forgejo) [ "forgejo.service" ]
     ++ lib.optionals (enabledServices ? immich) [ "immich-server.service" ]
     ++ lib.optionals (enabledServices ? immich && enabledServices.immich.machineLearning.enable) [ "immich-machine-learning.service" ]
     ++ lib.optionals (enabledServices ? invidious) [ "invidious.service" ]
     ++ lib.optionals (enabledServices ? invidious && enabledServices.invidious.companion.enable) [ "invidious-companion.service" ]
+    ++ lib.optionals anyTorServices [
+      "alanix-tor-secret-keys.service"
+      "tor.service"
+    ]
+    ++ lib.optionals anyWanServices [ "caddy.service" ]
+    ++ lib.optionals anyCloudflareServiceDns [
+      "alanix-cloudflare-service-ddns.service"
+      "alanix-cloudflare-service-ddns.timer"
+    ]
     ++ backupTimerUnits
   );
 
-  stopUnits = lib.reverseList startUnits;
+  stopUnits = lib.reverseList (preRestoreUnits ++ postRestoreUnits);
 
   roleSyncScript = pkgs.writeShellScript "alanix-role-sync" ''
     set -euo pipefail
 
-    start_units=(${lib.concatStringsSep " " (map lib.escapeShellArg startUnits)})
+    pre_restore_units=(${lib.concatStringsSep " " (map lib.escapeShellArg preRestoreUnits)})
+    post_restore_units=(${lib.concatStringsSep " " (map lib.escapeShellArg postRestoreUnits)})
     stop_units=(${lib.concatStringsSep " " (map lib.escapeShellArg stopUnits)})
+    state_dir=/var/lib/alanix/role-state
+    last_role_file="$state_dir/last-role"
+    previous_role=unknown
+
+    ${lib.getExe' pkgs.coreutils "mkdir"} -p "$state_dir"
+    if [ -r "$last_role_file" ]; then
+      IFS= read -r previous_role < "$last_role_file"
+    fi
 
     if [ ${lib.escapeShellArg cluster.role} = "active" ]; then
-      for unit in "''${start_units[@]}"; do
+      for unit in "''${pre_restore_units[@]}"; do
+        ${lib.getExe' pkgs.systemd "systemctl"} start "$unit"
+      done
+
+      if [ "$previous_role" != "active" ] && ${lib.getExe' pkgs.systemd "systemctl"} list-unit-files alanix-restore-on-activate.service >/dev/null 2>&1; then
+        ${lib.getExe' pkgs.systemd "systemctl"} start alanix-restore-on-activate.service
+      fi
+
+      for unit in "''${post_restore_units[@]}"; do
         ${lib.getExe' pkgs.systemd "systemctl"} start "$unit"
       done
     else
@@ -50,16 +75,16 @@ let
         ${lib.getExe' pkgs.systemd "systemctl"} stop "$unit" || true
       done
     fi
+
+    printf '%s\n' ${lib.escapeShellArg cluster.role} > "$last_role_file"
   '';
 
   roleSyncActivationScript = ''
-    restart_file=/run/nixos/activation-restart-list
     if [ "''${NIXOS_ACTION:-}" = "dry-activate" ]; then
-      restart_file=/run/nixos/dry-activation-restart-list
-    fi
-
-    if ! grep -Fqx 'alanix-role-sync.service' "$restart_file" 2>/dev/null; then
-      printf '%s\n' 'alanix-role-sync.service' >> "$restart_file"
+      echo "would synchronize Alanix role-gated units for role ${cluster.role}"
+    else
+      ${lib.getExe' pkgs.systemd "systemctl"} daemon-reload
+      ${lib.getExe' pkgs.systemd "systemctl"} start alanix-role-sync.service
     fi
   '';
 
@@ -82,15 +107,6 @@ let
   '';
 in
 {
-  environment.etc."alanix/role.json".text = builtins.toJSON {
-    node = cluster.currentNodeName;
-    role = cluster.role;
-    activeNode = cluster.activeNodeName;
-    currentNode = cluster.currentNode;
-  };
-
-  environment.etc."alanix/inventory.json".text = builtins.toJSON cluster.inventory;
-
   system.activationScripts.alanix-role-sync = {
     supportsDryActivation = true;
     text = roleSyncActivationScript;
@@ -100,7 +116,10 @@ in
     description = "Synchronize Alanix role-gated units";
     after = [ "network.target" ];
     wants = [ "network.target" ];
-    path = [ pkgs.systemd ];
+    path = [
+      pkgs.coreutils
+      pkgs.systemd
+    ];
     serviceConfig = {
       Type = "oneshot";
     };
