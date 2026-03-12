@@ -5,7 +5,7 @@
     ./secrets.nix
     ./users.nix
     ./wireguard.nix
-    ../../modules/cosmic.nix
+    ../../modules/sway.nix
     ../../modules/ssh.nix
     ../../modules/tailscale.nix
   ];
@@ -39,12 +39,14 @@
   # Basic tools
   environment.systemPackages = with pkgs; [
     age
-    sops
-    git
+    caddy
     curl
-    wget
+    git
     htop
-    nano
+    jq
+    restic
+    sops
     tree
+    wget
   ];
 }

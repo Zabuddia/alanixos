@@ -1,5 +1,6 @@
 creation_rules:
-  - path_regex: secrets/.*\.ya?ml$
-    age:
-      - age1xp0mwp3fh74d2wxftxpyv0z04z60hdm98vqw4muxemvuqt64653seljhr3
-      - age1xgpfqft6xks6qh0r29lqh2pmau6mhklqd5q8ylynmlevmemss4qsfs8tnv
+- age:
+  - age1tzastckgekm2ynyeqexsgknyprt4p5emgw722nq3tg6a2ghgla3salq90p
+  - age1xgpfqft6xks6qh0r29lqh2pmau6mhklqd5q8ylynmlevmemss4qsfs8tnv
+  - age1ywa965cvxmzh39cjt2h7k4vsc7qmfqmv0dg6psalwe5td0s5j4ysycvrkd
+  path_regex: ^secrets/.*\.ya?ml$

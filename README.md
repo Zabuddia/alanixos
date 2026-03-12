@@ -64,14 +64,17 @@ mkdir -p ~/.config/sops/age
 sudo cp /var/lib/sops-nix/key.txt ~/.config/sops/age/keys.txt
 sudo chown -R $USER:$(id -gn) ~/.config/sops
 chmod 0600 ~/.config/sops/age/keys.txt
+export SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt"
 ```
 
 ---
 
-## PHASE 6 — Add key to .sops.yaml
-Edit `.sops.yaml` and add the new key.
+## PHASE 6 — Add key to `keys.nix`
+Update `keys.nix` with the new recipient, then regenerate `.sops.yaml`.
 
 ```bash
+vim keys.nix
+bash ./scripts/update-sops-config
 git add .sops.yaml
 git commit -m "Add randy-big-nixos age recipient"
 git push
@@ -83,7 +86,7 @@ git push
 ```bash
 cd ~/.nixos
 git pull
-sops updatekeys secrets/secrets.yaml
+SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt" sops updatekeys --yes secrets/secrets.yaml
 git add secrets/secrets.yaml
 git commit -m "Re-encrypt secrets for randy-big-nixos"
 git push

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+out_path="$(nix build --impure --no-link --print-out-paths --file "$repo_root/lib/buildSopsConfig.nix")"
+
+install -m 0644 "$out_path" "$repo_root/.sops.yaml"
+echo "Wrote $repo_root/.sops.yaml"
