@@ -43,7 +43,7 @@
     {
       serviceTitle,
       defaultPort,
-      defaultInterface ? "tailscale0",
+      defaultInterface ? "wg0",
     }:
     {
       enable = lib.mkEnableOption "private cluster-only access path for ${serviceTitle}";
@@ -130,7 +130,10 @@
       secretKeySecret = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
-        description = "Optional sops secret containing a Tor hidden-service secret key for stable onion address.";
+        description = ''
+          Optional sops secret containing a base64-encoded Tor `hs_ed25519_secret_key`
+          for a stable onion address.
+        '';
       };
     };
 

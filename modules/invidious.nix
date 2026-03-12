@@ -4,11 +4,6 @@ let
   serviceAccess = import ./_service-access.nix { inherit lib; };
 
   hasSopsSecrets = lib.hasAttrByPath [ "sops" "secrets" ] config;
-  torSecretKeyPath =
-    if cfg.torAccess.secretKeySecret == null then
-      null
-    else
-      config.sops.secrets.${cfg.torAccess.secretKeySecret}.path;
   dbPasswordFile =
     if cfg.database.passwordSecret == null || !hasSopsSecrets then
       null
@@ -313,8 +308,6 @@ in
       modulePathPrefix = "alanix.invidious";
     };
 
-    networking.firewall = serviceAccess.mkAccessFirewallConfig { inherit cfg; };
-
     sops.secrets = lib.mkMerge [
       (lib.mkIf (hasSopsSecrets && cfg.database.passwordSecret != null) {
         "${cfg.database.passwordSecret}" = {
@@ -369,7 +362,7 @@ in
       };
     };
 
-    # Role controller starts/stops services declaratively on active node.
+    # Node failover controller starts/stops services declaratively on the active node.
     systemd.services.invidious.wantedBy = lib.mkIf (!cfg.active) (lib.mkForce []);
     systemd.services.invidious.restartTriggers = [
       (builtins.toJSON cfg.users)
@@ -746,13 +739,5 @@ in
         '';
     };
 
-    services.caddy = serviceAccess.mkAccessCaddyConfig {
-      inherit cfg;
-      upstreamPort = cfg.port;
-    };
-
-    services.tor = serviceAccess.mkTorConfig {
-      inherit cfg torSecretKeyPath;
-    };
   };
 }

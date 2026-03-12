@@ -5,11 +5,9 @@ let
 
   dbPath = cfg.database;
   hasSopsSecrets = lib.hasAttrByPath [ "sops" "secrets" ] config;
-  torSecretKeyPath =
-    if cfg.torAccess.secretKeySecret == null then
-      null
-    else
-      config.sops.secrets.${cfg.torAccess.secretKeySecret}.path;
+  anySopsPassword = lib.any (u: u.passwordSecret != null) (lib.attrValues cfg.users);
+  passwordSecretNames =
+    lib.unique (lib.filter (x: x != null) (map (u: u.passwordSecret) (lib.attrValues cfg.users)));
 
   declaredUsernames = builtins.attrNames cfg.users;
 
@@ -154,13 +152,22 @@ in
           assertion = (cfg.uid == null) == (cfg.gid == null);
           message = "alanix.filebrowser.uid and alanix.filebrowser.gid must either both be set or both be null.";
         }
+        {
+          assertion = !(anySopsPassword && !hasSopsSecrets);
+          message = "alanix.filebrowser.users.*.passwordSecret requires sops-nix configuration.";
+        }
       ]
       ++ serviceAccess.mkAccessAssertions {
         inherit cfg hasSopsSecrets;
         modulePathPrefix = "alanix.filebrowser";
       };
 
-    networking.firewall = serviceAccess.mkAccessFirewallConfig { inherit cfg; };
+    sops.secrets = lib.mkIf (hasSopsSecrets && passwordSecretNames != [ ]) (
+      builtins.listToAttrs (map (secretName: {
+        name = secretName;
+        value.restartUnits = [ "filebrowser-reconcile-users.service" ];
+      }) passwordSecretNames)
+    );
 
     services.filebrowser = {
       enable = true;
@@ -368,15 +375,6 @@ in
     systemd.services.filebrowser.restartTriggers = [
       (builtins.toJSON cfg.users)
     ];
-
-    services.caddy = serviceAccess.mkAccessCaddyConfig {
-      inherit cfg;
-      upstreamPort = cfg.port;
-    };
-
-    services.tor = serviceAccess.mkTorConfig {
-      inherit cfg torSecretKeyPath;
-    };
 
   };
 }

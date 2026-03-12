@@ -1,351 +1,192 @@
-# Fresh NixOS + Flake + sops-nix Bootstrap Runbook
+# Alanixos Phase A
 
-This is a command-by-command runbook for bringing up a new machine from this
-repo.
+Phase A is a flake-based, inventory-driven NixOS homelab cluster for whole-site active/passive hosting. One node is declaratively active, standby nodes are fully configured but keep mutable public services stopped, and promotion is done by changing `cluster/default.nix` and rebuilding.
 
-There are two machine types:
-- Runtime host: decrypts at boot using `/var/lib/sops-nix/key.txt`
-- Editor laptop: edits and rekeys secrets using `~/.config/sops/age/keys.txt`
+## Repo Layout
 
-Keep those keys separate. Do not copy a server key into a user `sops` profile
-unless that machine is intentionally also acting as an editor.
+The main control plane is [`cluster/default.nix`](/home/buddia/alanixos/cluster/default.nix). It defines:
 
-## Common Variables
+- cluster-wide settings such as `domain`, `activeNode`, WireGuard, Cloudflare, and backup defaults
+- node inventory under `nodes.<hostname>`
+- service inventory under `services.<name>`
 
-Set these on whichever machine you are working on:
+Host files stay thin:
 
-```bash
-export REPO="$HOME/.nixos"
-export GIT_REPO="git@github.com:Zabuddia/alanixos.git"
-```
+- [`hosts/alan-big-nixos/default.nix`](/home/buddia/alanixos/hosts/alan-big-nixos/default.nix)
+- [`hosts/randy-big-nixos/default.nix`](/home/buddia/alanixos/hosts/randy-big-nixos/default.nix)
 
-For a new runtime host, also set:
+Each host imports:
 
-```bash
-export HOST="randy-big-nixos"
-```
+- its `hardware-configuration.nix`
+- the shared cluster profile at [`modules/cluster/default.nix`](/home/buddia/alanixos/modules/cluster/default.nix)
+- [`modules/tailscale.nix`](/home/buddia/alanixos/modules/tailscale.nix) as fallback-only access
 
-For a new editor laptop, also set:
+Only `alan-big-nixos` also imports [`modules/bitcoin.nix`](/home/buddia/alanixos/modules/bitcoin.nix). Bitcoin is intentionally isolated from the active/passive app stack.
 
-```bash
-export EDITOR_NAME="alan-laptop"
-```
+## How It Works
 
-## Runbook A: New Runtime Host
+### Active and standby
 
-### 1. Fresh install
+- `cluster.cluster.activeNode` is the single source of truth for role selection.
+- The active node runs the mutable app services, WAN-facing Caddy routes, WireGuard service listeners, Tor onion services, and outgoing backup timers.
+- Standby nodes still evaluate the same services, users, secrets, restore helpers, and backup receive directories, but they do not start the mutable app units.
 
-Do this in the NixOS installer/UI:
-1. Install NixOS
-2. Create user `buddia`
-3. Boot the installed system
-4. Connect to the internet
+### Networking
 
-### 2. Install temporary tools on the new host
+- WireGuard full mesh is generated from inventory and uses `wg0`.
+- Tailscale is still imported on every host, but the cluster logic does not depend on it.
+- Caddy routes are generated centrally from inventory. WAN and WireGuard access are live only on the active node.
+- Tor onion services are generated centrally from inventory and use sops-backed hidden-service keys. The secret material lives in `secrets.yaml` as base64-encoded `hs_ed25519_secret_key` data and is decoded into `/run/alanix/tor-secrets/<service>/hs_ed25519_secret_key` before Tor starts.
 
-Run on the new host:
+### Backups and restore
 
-```bash
-nix-shell -p git sops age
-```
+- Restic runs with systemd timers.
+- The active node pushes per-service backups over WireGuard SSH to every standby node.
+- Receivers use a dedicated `cluster-backup` account with forced SFTP.
+- Restore helpers are installed as:
+  - `alanix-restore-filebrowser`
+  - `alanix-restore-forgejo`
+  - `alanix-restore-immich`
+  - `alanix-restore-invidious`
+- Restore helpers use local incoming repositories on the standby and then run any service-specific restore hook, such as PostgreSQL import for Immich and Invidious.
 
-### 3. Create SSH key for GitHub
+### Cloudflare
 
-Run on the new host:
+- Phase A does not automate failover.
+- [`modules/cluster/cloudflare.nix`](/home/buddia/alanixos/modules/cluster/cloudflare.nix) renders `/etc/alanix/cloudflare-records.json` and installs `alanix-cloudflare-sync-active`.
+- Later automation should hook into that module instead of scattering DNS logic through app modules.
 
-```bash
-ssh-keygen -t ed25519 -C "fife.alan@protonmail.com"
-cat ~/.ssh/id_ed25519.pub
-```
+## Declarative vs bootstrap-only
 
-Add the printed key to GitHub -> Settings -> SSH keys.
+Declarative today:
 
-### 4. Clone the repo
+- system users and groups
+- SSH, firewall, WireGuard mesh, Caddy, Tor, restic plumbing
+- Filebrowser users
+- Forgejo users/admin
+- Immich admin bootstrap and user reconciliation through the API
+- Invidious local user bootstrap/reconcile
+- app state paths, ports, domains, backup policy, and restore hooks
 
-Run on the new host:
+Bootstrap-only or upstream-limited:
 
-```bash
-git clone "$GIT_REPO" "$REPO"
-cd "$REPO"
-```
+- some app-internal objects still require first service startup before reconciliation can run
+- some app-internal bootstrap flows still depend on upstream APIs rather than pure config files
 
-### 5. Create the host runtime key
+## Add a Node
 
-Run on the new host:
-
-```bash
-sudo mkdir -p /var/lib/sops-nix
-sudo age-keygen -o /var/lib/sops-nix/key.txt
-sudo chmod 0400 /var/lib/sops-nix/key.txt
-sudo chown root:root /var/lib/sops-nix/key.txt
-sudo age-keygen -y /var/lib/sops-nix/key.txt
-```
-
-Copy the printed `age1...` public key.
-
-### 6. Add the host key to the repo inventory
-
-Run on an existing machine that can already decrypt secrets:
+1. Add the node under `nodes` in [`cluster/default.nix`](/home/buddia/alanixos/cluster/default.nix).
+2. Add `hosts/<hostname>/default.nix`.
+3. Add `hosts/<hostname>/hardware-configuration.nix`.
+4. Add the runtime age key to [`secrets/keys.nix`](/home/buddia/alanixos/secrets/keys.nix).
+5. Add the host's `wireguard-private-keys/<hostname>` secret to `secrets/secrets.yaml`.
+6. Regenerate `.sops.yaml` and rekey secrets if needed:
 
 ```bash
-cd "$REPO"
-nano secrets/keys.nix
-```
-
-Add the new public key under `hosts` and make sure the correct
-`creationRules` entry includes `"$HOST"`.
-
-Example shape:
-
-```nix
-hosts = {
-  randy-big-nixos = {
-    recipient = "age1...";
-    description = "Root-only runtime key stored at /var/lib/sops-nix/key.txt.";
-  };
-};
-
-creationRules = [
-  {
-    pathRegex = "^secrets/.*\\.ya?ml$";
-    editors = [ "alan-laptop" ];
-    hosts = [ "randy-big-nixos" "alan-big-nixos" ];
-  }
-];
-```
-
-### 7. Regenerate `.sops.yaml` and rekey the secrets
-
-Run on an existing machine that can already decrypt secrets:
-
-```bash
-cd "$REPO"
 ./scripts/generate-sops-config.sh
 ./scripts/update-sops-keys.sh
-git add secrets/keys.nix .sops.yaml secrets/secrets.yaml
-git commit -m "Add $HOST sops recipient"
-git push
 ```
 
-If you do not yet have an editor laptop key, you can temporarily run the rekey
-step on an existing server that already has a working host key:
+No shared service module edits are required for a new node.
+
+## Add a Service
+
+1. Add the service definition to `services` in [`cluster/default.nix`](/home/buddia/alanixos/cluster/default.nix).
+2. Add or extend the corresponding app module if the service is new.
+3. Extend [`modules/cluster/services.nix`](/home/buddia/alanixos/modules/cluster/services.nix) so inventory fields map into the app module.
+4. If the service needs custom backup preparation or restore logic, add that in the service's `backup` section in inventory.
+
+## Promote a Standby
+
+Phase A promotion is manual and declarative:
+
+1. Change `cluster.cluster.activeNode` in [`cluster/default.nix`](/home/buddia/alanixos/cluster/default.nix).
+2. Rebuild the node you are promoting:
 
 ```bash
-cd "$REPO"
-sudo env SOPS_AGE_KEY_FILE=/var/lib/sops-nix/key.txt ./scripts/update-sops-keys.sh
+sudo nixos-rebuild switch --flake .#randy-big-nixos
 ```
 
-### 8. Pull the updated repo onto the new host
+3. Restore the needed service data from the local incoming repositories on that node if required.
+4. Run `alanix-cloudflare-sync-active` on the newly active node to point Cloudflare DNS at its current public IP.
 
-Run on the new host:
+## Safe Testing
+
+Basic evaluation:
 
 ```bash
-cd "$REPO"
-git pull
+nix flake show
+nix build .#nixosConfigurations.alan-big-nixos.config.system.build.toplevel
+nix build .#nixosConfigurations.randy-big-nixos.config.system.build.toplevel
 ```
 
-### 9. Copy the hardware config into the repo
-
-Run on the new host:
+Operational checks:
 
 ```bash
-cp /etc/nixos/hardware-configuration.nix "$REPO/hosts/$HOST/hardware-configuration.nix"
+alanix-cluster-role
+alanix-cluster-services
+./scripts/show-service-addresses.sh
 ```
 
-### 10. Rebuild
+Promotion dry run:
 
-Run on the new host:
+1. Change `activeNode`.
+2. Build both affected hosts.
+3. Confirm the old active no longer has Caddy/Tor/app units wanted.
+4. Confirm the new active has the reverse.
+
+## Secrets Notes
+
+Base secrets are declared centrally:
+
+- `password-hashes/buddia`
+- `cloudflare/api-token`
+- `restic/cluster-password`
+- `cluster/sync-private-key`
+- `wireguard-private-keys/<hostname>`
+- `tor/<service>/secret-key-base64`
+
+App modules declare the app-specific secrets they consume. Existing `service-passwords/*` secrets are reused for Phase A bootstrap.
+
+## Managing Tor Secrets
+
+Each Tor-enabled service now expects a sops secret at:
+
+- `tor/filebrowser/secret-key-base64`
+- `tor/forgejo/secret-key-base64`
+- `tor/immich/secret-key-base64`
+- `tor/invidious/secret-key-base64`
+
+The value is the base64 encoding of the service's `hs_ed25519_secret_key` file, not the hostname and not the whole hidden-service directory.
+
+One clean way to generate a new key is:
 
 ```bash
-sudo nixos-rebuild switch --flake "$REPO#$HOST"
+tmpdir="$(mktemp -d)"
+cat >"$tmpdir/torrc" <<EOF
+DataDirectory $tmpdir/data
+SocksPort 0
+HiddenServiceDir $tmpdir/hidden
+HiddenServicePort 80 127.0.0.1:1
+EOF
+timeout 10s tor -f "$tmpdir/torrc" >/dev/null 2>&1 || true
+cat "$tmpdir/hidden/hostname"
+base64 -w0 "$tmpdir/hidden/hs_ed25519_secret_key"
+rm -rf "$tmpdir"
 ```
 
-### 11. Reboot
-
-Run on the new host:
-
-```bash
-reboot
-```
-
-## Runbook B: New Editor Laptop
-
-### 1. Fresh install
-
-Do this in the NixOS installer/UI:
-1. Install NixOS
-2. Create user `buddia`
-3. Enable networking
-4. Boot the installed system
-
-### 2. Install temporary tools on the laptop
-
-Run on the new laptop:
-
-```bash
-nix-shell -p git sops age
-```
-
-### 3. Create SSH key for GitHub
-
-Run on the new laptop:
-
-```bash
-ssh-keygen -t ed25519 -C "fife.alan@protonmail.com"
-cat ~/.ssh/id_ed25519.pub
-```
-
-Add the printed key to GitHub -> Settings -> SSH keys.
-
-### 4. Clone the repo
-
-Run on the new laptop:
-
-```bash
-git clone "$GIT_REPO" "$REPO"
-cd "$REPO"
-```
-
-### 5. Create the editor key
-
-Run on the new laptop:
-
-```bash
-mkdir -p ~/.config/sops/age
-age-keygen -o ~/.config/sops/age/keys.txt
-chmod 0600 ~/.config/sops/age/keys.txt
-age-keygen -y ~/.config/sops/age/keys.txt
-```
-
-Copy the printed `age1...` public key.
-
-### 6. Add the editor key to the repo inventory
-
-Run on any machine with the repo checked out:
-
-```bash
-cd "$REPO"
-nano secrets/keys.nix
-```
-
-Add the new public key under `editors` and make sure the correct
-`creationRules` entry includes `"$EDITOR_NAME"`.
-
-Example shape:
-
-```nix
-editors = {
-  alan-laptop = {
-    recipient = "age1...";
-    description = "Editor key kept on alan-laptop in ~/.config/sops/age/keys.txt.";
-  };
-};
-
-creationRules = [
-  {
-    pathRegex = "^secrets/.*\\.ya?ml$";
-    editors = [ "alan-laptop" ];
-    hosts = [ "randy-big-nixos" "alan-big-nixos" ];
-  }
-];
-```
-
-### 7. Rekey the secrets so the laptop can decrypt
-
-Run on an existing machine that can already decrypt secrets:
-
-```bash
-cd "$REPO"
-./scripts/generate-sops-config.sh
-./scripts/update-sops-keys.sh
-git add secrets/keys.nix .sops.yaml secrets/secrets.yaml
-git commit -m "Add $EDITOR_NAME editor key"
-git push
-```
-
-### 8. Pull the updated repo onto the new laptop
-
-Run on the new laptop:
-
-```bash
-cd "$REPO"
-git pull
-./scripts/generate-sops-config.sh --check
-```
-
-### 9. Confirm `sops` can decrypt
-
-Run on the new laptop:
+Then edit `secrets/secrets.yaml` with `sops` and set the matching key:
 
 ```bash
 sops secrets/secrets.yaml
 ```
 
-## Notes
+Example entry:
 
-### First 3-Node Cluster Bootstrap
-
-Once `alan-big-nixos`, `randy-big-nixos`, and `alan-node-nixos` all exist in
-the repo and have their Tailscale and `sops` secrets in place, do the first
-`etcd` rollout like this.
-
-Run on your editor machine:
-
-```bash
-cd "$REPO"
-git push
+```yaml
+tor:
+  filebrowser:
+    secret-key-base64: <BASE64_VALUE>
 ```
 
-Then rebuild all three cluster nodes without a long gap between them:
-
-```bash
-ssh buddia@alan-big-nixos 'cd ~/.nixos && git pull --ff-only && if command -v doas >/dev/null 2>&1; then doas nixos-rebuild switch --flake ~/.nixos#alan-big-nixos; else sudo nixos-rebuild switch --flake ~/.nixos#alan-big-nixos; fi'
-ssh buddia@randy-big-nixos 'cd ~/.nixos && git pull --ff-only && if command -v doas >/dev/null 2>&1; then doas nixos-rebuild switch --flake ~/.nixos#randy-big-nixos; else sudo nixos-rebuild switch --flake ~/.nixos#randy-big-nixos; fi'
-ssh buddia@alan-node-nixos 'cd ~/.nixos && git pull --ff-only && if command -v doas >/dev/null 2>&1; then doas nixos-rebuild switch --flake ~/.nixos#alan-node-nixos; else sudo nixos-rebuild switch --flake ~/.nixos#alan-node-nixos; fi'
-```
-
-The first bootstrap still uses `initialClusterState = "new"`, but `etcd` is now
-allowed to wait indefinitely for quorum instead of being killed by the default
-systemd startup timeout. The important thing is that all three nodes eventually
-land on the same config.
-
-After that, verify the control plane from any node:
-
-```bash
-alanix-etcd-local-health
-alanix-etcd-health
-alanix-etcd-members
-```
-
-If you change the cluster transport addresses after `etcd` has already been
-bootstrapped, `etcd` will still have the old peer URLs in `/var/lib/etcd`. In
-that case, rebuild all nodes onto the new config first, then stop `etcd` on
-all nodes, remove `/var/lib/etcd`, and start `etcd` again on all three nodes.
-
-For the current repo state, that reset is safe because `etcd` is only acting as
-control-plane groundwork and is not yet the source of truth for application
-data.
-
-The failover controller is also now `etcd`-driven. Useful commands on any node:
-
-```bash
-alanix-failover-status
-systemctl status forgejo-role-controller
-systemctl status immich-role-controller
-```
-
-- `.sops.yaml` is generated from `secrets/keys.nix`. Do not hand-edit
-  `.sops.yaml`.
-- When recipients change, always run:
-
-```bash
-./scripts/generate-sops-config.sh
-./scripts/update-sops-keys.sh
-```
-
-- Server hosts explicitly disable idle suspend and sleep in
-  `hosts/common/core/server-power.nix` so a graphical session cannot suspend a
-  machine that is meant to stay online.
-
-- If you later split secrets by scope, narrow the `creationRules` in
-  `secrets/keys.nix` so each host only gets the secrets it actually needs.
+Repeat for each Tor-enabled service, then rebuild the active node. Because the onion hostname is derived from the secret key, promotion no longer depends on restoring `/var/lib/tor/onion`.

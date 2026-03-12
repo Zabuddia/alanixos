@@ -3,11 +3,6 @@ let
   cfg = config.alanix.immich;
   serviceAccess = import ./_service-access.nix { inherit lib; };
   hasSopsSecrets = lib.hasAttrByPath [ "sops" "secrets" ] config;
-  torSecretKeyPath =
-    if cfg.torAccess.secretKeySecret == null then
-      null
-    else
-      config.sops.secrets.${cfg.torAccess.secretKeySecret}.path;
   dbPasswordFile =
     if cfg.database.passwordSecret == null || !hasSopsSecrets then
       null
@@ -319,8 +314,6 @@ in
       inherit cfg hasSopsSecrets;
       modulePathPrefix = "alanix.immich";
     };
-
-    networking.firewall = serviceAccess.mkAccessFirewallConfig { inherit cfg; };
 
     sops.secrets = lib.mkMerge [
       (lib.mkIf (hasSopsSecrets && cfg.database.passwordSecret != null) {
@@ -702,13 +695,5 @@ in
       "d ${cfg.stateDir} 0700 immich immich - -"
     ];
 
-    services.caddy = serviceAccess.mkAccessCaddyConfig {
-      inherit cfg;
-      upstreamPort = cfg.port;
-    };
-
-    services.tor = serviceAccess.mkTorConfig {
-      inherit cfg torSecretKeyPath;
-    };
   };
 }

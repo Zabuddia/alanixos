@@ -3,11 +3,6 @@ let
   cfg = config.alanix.forgejo;
   serviceAccess = import ./_service-access.nix { inherit lib; };
   hasSopsSecrets = lib.hasAttrByPath [ "sops" "secrets" ] config;
-  torSecretKeyPath =
-    if cfg.torAccess.secretKeySecret == null then
-      null
-    else
-      config.sops.secrets.${cfg.torAccess.secretKeySecret}.path;
   declaredUsernames = builtins.attrNames cfg.users;
   declaredUsersList = lib.concatStringsSep " " declaredUsernames;
   anySopsPassword = lib.any (u: u.passwordSecret != null) (lib.attrValues cfg.users);
@@ -190,8 +185,6 @@ in
         inherit cfg hasSopsSecrets;
         modulePathPrefix = "alanix.forgejo";
       };
-
-    networking.firewall = serviceAccess.mkAccessFirewallConfig { inherit cfg; };
 
     services.forgejo = {
       enable = true;
@@ -438,13 +431,5 @@ in
         '';
     };
 
-    services.caddy = serviceAccess.mkAccessCaddyConfig {
-      inherit cfg;
-      upstreamPort = cfg.port;
-    };
-
-    services.tor = serviceAccess.mkTorConfig {
-      inherit cfg torSecretKeyPath;
-    };
   };
 }

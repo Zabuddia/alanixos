@@ -1,36 +1,25 @@
 {
-  description = "alanixos self-hosting config";
+  description = "alanixos Phase A active/passive homelab cluster";
 
   inputs = {
-    # Base system
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-    # User environment
     home-manager = {
       url = "github:nix-community/home-manager/release-25.11";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Secrets management
     sops-nix = {
       url = "github:Mic92/sops-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Disk layout
-    disko = {
-      url = "github:nix-community/disko";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    # Bitcoin stack
     nix-bitcoin = {
       url = "github:fort-nix/nix-bitcoin";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Invidious companion source (for companion wrapper package)
     invidious-companion-src = {
       url = "github:iv-org/invidious-companion";
       flake = false;
@@ -38,44 +27,21 @@
   };
 
   outputs = inputs:
-  let
-    mkHost = import ./lib/mkHost.nix { inherit inputs; };
-  in
-  {
-    nixosConfigurations = {
-      alan-big-nixos = mkHost {
-        hostname = "alan-big-nixos";
-        system = "x86_64-linux";
-
-        features = {
-          home-manager = true;
-          sops = true;
-          nix-bitcoin = true;
-          disko = false;
-        };
+    let
+      lib = inputs.nixpkgs.lib;
+      clusterConfig = import ./cluster/default.nix;
+      mkHost = import ./lib/mkHost.nix {
+        inherit inputs clusterConfig;
       };
-      randy-big-nixos = mkHost {
-        hostname = "randy-big-nixos";
-        system = "x86_64-linux";
-
-        features = {
-          home-manager = true;
-          sops = true;
-          nix-bitcoin = false;
-          disko = false;
-        };
-      };
-      alan-node-nixos = mkHost {
-        hostname = "alan-node-nixos";
-        system = "x86_64-linux";
-
-        features = {
-          home-manager = true;
-          sops = true;
-          nix-bitcoin = false;
-          disko = false;
-        };
-      };
+    in
+    {
+      nixosConfigurations = lib.mapAttrs
+        (hostname: node:
+          mkHost {
+            inherit hostname;
+            system = node.system;
+            enableBitcoin = hostname == "alan-big-nixos";
+          })
+        clusterConfig.nodes;
     };
-  };
 }
