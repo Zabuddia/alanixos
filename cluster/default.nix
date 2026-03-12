@@ -3,7 +3,7 @@
     domain = "fifefin.com";
     timezone = "America/Denver";
     stateVersion = "25.11";
-    activeNode = "alan-big-nixos";
+    activeNode = "randy-big-nixos";
 
     dns = {
       provider = "cloudflare";
