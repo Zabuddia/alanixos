@@ -153,6 +153,11 @@ let
         fi
       fi
 
+      if ! prepare_unit systemd-tmpfiles-resetup.service; then
+        printf '%s\n' "''${failed_units[@]}" > "$failure_file"
+        exit 1
+      fi
+
       for unit in "''${post_restore_prepare_units[@]}"; do
         if ! prepare_unit "$unit"; then
           printf '%s\n' "''${failed_units[@]}" > "$failure_file"
