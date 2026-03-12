@@ -168,6 +168,135 @@ let
 
   restoreScripts = builtins.attrValues restoreScriptPackages;
 
+  runAllBackupsScript = pkgs.writeShellScriptBin "alanix-run-backups-now" ''
+    set -euo pipefail
+
+    mapfile -t units < <(
+      ${pkgs.systemd}/bin/systemctl list-unit-files 'restic-backups-*.service' --no-legend --no-pager \
+        | ${pkgs.gawk}/bin/awk '{print $1}' \
+        | ${pkgs.gnugrep}/bin/grep '^restic-backups-.*\.service$' \
+        | ${pkgs.coreutils}/bin/sort
+    )
+
+    if [ "''${#units[@]}" -eq 0 ]; then
+      echo "No backup service units are installed on this node."
+      exit 0
+    fi
+
+    overall_start="$(${pkgs.coreutils}/bin/date +%s)"
+
+    for unit in "''${units[@]}"; do
+      start="$(${pkgs.coreutils}/bin/date +%s)"
+      echo "Starting $unit ..."
+      ${pkgs.systemd}/bin/systemctl start "$unit"
+      end="$(${pkgs.coreutils}/bin/date +%s)"
+      duration=$((end - start))
+
+      result="$(${pkgs.systemd}/bin/systemctl show "$unit" --property=Result --value 2>/dev/null || true)"
+      status="$(${pkgs.systemd}/bin/systemctl is-failed "$unit" 2>/dev/null || true)"
+
+      if [ "$result" != "success" ] && [ "$status" = "failed" ]; then
+        echo "FAILED  $unit (''${duration}s)" >&2
+        ${pkgs.systemd}/bin/journalctl -u "$unit" -n 40 --no-pager >&2 || true
+        exit 1
+      fi
+
+      echo "OK      $unit (''${duration}s)"
+    done
+
+    overall_end="$(${pkgs.coreutils}/bin/date +%s)"
+    echo "Completed all backups in $((overall_end - overall_start))s"
+  '';
+
+  backupStatusScript = pkgs.writeShellScriptBin "alanix-backup-status" ''
+    set -euo pipefail
+
+    format_value() {
+      local value="$1"
+      if [ -z "$value" ] || [ "$value" = "n/a" ] || [ "$value" = "0" ]; then
+        printf '%s' "-"
+      else
+        printf '%s' "$value"
+      fi
+    }
+
+    format_duration() {
+      local start_us="$1"
+      local end_us="$2"
+
+      if [ -z "$start_us" ] || [ -z "$end_us" ] || [ "$start_us" = "0" ] || [ "$end_us" = "0" ] || [ "$end_us" -lt "$start_us" ]; then
+        printf '%s' "-"
+        return 0
+      fi
+
+      printf '%ss' $(( (end_us - start_us) / 1000000 ))
+    }
+
+    mapfile -t units < <(
+      ${pkgs.systemd}/bin/systemctl list-unit-files 'restic-backups-*.service' --no-legend --no-pager \
+        | ${pkgs.gawk}/bin/awk '{print $1}' \
+        | ${pkgs.gnugrep}/bin/grep '^restic-backups-.*\.service$' \
+        | ${pkgs.coreutils}/bin/sort
+    )
+
+    if [ "''${#units[@]}" -eq 0 ]; then
+      echo "No backup service units are installed on this node."
+      exit 0
+    fi
+
+    printf '%-34s %-10s %-8s %-26s %s\n' "job" "result" "duration" "last-run" "next-run"
+    printf '%-34s %-10s %-8s %-26s %s\n' "---" "------" "--------" "--------" "--------"
+
+    for unit in "''${units[@]}"; do
+      timer="''${unit%.service}.timer"
+      job="''${unit#restic-backups-}"
+      job="''${job%.service}"
+
+      unset svc_props timer_props
+      declare -A svc_props=()
+      declare -A timer_props=()
+
+      while IFS='=' read -r key value; do
+        svc_props["$key"]="$value"
+      done < <(
+        ${pkgs.systemd}/bin/systemctl show "$unit" \
+          -p ActiveState \
+          -p Result \
+          -p ExecMainStartTimestamp \
+          -p ExecMainExitTimestamp \
+          -p ExecMainStartTimestampMonotonic \
+          -p ExecMainExitTimestampMonotonic \
+          --no-pager
+      )
+
+      while IFS='=' read -r key value; do
+        timer_props["$key"]="$value"
+      done < <(
+        ${pkgs.systemd}/bin/systemctl show "$timer" \
+          -p NextElapseUSecRealtime \
+          -p LastTriggerUSec \
+          --no-pager 2>/dev/null || true
+      )
+
+      result="''${svc_props[Result]:-}"
+      active_state="''${svc_props[ActiveState]:-unknown}"
+      if [ -z "$result" ] || [ "$result" = "success" ]; then
+        result="$active_state"
+      fi
+
+      duration="$(
+        format_duration \
+          "''${svc_props[ExecMainStartTimestampMonotonic]:-0}" \
+          "''${svc_props[ExecMainExitTimestampMonotonic]:-0}"
+      )"
+
+      last_run="$(format_value "''${svc_props[ExecMainExitTimestamp]:-}")"
+      next_run="$(format_value "''${timer_props[NextElapseUSecRealtime]:-}")"
+
+      printf '%-34s %-10s %-8s %-26s %s\n' "$job" "$result" "$duration" "$last_run" "$next_run"
+    done
+  '';
+
   restoreOnActivateScript = pkgs.writeShellScript "alanix-restore-on-activate" ''
     set -euo pipefail
 
@@ -295,6 +424,9 @@ in
         };
     };
 
-    environment.systemPackages = restoreScripts;
+    environment.systemPackages = restoreScripts ++ [
+      runAllBackupsScript
+      backupStatusScript
+    ];
   };
 }

@@ -144,6 +144,8 @@ alanix-cluster-role
 alanix-cluster-services
 ./scripts/show-service-addresses.sh
 systemctl list-timers 'restic-backups*' 'alanix-cloudflare-*'
+backupsnow
+backupstatus
 ```
 
 Promotion dry run:

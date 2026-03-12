@@ -44,6 +44,25 @@
         repo="/home/buddia/.nixos"
         "$repo/scripts/show-service-addresses.sh" "$@"
       }
+
+      backupsnow() {
+        local elevate
+
+        if command -v doas >/dev/null 2>&1; then
+          elevate="doas"
+        elif command -v sudo >/dev/null 2>&1; then
+          elevate="sudo"
+        else
+          echo "backupsnow: need doas or sudo to start backup services" >&2
+          return 1
+        fi
+
+        "$elevate" alanix-run-backups-now "$@"
+      }
+
+      backupstatus() {
+        alanix-backup-status "$@"
+      }
     '';
   };
 }
