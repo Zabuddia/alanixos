@@ -42,6 +42,25 @@ let
   );
 
   stopUnits = lib.reverseList (preRestoreUnits ++ postRestoreUnits);
+  serveReadyFile = "/var/lib/alanix/role-state/allow-serve";
+  gatedServiceUnits = lib.filter (unit: lib.hasSuffix ".service" unit) postRestoreUnits;
+  gatedTimerUnits = lib.filter (unit: lib.hasSuffix ".timer" unit) postRestoreUnits;
+  gatedServiceConfigs = builtins.listToAttrs (
+    map
+      (unit: {
+        name = lib.removeSuffix ".service" unit;
+        value.unitConfig.ConditionPathExists = serveReadyFile;
+      })
+      gatedServiceUnits
+  );
+  gatedTimerConfigs = builtins.listToAttrs (
+    map
+      (unit: {
+        name = lib.removeSuffix ".timer" unit;
+        value.unitConfig.ConditionPathExists = serveReadyFile;
+      })
+      gatedTimerUnits
+  );
 
   roleSyncScript = pkgs.writeShellScript "alanix-role-sync" ''
     set -euo pipefail
@@ -52,6 +71,7 @@ let
     state_dir=/var/lib/alanix/role-state
     last_role_file="$state_dir/last-role"
     last_active_node_file="$state_dir/last-active-node"
+    serve_ready_file="$state_dir/allow-serve"
     failure_file="$state_dir/last-start-failures"
     previous_role=unknown
     previous_active_node=unknown
@@ -92,6 +112,8 @@ let
     }
 
     if [ ${lib.escapeShellArg cluster.role} = "active" ]; then
+      rm -f "$serve_ready_file"
+
       for unit in "''${pre_restore_units[@]}"; do
         start_unit "$unit"
       done
@@ -101,16 +123,17 @@ let
           echo "alanix-role-sync: failed to run alanix-restore-on-activate.service" >&2
           failed_units+=("alanix-restore-on-activate.service")
           printf '%s\n' "''${failed_units[@]}" > "$failure_file"
-          printf '%s\n' ${lib.escapeShellArg cluster.role} > "$last_role_file"
-          printf '%s\n' ${lib.escapeShellArg cluster.activeNodeName} > "$last_active_node_file"
           exit 1
         fi
       fi
+
+      : > "$serve_ready_file"
 
       for unit in "''${post_restore_units[@]}"; do
         start_unit "$unit"
       done
     else
+      rm -f "$serve_ready_file"
       for unit in "''${stop_units[@]}"; do
         stop_unit "$unit"
       done
@@ -164,19 +187,23 @@ in
     text = roleSyncActivationScript;
   };
 
-  systemd.services.alanix-role-sync = {
-    description = "Synchronize Alanix role-gated units";
-    after = [ "network.target" ];
-    wants = [ "network.target" ];
-    path = [
-      pkgs.coreutils
-      pkgs.systemd
-    ];
-    serviceConfig = {
-      Type = "oneshot";
+  systemd.services = gatedServiceConfigs // {
+    alanix-role-sync = {
+      description = "Synchronize Alanix role-gated units";
+      after = [ "network.target" ];
+      wants = [ "network.target" ];
+      path = [
+        pkgs.coreutils
+        pkgs.systemd
+      ];
+      serviceConfig = {
+        Type = "oneshot";
+      };
+      script = builtins.readFile roleSyncScript;
     };
-    script = builtins.readFile roleSyncScript;
   };
+
+  systemd.timers = gatedTimerConfigs;
 
   environment.systemPackages = [
     roleScript

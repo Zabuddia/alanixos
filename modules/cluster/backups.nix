@@ -4,6 +4,7 @@ let
   defaults = cluster.settings.backupDefaults;
   incomingBaseDir = defaults.incomingBaseDir;
   knownHostsDir = "/var/lib/alanix/backups";
+  resticCacheDir = "/var/cache/alanix/restic";
   backupUid = 44990;
   backupGid = 44990;
   sshPrivateKeyPath = config.sops.secrets.${defaults.sshPrivateKeySecret}.path;
@@ -127,11 +128,15 @@ let
       SNAPSHOT="''${2:-latest}"
       REPOSITORY="${incomingBaseDir}/${serviceName}/$SOURCE_NODE"
       PASSWORD_FILE=${lib.escapeShellArg resticPasswordPath}
+      CACHE_DIR=${lib.escapeShellArg resticCacheDir}
 
       if [ ! -d "$REPOSITORY" ]; then
         echo "No local repository for ${serviceName} from source node '$SOURCE_NODE' at $REPOSITORY" >&2
         exit 1
       fi
+
+      ${pkgs.coreutils}/bin/mkdir -p "$CACHE_DIR"
+      export XDG_CACHE_HOME="$CACHE_DIR"
 
       for unit in ${lib.concatStringsSep " " (map lib.escapeShellArg serviceUnits.${serviceName})}; do
         if ${pkgs.systemd}/bin/systemctl list-unit-files "$unit" >/dev/null 2>&1; then
@@ -153,7 +158,7 @@ let
       done
 
       RESTIC_PASSWORD_FILE="$PASSWORD_FILE" \
-        ${lib.getExe pkgs.restic} -r "$REPOSITORY" restore "$SNAPSHOT" --target /
+        ${lib.getExe pkgs.restic} -r "$REPOSITORY" --retry-lock 10m restore "$SNAPSHOT" --target /
 
       ${service.backup.restoreCommand}
 
@@ -390,9 +395,13 @@ let
     PASSWORD_FILE=${lib.escapeShellArg resticPasswordPath}
     STATE_DIR=/var/lib/alanix/role-state
     LAST_RESTORE_FILE="$STATE_DIR/last-restore"
+    CACHE_DIR=${lib.escapeShellArg resticCacheDir}
+    RESTORE_SOURCES=(${lib.concatStringsSep " " (map lib.escapeShellArg restoreSourceNodes)})
 
     ${pkgs.coreutils}/bin/mkdir -p "$STATE_DIR"
+    ${pkgs.coreutils}/bin/mkdir -p "$CACHE_DIR"
     : > "$LAST_RESTORE_FILE"
+    export XDG_CACHE_HOME="$CACHE_DIR"
 
     find_latest_source() {
       local service_name="$1"
@@ -401,38 +410,37 @@ let
       local best_time=""
       local inspect_error=0
 
-      ${lib.concatMapStringsSep "\n" (
-        sourceNode:
-        ''
-          repo="${incomingBaseDir}/''${service_name}/${sourceNode}"
-          if [ -d "$repo" ]; then
-            latest_json="$(RESTIC_PASSWORD_FILE="$PASSWORD_FILE" ${lib.getExe pkgs.restic} -r "$repo" snapshots --latest 1 --json 2>/dev/null || true)"
-            if [ -z "$latest_json" ]; then
-              echo "Failed to inspect local backup repository for ''${service_name} from ${sourceNode}" >&2
-              inspect_error=1
-              continue
-            fi
+      for sourceNode in "''${RESTORE_SOURCES[@]}"; do
+        repo="${incomingBaseDir}/''${service_name}/$sourceNode"
+        if [ ! -d "$repo" ]; then
+          continue
+        fi
 
-            latest_time="$(printf '%s\n' "$latest_json" | ${lib.getExe pkgs.jq} -r 'if length == 0 then empty else .[0].time end' 2>/dev/null || true)"
-            if [ -z "$latest_time" ]; then
-              continue
-            fi
+        latest_json="$(RESTIC_PASSWORD_FILE="$PASSWORD_FILE" ${lib.getExe pkgs.restic} -r "$repo" --retry-lock 10m snapshots --latest 1 --json 2>/dev/null || true)"
+        if [ -z "$latest_json" ]; then
+          echo "Failed to inspect local backup repository for ''${service_name} from $sourceNode" >&2
+          inspect_error=1
+          continue
+        fi
 
-            latest_epoch="$(${lib.getExe' pkgs.coreutils "date"} -d "$latest_time" +%s 2>/dev/null || true)"
-            if [ -z "$latest_epoch" ]; then
-              echo "Unable to parse snapshot time '$latest_time' for ''${service_name} from ${sourceNode}" >&2
-              inspect_error=1
-              continue
-            fi
+        latest_time="$(printf '%s\n' "$latest_json" | ${lib.getExe pkgs.jq} -r 'if length == 0 then empty else .[0].time end' 2>/dev/null || true)"
+        if [ -z "$latest_time" ]; then
+          continue
+        fi
 
-            if [ "$latest_epoch" -gt "$best_epoch" ]; then
-              best_source=${lib.escapeShellArg sourceNode}
-              best_epoch="$latest_epoch"
-              best_time="$latest_time"
-            fi
-          fi
-        ''
-      ) restoreSourceNodes}
+        latest_epoch="$(${lib.getExe' pkgs.coreutils "date"} -d "$latest_time" +%s 2>/dev/null || true)"
+        if [ -z "$latest_epoch" ]; then
+          echo "Unable to parse snapshot time '$latest_time' for ''${service_name} from $sourceNode" >&2
+          inspect_error=1
+          continue
+        fi
+
+        if [ "$latest_epoch" -gt "$best_epoch" ]; then
+          best_source="$sourceNode"
+          best_epoch="$latest_epoch"
+          best_time="$latest_time"
+        fi
+      done
 
       if [ "$inspect_error" -ne 0 ] && [ -z "$best_source" ]; then
         return 1
