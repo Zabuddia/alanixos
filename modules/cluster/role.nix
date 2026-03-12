@@ -52,6 +52,17 @@ let
     fi
   '';
 
+  roleSyncActivationScript = ''
+    restart_file=/run/nixos/activation-restart-list
+    if [ "''${NIXOS_ACTION:-}" = "dry-activate" ]; then
+      restart_file=/run/nixos/dry-activation-restart-list
+    fi
+
+    if ! grep -Fqx 'alanix-role-sync.service' "$restart_file" 2>/dev/null; then
+      printf '%s\n' 'alanix-role-sync.service' >> "$restart_file"
+    fi
+  '';
+
   roleScript = pkgs.writeShellScriptBin "alanix-cluster-role" ''
     set -euo pipefail
     cat <<'EOF'
@@ -80,22 +91,18 @@ in
 
   environment.etc."alanix/inventory.json".text = builtins.toJSON cluster.inventory;
 
+  system.activationScripts.alanix-role-sync = {
+    supportsDryActivation = true;
+    text = roleSyncActivationScript;
+  };
+
   systemd.services.alanix-role-sync = {
     description = "Synchronize Alanix role-gated units";
-    wantedBy = [ "multi-user.target" ];
     after = [ "network.target" ];
     wants = [ "network.target" ];
     path = [ pkgs.systemd ];
-    restartTriggers = [
-      (builtins.toJSON {
-        role = cluster.role;
-        activeNode = cluster.activeNodeName;
-        units = startUnits;
-      })
-    ];
     serviceConfig = {
       Type = "oneshot";
-      RemainAfterExit = true;
     };
     script = builtins.readFile roleSyncScript;
   };
