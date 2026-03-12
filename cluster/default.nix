@@ -310,20 +310,19 @@
           Persistent = true;
         };
         prepareCommand = ''
-          install -d -m 0750 -o postgres -g postgres /var/lib/immich/_cluster-backup
+          install -d -m 0750 -o root -g root /var/lib/immich/_cluster-backup
           runuser -u postgres -- pg_dump \
             --clean \
             --if-exists \
             --no-owner \
-            --file=/var/lib/immich/_cluster-backup/immich.sql \
-            immich
-          chown postgres:postgres /var/lib/immich/_cluster-backup/immich.sql
+            immich > /var/lib/immich/_cluster-backup/immich.sql
+          chown root:root /var/lib/immich/_cluster-backup/immich.sql
           chmod 0600 /var/lib/immich/_cluster-backup/immich.sql
         '';
         restoreCommand = ''
           runuser -u postgres -- dropdb --if-exists immich
           runuser -u postgres -- createdb --owner=immich immich
-          runuser -u postgres -- psql --dbname=immich --file=/var/lib/immich/_cluster-backup/immich.sql
+          runuser -u postgres -- psql --dbname=immich < /var/lib/immich/_cluster-backup/immich.sql
         '';
       };
     };
@@ -408,20 +407,19 @@
           Persistent = true;
         };
         prepareCommand = ''
-          install -d -m 0750 -o postgres -g postgres /var/lib/invidious/_cluster-backup
+          install -d -m 0750 -o root -g root /var/lib/invidious/_cluster-backup
           runuser -u postgres -- pg_dump \
             --clean \
             --if-exists \
             --no-owner \
-            --file=/var/lib/invidious/_cluster-backup/invidious.sql \
-            invidious
-          chown postgres:postgres /var/lib/invidious/_cluster-backup/invidious.sql
+            invidious > /var/lib/invidious/_cluster-backup/invidious.sql
+          chown root:root /var/lib/invidious/_cluster-backup/invidious.sql
           chmod 0600 /var/lib/invidious/_cluster-backup/invidious.sql
         '';
         restoreCommand = ''
           runuser -u postgres -- dropdb --if-exists invidious
           runuser -u postgres -- createdb --owner=invidious invidious
-          runuser -u postgres -- psql --dbname=invidious --file=/var/lib/invidious/_cluster-backup/invidious.sql
+          runuser -u postgres -- psql --dbname=invidious < /var/lib/invidious/_cluster-backup/invidious.sql
         '';
       };
     };
