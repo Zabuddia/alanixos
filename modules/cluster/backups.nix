@@ -175,6 +175,32 @@ let
     if [ "''${NIXOS_ACTION:-}" = "dry-activate" ]; then
       echo "would migrate cluster-backup UID/GID to ${toString backupUid}:${toString backupGid} if needed"
     elif getent group cluster-backup >/dev/null 2>&1 && getent passwd cluster-backup >/dev/null 2>&1; then
+      terminate_cluster_backup_processes() {
+        local uid="$1"
+
+        ${pkgs.systemd}/bin/systemctl stop "user@''${uid}.service" "user-runtime-dir@''${uid}.service" >/dev/null 2>&1 || true
+        ${pkgs.systemd}/bin/loginctl terminate-user "$uid" >/dev/null 2>&1 || true
+        ${pkgs.procps}/bin/pkill -TERM -u "$uid" >/dev/null 2>&1 || true
+
+        for _ in $(seq 1 20); do
+          if ! ${pkgs.procps}/bin/pgrep -u "$uid" >/dev/null 2>&1; then
+            return 0
+          fi
+          sleep 0.5
+        done
+
+        ${pkgs.procps}/bin/pkill -KILL -u "$uid" >/dev/null 2>&1 || true
+
+        for _ in $(seq 1 10); do
+          if ! ${pkgs.procps}/bin/pgrep -u "$uid" >/dev/null 2>&1; then
+            return 0
+          fi
+          sleep 0.5
+        done
+
+        return 1
+      }
+
       current_gid="$(getent group cluster-backup | cut -d: -f3)"
       current_uid="$(getent passwd cluster-backup | cut -d: -f3)"
       target_group_owner="$(getent group ${toString backupGid} | cut -d: -f1 || true)"
@@ -191,11 +217,16 @@ let
       fi
 
       if [ "$current_gid" != "${toString backupGid}" ]; then
-        groupmod -g ${toString backupGid} cluster-backup
+        ${pkgs.shadow}/bin/groupmod -g ${toString backupGid} cluster-backup
       fi
 
       if [ "$current_uid" != "${toString backupUid}" ] || [ "$(id -g cluster-backup)" != "${toString backupGid}" ]; then
-        usermod -u ${toString backupUid} -g ${toString backupGid} cluster-backup
+        if ${pkgs.procps}/bin/pgrep -u "$current_uid" >/dev/null 2>&1; then
+          echo "alanix-backups: terminating live cluster-backup processes for UID migration" >&2
+          terminate_cluster_backup_processes "$current_uid"
+        fi
+
+        ${pkgs.shadow}/bin/usermod -u ${toString backupUid} -g ${toString backupGid} cluster-backup
       fi
     fi
   '';
