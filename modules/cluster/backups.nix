@@ -4,6 +4,8 @@ let
   defaults = cluster.settings.backupDefaults;
   incomingBaseDir = defaults.incomingBaseDir;
   knownHostsDir = "/var/lib/alanix/backups";
+  backupUid = 44990;
+  backupGid = 44990;
   sshPrivateKeyPath = config.sops.secrets.${defaults.sshPrivateKeySecret}.path;
   resticPasswordPath = config.sops.secrets.${defaults.passwordSecret}.path;
 
@@ -409,9 +411,12 @@ let
 in
 {
   config = {
-    users.groups.cluster-backup = { };
+    users.groups.cluster-backup = {
+      gid = backupGid;
+    };
     users.users.cluster-backup = {
       isSystemUser = true;
+      uid = backupUid;
       group = "cluster-backup";
       home = incomingBaseDir;
       createHome = false;
@@ -432,6 +437,18 @@ in
     '';
 
     systemd.tmpfiles.rules = incomingTmpfiles;
+
+    system.activationScripts.alanix-backup-repo-ownership = {
+      deps = [ "users" ];
+      supportsDryActivation = true;
+      text = ''
+        if [ "''${NIXOS_ACTION:-}" = "dry-activate" ]; then
+          echo "would repair Alanix backup repository ownership under ${incomingBaseDir}"
+        elif [ -d ${lib.escapeShellArg incomingBaseDir} ]; then
+          chown -R cluster-backup:cluster-backup ${lib.escapeShellArg incomingBaseDir}
+        fi
+      '';
+    };
 
     services.restic.backups = outgoingJobs;
 
