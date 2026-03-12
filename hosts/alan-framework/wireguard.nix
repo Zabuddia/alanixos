@@ -5,8 +5,8 @@
 
   my.wireguard = {
     enable = true;
-    nodeName = "randy-big-nixos";
-    privateKeyFile = config.sops.secrets."wireguard-private-keys/randy-big-nixos".path;
+    nodeName = "alan-framework";
+    privateKeyFile = config.sops.secrets."wireguard-private-keys/alan-framework".path;
 
     nodes = {
       alan-big-nixos = {
