@@ -278,7 +278,7 @@ in
               --root "$ROOT" \
               --address "$ADDRESS" \
               --port "$PORT" \
-              --create-user-dir=false \
+              --createUserDir=false \
               >/dev/null
           else
             # Keep DB config converged to declarative values if it was created manually/older config.
@@ -287,7 +287,7 @@ in
               --root "$ROOT" \
               --address "$ADDRESS" \
               --port "$PORT" \
-              --create-user-dir=false \
+              --createUserDir=false \
               >/dev/null
           fi
 

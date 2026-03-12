@@ -21,14 +21,26 @@ let
     ++ lib.optionals (enabledServices ? invidious && enabledServices.invidious.database.createLocally) [ "postgresql.service" ]
   );
 
+  postRestorePrepareUnits = lib.unique (
+    lib.optionals (enabledServices ? forgejo) [ "forgejo-secrets.service" ]
+  );
+
   postRestoreUnits = lib.unique (
     lib.optionals (enabledServices ? immich && enabledServices.immich.redis.enable && enabledServices.immich.redis.host == null) [ "redis-immich.service" ]
     ++ lib.optionals (enabledServices ? filebrowser) [ "filebrowser.service" ]
+    ++ lib.optionals (enabledServices ? filebrowser) [ "filebrowser-reconcile-users.service" ]
     ++ lib.optionals (enabledServices ? forgejo) [ "forgejo.service" ]
+    ++ lib.optionals (enabledServices ? forgejo) [ "forgejo-reconcile-users.service" ]
     ++ lib.optionals (enabledServices ? immich) [ "immich-server.service" ]
     ++ lib.optionals (enabledServices ? immich && enabledServices.immich.machineLearning.enable) [ "immich-machine-learning.service" ]
+    ++ lib.optionals (enabledServices ? immich) [ "immich-reconcile-users.service" ]
     ++ lib.optionals (enabledServices ? invidious) [ "invidious.service" ]
+    ++ lib.optionals (enabledServices ? invidious) [
+      "invidious-hmac-key-json.service"
+      "invidious-reconcile-users.service"
+    ]
     ++ lib.optionals (enabledServices ? invidious && enabledServices.invidious.companion.enable) [ "invidious-companion.service" ]
+    ++ lib.optionals (enabledServices ? invidious && enabledServices.invidious.companion.enable) [ "invidious-companion-config.service" ]
     ++ lib.optionals anyTorServices [
       "alanix-tor-secret-keys.service"
       "tor.service"
@@ -41,7 +53,7 @@ let
     ++ backupTimerUnits
   );
 
-  stopUnits = lib.reverseList (preRestoreUnits ++ postRestoreUnits);
+  stopUnits = lib.reverseList (preRestoreUnits ++ postRestorePrepareUnits ++ postRestoreUnits);
   serveReadyFile = "/var/lib/alanix/role-state/allow-serve";
   gatedServiceUnits = lib.filter (unit: lib.hasSuffix ".service" unit) postRestoreUnits;
   gatedTimerUnits = lib.filter (unit: lib.hasSuffix ".timer" unit) postRestoreUnits;
@@ -66,6 +78,7 @@ let
     set -euo pipefail
 
     pre_restore_units=(${lib.concatStringsSep " " (map lib.escapeShellArg preRestoreUnits)})
+    post_restore_prepare_units=(${lib.concatStringsSep " " (map lib.escapeShellArg postRestorePrepareUnits)})
     post_restore_units=(${lib.concatStringsSep " " (map lib.escapeShellArg postRestoreUnits)})
     stop_units=(${lib.concatStringsSep " " (map lib.escapeShellArg stopUnits)})
     state_dir=/var/lib/alanix/role-state
@@ -90,6 +103,19 @@ let
 
     unit_exists() {
       ${lib.getExe' pkgs.systemd "systemctl"} list-unit-files "$1" >/dev/null 2>&1
+    }
+
+    prepare_unit() {
+      local unit="$1"
+      if ! unit_exists "$unit"; then
+        return 0
+      fi
+
+      if ! ${lib.getExe' pkgs.systemd "systemctl"} restart "$unit"; then
+        echo "alanix-role-sync: failed to prepare $unit" >&2
+        failed_units+=("$unit")
+        return 1
+      fi
     }
 
     start_unit() {
@@ -127,11 +153,14 @@ let
         fi
       fi
 
-      : > "$serve_ready_file"
-
-      for unit in "''${post_restore_units[@]}"; do
-        start_unit "$unit"
+      for unit in "''${post_restore_prepare_units[@]}"; do
+        if ! prepare_unit "$unit"; then
+          printf '%s\n' "''${failed_units[@]}" > "$failure_file"
+          exit 1
+        fi
       done
+
+      : > "$serve_ready_file"
     else
       rm -f "$serve_ready_file"
       for unit in "''${stop_units[@]}"; do
