@@ -18,8 +18,9 @@ let
       (name: _: name != cluster.currentNodeName)
       cluster.backupReceivers;
 
-  sftpCommand =
-    "sftp.command='ssh -i ${sshPrivateKeyPath} -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=${knownHostsDir}/known_hosts -s sftp'";
+  sftpCommandFor =
+    receiverNode:
+    "sftp.command='ssh -i ${sshPrivateKeyPath} -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=${knownHostsDir}/known_hosts ${defaults.sshUser}@${receiverNode.vpnIp} -s sftp'";
 
   serviceUnits = {
     filebrowser = [ "filebrowser.service" ];
@@ -62,7 +63,7 @@ let
         "sftp:${defaults.sshUser}@${receiverNode.vpnIp}:${incomingBaseDir}/${serviceName}/${cluster.currentNodeName}";
       passwordFile = resticPasswordPath;
       paths = serviceBackupPaths service;
-      extraOptions = [ sftpCommand ];
+      extraOptions = [ (sftpCommandFor receiverNode) ];
       pruneOpts = prunePolicyFor service;
       timerConfig = timerConfigFor service;
       backupPrepareCommand =
@@ -234,24 +235,6 @@ let
       fi
     }
 
-    format_epoch() {
-      local epoch="$1"
-      if [ -z "$epoch" ] || [ "$epoch" = "0" ]; then
-        printf '%s' "-"
-      else
-        ${pkgs.coreutils}/bin/date -d "@$epoch" '+%Y-%m-%d %H:%M:%S %Z'
-      fi
-    }
-
-    format_usec_epoch() {
-      local usec="$1"
-      if [ -z "$usec" ] || [ "$usec" = "0" ] || [ "$usec" = "n/a" ]; then
-        printf '%s' "-"
-      else
-        format_epoch $((usec / 1000000))
-      fi
-    }
-
     format_duration() {
       local start_us="$1"
       local end_us="$2"
@@ -263,10 +246,6 @@ let
 
       printf '%ss' $(( (end_us - start_us) / 1000000 ))
     }
-
-    now_epoch="$(${pkgs.coreutils}/bin/date +%s)"
-    uptime_seconds="$(${pkgs.coreutils}/bin/cut -d' ' -f1 /proc/uptime)"
-    boot_epoch="$(${pkgs.gawk}/bin/awk -v now="$now_epoch" -v uptime="$uptime_seconds" 'BEGIN { printf "%.0f", now - uptime }')"
 
     mapfile -t units < <(
       ${pkgs.systemd}/bin/systemctl list-unit-files 'restic-backups-*.service' --no-legend --no-pager \
@@ -335,14 +314,14 @@ let
 
       last_run="$(format_value "''${svc_props[ExecMainExitTimestamp]:-}")"
       if [ "$last_run" = "-" ]; then
-        last_run="$(format_usec_epoch "''${timer_props[LastTriggerUSec]:-0}")"
+        last_run="$(format_value "''${timer_props[LastTriggerUSec]:-}")"
       fi
 
       next_run="-"
       if [ -n "''${timer_props[NextElapseUSecRealtime]:-}" ] && [ "''${timer_props[NextElapseUSecRealtime]:-0}" != "0" ]; then
-        next_run="$(format_usec_epoch "''${timer_props[NextElapseUSecRealtime]}")"
+        next_run="$(format_value "''${timer_props[NextElapseUSecRealtime]}")"
       elif [ -n "''${timer_props[NextElapseUSecMonotonic]:-}" ] && [ "''${timer_props[NextElapseUSecMonotonic]:-0}" != "0" ]; then
-        next_run="$(format_epoch $((boot_epoch + timer_props[NextElapseUSecMonotonic] / 1000000)))"
+        next_run="$(format_value "''${timer_props[NextElapseUSecMonotonic]}")"
       fi
 
       printf '%-34s %-10s %-8s %-26s %s\n' "$job" "$result" "$duration" "$last_run" "$next_run"

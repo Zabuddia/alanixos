@@ -310,14 +310,14 @@
           Persistent = true;
         };
         prepareCommand = ''
-          install -d -m 0750 -o root -g root /var/lib/immich/_cluster-backup
+          install -d -m 0750 -o postgres -g postgres /var/lib/immich/_cluster-backup
           runuser -u postgres -- pg_dump \
             --clean \
             --if-exists \
             --no-owner \
             --file=/var/lib/immich/_cluster-backup/immich.sql \
             immich
-          chown root:root /var/lib/immich/_cluster-backup/immich.sql
+          chown postgres:postgres /var/lib/immich/_cluster-backup/immich.sql
           chmod 0600 /var/lib/immich/_cluster-backup/immich.sql
         '';
         restoreCommand = ''
@@ -408,14 +408,14 @@
           Persistent = true;
         };
         prepareCommand = ''
-          install -d -m 0750 -o root -g root /var/lib/invidious/_cluster-backup
+          install -d -m 0750 -o postgres -g postgres /var/lib/invidious/_cluster-backup
           runuser -u postgres -- pg_dump \
             --clean \
             --if-exists \
             --no-owner \
             --file=/var/lib/invidious/_cluster-backup/invidious.sql \
             invidious
-          chown root:root /var/lib/invidious/_cluster-backup/invidious.sql
+          chown postgres:postgres /var/lib/invidious/_cluster-backup/invidious.sql
           chmod 0600 /var/lib/invidious/_cluster-backup/invidious.sql
         '';
         restoreCommand = ''
