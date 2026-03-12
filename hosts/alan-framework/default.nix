@@ -5,6 +5,8 @@
     ./secrets.nix
     ./users.nix
     ./wireguard.nix
+    ../../modules/llm.nix
+    ../../modules/openclaw.nix
     ../../modules/sway.nix
     ../../modules/ssh.nix
     ../../modules/tailscale.nix
@@ -31,17 +33,33 @@
   # Firewall
   networking.firewall.enable = true;
 
-  # Swap
-  swapDevices = [
-    { device = "/swapfile"; size = 8192; }
-  ];
-
   # Cloudflare DDNS
   services.cloudflare-ddns = {
     enable = true;
     domains = [ "alan-framework-wg.fifefin.com" ];
     credentialsFile = config.sops.templates."cloudflare-env".path;
     provider.ipv6 = "none";
+  };
+
+  alanix.llm = {
+    enable = true;
+    backend = "vulkan";
+    model = {
+      name = "qwen3.5-35b-a3b";
+      hfRepo = "unsloth/Qwen3.5-35B-A3B-GGUF";
+      hfFile = "Qwen3.5-35B-A3B-UD-Q4_K_M.gguf";
+    };
+    ctxSize = 32768;
+    gpuLayers = "all";
+    parallel = 4;
+  };
+
+  alanix.openclaw = {
+    enable = true;
+    bind = "tailnet";
+    port = 18789;
+    enableResponsesApi = true;
+    enableChatCompletionsApi = true;
   };
 
   # Basic tools
