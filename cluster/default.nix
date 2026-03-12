@@ -322,7 +322,15 @@
         restoreCommand = ''
           runuser -u postgres -- dropdb --if-exists immich
           runuser -u postgres -- createdb --owner=immich immich
-          runuser -u postgres -- psql --dbname=immich < /var/lib/immich/_cluster-backup/immich.sql
+          runuser -u postgres -- psql --dbname=immich --set=ON_ERROR_STOP=1 <<'SQL'
+          SET ROLE immich;
+          \i /var/lib/immich/_cluster-backup/immich.sql
+          SQL
+          runuser -u postgres -- psql --dbname=immich --set=ON_ERROR_STOP=1 <<'SQL'
+          REASSIGN OWNED BY postgres TO immich;
+          ALTER DATABASE immich OWNER TO immich;
+          ALTER SCHEMA public OWNER TO immich;
+          SQL
         '';
       };
     };
@@ -419,7 +427,15 @@
         restoreCommand = ''
           runuser -u postgres -- dropdb --if-exists invidious
           runuser -u postgres -- createdb --owner=invidious invidious
-          runuser -u postgres -- psql --dbname=invidious < /var/lib/invidious/_cluster-backup/invidious.sql
+          runuser -u postgres -- psql --dbname=invidious --set=ON_ERROR_STOP=1 <<'SQL'
+          SET ROLE invidious;
+          \i /var/lib/invidious/_cluster-backup/invidious.sql
+          SQL
+          runuser -u postgres -- psql --dbname=invidious --set=ON_ERROR_STOP=1 <<'SQL'
+          REASSIGN OWNED BY postgres TO invidious;
+          ALTER DATABASE invidious OWNER TO invidious;
+          ALTER SCHEMA public OWNER TO invidious;
+          SQL
         '';
       };
     };

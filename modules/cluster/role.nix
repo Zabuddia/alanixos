@@ -64,6 +64,9 @@ let
     if [ -r "$last_active_node_file" ]; then
       IFS= read -r previous_active_node < "$last_active_node_file"
     fi
+    if [ "$previous_active_node" = "unknown" ] && [ "$previous_role" = "active" ]; then
+      previous_active_node=${lib.escapeShellArg cluster.currentNodeName}
+    fi
 
     unit_exists() {
       ${lib.getExe' pkgs.systemd "systemctl"} list-unit-files "$1" >/dev/null 2>&1
