@@ -184,11 +184,19 @@ let
     fi
 
     overall_start="$(${pkgs.coreutils}/bin/date +%s)"
+    failed_units=()
 
     for unit in "''${units[@]}"; do
       start="$(${pkgs.coreutils}/bin/date +%s)"
       echo "Starting $unit ..."
-      ${pkgs.systemd}/bin/systemctl start "$unit"
+      if ! ${pkgs.systemd}/bin/systemctl start "$unit"; then
+        end="$(${pkgs.coreutils}/bin/date +%s)"
+        duration=$((end - start))
+        failed_units+=("$unit")
+        echo "FAILED  $unit (''${duration}s)" >&2
+        ${pkgs.systemd}/bin/journalctl -u "$unit" -n 40 --no-pager >&2 || true
+        continue
+      fi
       end="$(${pkgs.coreutils}/bin/date +%s)"
       duration=$((end - start))
 
@@ -196,15 +204,21 @@ let
       status="$(${pkgs.systemd}/bin/systemctl is-failed "$unit" 2>/dev/null || true)"
 
       if [ "$result" != "success" ] && [ "$status" = "failed" ]; then
+        failed_units+=("$unit")
         echo "FAILED  $unit (''${duration}s)" >&2
         ${pkgs.systemd}/bin/journalctl -u "$unit" -n 40 --no-pager >&2 || true
-        exit 1
+        continue
       fi
 
       echo "OK      $unit (''${duration}s)"
     done
 
     overall_end="$(${pkgs.coreutils}/bin/date +%s)"
+    if [ "''${#failed_units[@]}" -gt 0 ]; then
+      echo "Completed with failures in $((overall_end - overall_start))s: ''${failed_units[*]}" >&2
+      exit 1
+    fi
+
     echo "Completed all backups in $((overall_end - overall_start))s"
   '';
 
@@ -220,6 +234,24 @@ let
       fi
     }
 
+    format_epoch() {
+      local epoch="$1"
+      if [ -z "$epoch" ] || [ "$epoch" = "0" ]; then
+        printf '%s' "-"
+      else
+        ${pkgs.coreutils}/bin/date -d "@$epoch" '+%Y-%m-%d %H:%M:%S %Z'
+      fi
+    }
+
+    format_usec_epoch() {
+      local usec="$1"
+      if [ -z "$usec" ] || [ "$usec" = "0" ] || [ "$usec" = "n/a" ]; then
+        printf '%s' "-"
+      else
+        format_epoch $((usec / 1000000))
+      fi
+    }
+
     format_duration() {
       local start_us="$1"
       local end_us="$2"
@@ -231,6 +263,10 @@ let
 
       printf '%ss' $(( (end_us - start_us) / 1000000 ))
     }
+
+    now_epoch="$(${pkgs.coreutils}/bin/date +%s)"
+    uptime_seconds="$(${pkgs.coreutils}/bin/cut -d' ' -f1 /proc/uptime)"
+    boot_epoch="$(${pkgs.gawk}/bin/awk -v now="$now_epoch" -v uptime="$uptime_seconds" 'BEGIN { printf "%.0f", now - uptime }')"
 
     mapfile -t units < <(
       ${pkgs.systemd}/bin/systemctl list-unit-files 'restic-backups-*.service' --no-legend --no-pager \
@@ -273,15 +309,22 @@ let
         timer_props["$key"]="$value"
       done < <(
         ${pkgs.systemd}/bin/systemctl show "$timer" \
+          -p ActiveState \
           -p NextElapseUSecRealtime \
+          -p NextElapseUSecMonotonic \
           -p LastTriggerUSec \
           --no-pager 2>/dev/null || true
       )
 
       result="''${svc_props[Result]:-}"
       active_state="''${svc_props[ActiveState]:-unknown}"
+      timer_active_state="''${timer_props[ActiveState]:-inactive}"
       if [ -z "$result" ] || [ "$result" = "success" ]; then
-        result="$active_state"
+        if [ "$timer_active_state" = "active" ] && [ "$active_state" = "inactive" ]; then
+          result="scheduled"
+        else
+          result="$active_state"
+        fi
       fi
 
       duration="$(
@@ -291,7 +334,16 @@ let
       )"
 
       last_run="$(format_value "''${svc_props[ExecMainExitTimestamp]:-}")"
-      next_run="$(format_value "''${timer_props[NextElapseUSecRealtime]:-}")"
+      if [ "$last_run" = "-" ]; then
+        last_run="$(format_usec_epoch "''${timer_props[LastTriggerUSec]:-0}")"
+      fi
+
+      next_run="-"
+      if [ -n "''${timer_props[NextElapseUSecRealtime]:-}" ] && [ "''${timer_props[NextElapseUSecRealtime]:-0}" != "0" ]; then
+        next_run="$(format_usec_epoch "''${timer_props[NextElapseUSecRealtime]}")"
+      elif [ -n "''${timer_props[NextElapseUSecMonotonic]:-}" ] && [ "''${timer_props[NextElapseUSecMonotonic]:-0}" != "0" ]; then
+        next_run="$(format_epoch $((boot_epoch + timer_props[NextElapseUSecMonotonic] / 1000000)))"
+      fi
 
       printf '%-34s %-10s %-8s %-26s %s\n' "$job" "$result" "$duration" "$last_run" "$next_run"
     done
