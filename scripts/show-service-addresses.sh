@@ -40,7 +40,15 @@ active_node="$(jq -r '.activeNodeName' <<<"$cluster_json")"
 
 read_onion_cmd='
   shopt -s nullglob
-  for root in /run/tor/onion /var/lib/tor/onion; do
+  if compgen -G "/run/tor/onion/*/hostname" > /dev/null; then
+    roots=(/run/tor/onion)
+  elif compgen -G "/var/lib/tor/onion/*/hostname" > /dev/null; then
+    roots=(/var/lib/tor/onion)
+  else
+    roots=()
+  fi
+
+  for root in "${roots[@]}"; do
     for f in "$root"/*/hostname; do
       name="$(basename "$(dirname "$f")")"
       addr="$(tr -d "\r\n" < "$f")"
