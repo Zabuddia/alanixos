@@ -70,11 +70,11 @@ export SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt"
 
 ---
 
-## PHASE 5 — Add key to `keys.nix`
-Update `keys.nix` with the new recipient, then regenerate `.sops.yaml`.
+## PHASE 5 — Add key to `secrets/keys.nix`
+Update `secrets/keys.nix` with the new recipient, then regenerate `.sops.yaml`.
 
 ```bash
-vim keys.nix
+vim secrets/keys.nix
 bash ./scripts/update-sops-config
 git add .sops.yaml
 git commit -m "Add randy-big-nixos age recipient"
@@ -83,7 +83,7 @@ git push
 
 ---
 
-## PHASE 7 — Re-encrypt secrets (OTHER computer)
+## PHASE 6 — Re-encrypt secrets (OTHER computer)
 ```bash
 cd ~/.nixos
 git pull
@@ -95,7 +95,7 @@ git push
 
 ---
 
-## PHASE 8 — Pull updated secrets (NEW machine)
+## PHASE 7 — Pull updated secrets (NEW machine)
 ```bash
 cd ~/.nixos
 git pull
@@ -103,7 +103,7 @@ git pull
 
 ---
 
-## PHASE 9 — Hardware config
+## PHASE 8 — Hardware config
 ```bash
 cp /etc/nixos/hardware-configuration.nix ~/.nixos/hosts/randy-big-nixos/hardware-configuration.nix
 ```
@@ -111,14 +111,14 @@ cp /etc/nixos/hardware-configuration.nix ~/.nixos/hosts/randy-big-nixos/hardware
 
 ---
 
-## PHASE 10 — Rebuild
+## PHASE 9 — Rebuild
 ```bash
 sudo nixos-rebuild switch --flake ~/.nixos#randy-big-nixos
 ```
 
 ---
 
-## PHASE 11 — Reboot
+## PHASE 10 — Reboot
 ```bash
 reboot
 ```

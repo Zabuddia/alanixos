@@ -3,7 +3,7 @@ let
   pkgs = import flake.inputs.nixpkgs {
     system = builtins.currentSystem;
   };
-  keys = import ../keys.nix;
+  keys = import ../secrets/keys.nix;
   lib = pkgs.lib;
 
   resolveRecipients =
@@ -14,7 +14,7 @@ let
           recipient = lib.attrByPath [ scope name "recipient" ] null keys;
         in
         if recipient == null then
-          throw "Unknown ${scope} recipient '${name}' in keys.nix"
+          throw "Unknown ${scope} recipient '${name}' in secrets/keys.nix"
         else
           recipient
       )
