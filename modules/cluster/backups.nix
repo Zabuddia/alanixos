@@ -171,6 +171,35 @@ let
 
   restoreScripts = builtins.attrValues restoreScriptPackages;
 
+  backupIdentityMigrationScript = ''
+    if [ "''${NIXOS_ACTION:-}" = "dry-activate" ]; then
+      echo "would migrate cluster-backup UID/GID to ${toString backupUid}:${toString backupGid} if needed"
+    elif getent group cluster-backup >/dev/null 2>&1 && getent passwd cluster-backup >/dev/null 2>&1; then
+      current_gid="$(getent group cluster-backup | cut -d: -f3)"
+      current_uid="$(getent passwd cluster-backup | cut -d: -f3)"
+      target_group_owner="$(getent group ${toString backupGid} | cut -d: -f1 || true)"
+      target_user_owner="$(getent passwd ${toString backupUid} | cut -d: -f1 || true)"
+
+      if [ -n "$target_group_owner" ] && [ "$target_group_owner" != "cluster-backup" ]; then
+        echo "alanix-backups: GID ${toString backupGid} is already owned by $target_group_owner" >&2
+        exit 1
+      fi
+
+      if [ -n "$target_user_owner" ] && [ "$target_user_owner" != "cluster-backup" ]; then
+        echo "alanix-backups: UID ${toString backupUid} is already owned by $target_user_owner" >&2
+        exit 1
+      fi
+
+      if [ "$current_gid" != "${toString backupGid}" ]; then
+        groupmod -g ${toString backupGid} cluster-backup
+      fi
+
+      if [ "$current_uid" != "${toString backupUid}" ] || [ "$(id -g cluster-backup)" != "${toString backupGid}" ]; then
+        usermod -u ${toString backupUid} -g ${toString backupGid} cluster-backup
+      fi
+    fi
+  '';
+
   runAllBackupsScript = pkgs.writeShellScriptBin "alanix-run-backups-now" ''
     set -euo pipefail
 
@@ -237,6 +266,15 @@ let
       fi
     }
 
+    format_epoch() {
+      local epoch="$1"
+      if [ -z "$epoch" ] || [ "$epoch" = "0" ]; then
+        printf '%s' "-"
+      else
+        ${pkgs.coreutils}/bin/date -d "@$epoch" '+%a %Y-%m-%d %H:%M:%S %Z'
+      fi
+    }
+
     format_duration() {
       local start_us="$1"
       local end_us="$2"
@@ -272,6 +310,9 @@ let
       unset svc_props timer_props
       declare -A svc_props=()
       declare -A timer_props=()
+      timer_line=""
+      timer_next_epoch=""
+      timer_last_epoch=""
 
       while IFS='=' read -r key value; do
         svc_props["$key"]="$value"
@@ -291,11 +332,21 @@ let
       done < <(
         ${pkgs.systemd}/bin/systemctl show "$timer" \
           -p ActiveState \
-          -p NextElapseUSecRealtime \
-          -p NextElapseUSecMonotonic \
-          -p LastTriggerUSec \
           --no-pager 2>/dev/null || true
       )
+
+      timer_line="$(${pkgs.systemd}/bin/systemctl list-timers "$timer" --all --legend=false --plain --timestamp=unix --no-pager 2>/dev/null | ${pkgs.coreutils}/bin/head -n 1 || true)"
+      if [ -n "$timer_line" ]; then
+        while IFS= read -r epoch; do
+          epoch="''${epoch#@}"
+          if [ -z "$timer_next_epoch" ]; then
+            timer_next_epoch="$epoch"
+          elif [ -z "$timer_last_epoch" ]; then
+            timer_last_epoch="$epoch"
+            break
+          fi
+        done < <(printf '%s\n' "$timer_line" | ${pkgs.gnugrep}/bin/grep -o '@[0-9]\+')
+      fi
 
       result="''${svc_props[Result]:-}"
       active_state="''${svc_props[ActiveState]:-unknown}"
@@ -316,15 +367,10 @@ let
 
       last_run="$(format_value "''${svc_props[ExecMainExitTimestamp]:-}")"
       if [ "$last_run" = "-" ]; then
-        last_run="$(format_value "''${timer_props[LastTriggerUSec]:-}")"
+        last_run="$(format_epoch "$timer_last_epoch")"
       fi
 
-      next_run="-"
-      if [ -n "''${timer_props[NextElapseUSecRealtime]:-}" ] && [ "''${timer_props[NextElapseUSecRealtime]:-0}" != "0" ]; then
-        next_run="$(format_value "''${timer_props[NextElapseUSecRealtime]}")"
-      elif [ -n "''${timer_props[NextElapseUSecMonotonic]:-}" ] && [ "''${timer_props[NextElapseUSecMonotonic]:-0}" != "0" ]; then
-        next_run="$(format_value "''${timer_props[NextElapseUSecMonotonic]}")"
-      fi
+      next_run="$(format_epoch "$timer_next_epoch")"
 
       printf '%-34s %-10s %-8s %-26s %s\n' "$job" "$result" "$duration" "$last_run" "$next_run"
     done
@@ -411,6 +457,13 @@ let
 in
 {
   config = {
+    system.activationScripts.alanix-cluster-backup-id-migration = {
+      supportsDryActivation = true;
+      text = backupIdentityMigrationScript;
+    };
+
+    system.activationScripts.users.deps = lib.mkBefore [ "alanix-cluster-backup-id-migration" ];
+
     users.groups.cluster-backup = {
       gid = backupGid;
     };
