@@ -47,7 +47,7 @@
     model = {
       name = "qwen3.5-35b-a3b";
       hfRepo = "unsloth/Qwen3.5-35B-A3B-GGUF";
-      hfFile = "Qwen3.5-35B-A3B-UD-Q4_K_M.gguf";
+      hfFile = "Qwen3.5-35B-A3B-UD-Q4_K_L.gguf";
     };
     ctxSize = 32768;
     gpuLayers = "all";
