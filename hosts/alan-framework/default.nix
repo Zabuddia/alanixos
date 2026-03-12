@@ -40,7 +40,7 @@
   # Cloudflare DDNS
   services.cloudflare-ddns = {
     enable = true;
-    hostnames = [ "randy-big-nixos-wg.fifefin.com" ];
+    hostnames = [ "alan-framework-wg.fifefin.com" ];
     zone = "fifefin.com";
     apiTokenFile = config.sops.secrets."cloudflare/api-token".path;
   };

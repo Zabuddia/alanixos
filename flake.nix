@@ -59,6 +59,17 @@
           disko = false;
         };
       };
+      alan-framework = mkHost {
+        hostname = "alan-framework";
+        system = "x86_64-linux";
+
+        features = {
+          home-manager = true;
+          sops = true;
+          nix-bitcoin = false;
+          disko = false;
+        };
+      };
     };
   };
 }

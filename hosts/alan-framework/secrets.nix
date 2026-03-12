@@ -1,4 +1,4 @@
-{ config, ...}:
+{ config, ... }:
 {
   sops = {
     defaultSopsFile = ../../secrets/secrets.yaml;
@@ -18,7 +18,7 @@
     mode = "0400";
   };
 
-  sops.secrets."wireguard-private-keys/randy-big-nixos" = {
+  sops.secrets."wireguard-private-keys/alan-framework" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
     group = "root";

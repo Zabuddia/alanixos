@@ -19,6 +19,12 @@
     mode = "0400";
   };
 
+  sops.secrets."cloudflare/api-token" = {
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."filebrowser-passwords/admin" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "filebrowser";

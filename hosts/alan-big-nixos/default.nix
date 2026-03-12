@@ -10,6 +10,7 @@
     ../../modules/tailscale.nix
     ../../modules/bitcoin.nix
     ../../modules/filebrowser.nix
+    ../../modules/cloudflare-ddns.nix
   ];
 
   # Identity
@@ -51,6 +52,14 @@
     tree
     wget
   ];
+
+  # Cloudflare DDNS
+  services.cloudflare-ddns = {
+    enable = true;
+    hostnames = [ "alan-big-nixos-wg.fifefin.com" ];
+    zone = "fifefin.com";
+    apiTokenFile = config.sops.secrets."cloudflare/api-token".path;
+  };
 
   # File browser
   alanix.filebrowser = {

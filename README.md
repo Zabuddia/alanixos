@@ -47,6 +47,8 @@ cd ~/.nixos
 ---
 
 ## PHASE 4 — Generate machine sops key
+
+**Servers** store the key at `/var/lib/sops-nix/key.txt` (root-only, read by sops-nix at boot):
 ```bash
 sudo mkdir -p /var/lib/sops-nix
 sudo age-keygen -o /var/lib/sops-nix/key.txt
@@ -57,19 +59,18 @@ sudo age-keygen -y /var/lib/sops-nix/key.txt
 
 Copy the printed `age1...` public key.
 
-## PHASE 5 — Make the key available to your user (for editing secrets):
-
+**Editors** (laptops/workstations that need to edit secrets) store the key at `~/.config/sops/age/keys.txt`:
 ```bash
 mkdir -p ~/.config/sops/age
-sudo cp /var/lib/sops-nix/key.txt ~/.config/sops/age/keys.txt
-sudo chown -R $USER:$(id -gn) ~/.config/sops
+age-keygen -o ~/.config/sops/age/keys.txt
 chmod 0600 ~/.config/sops/age/keys.txt
+# SOPS picks this up automatically; or export explicitly:
 export SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt"
 ```
 
 ---
 
-## PHASE 6 — Add key to `keys.nix`
+## PHASE 5 — Add key to `keys.nix`
 Update `keys.nix` with the new recipient, then regenerate `.sops.yaml`.
 
 ```bash

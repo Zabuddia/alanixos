@@ -16,13 +16,18 @@
       recipient = "age1ywa965cvxmzh39cjt2h7k4vsc7qmfqmv0dg6psalwe5td0s5j4ysycvrkd";
       description = "Root-only runtime key stored at /var/lib/sops-nix/key.txt.";
     };
+
+    alan-framework = {
+      recipient = "TODO_REPLACE_WITH_AGE_PUBKEY";
+      description = "Root-only runtime key stored at /var/lib/sops-nix/key.txt.";
+    };
   };
 
   creationRules = [
     {
       pathRegex = "^secrets/.*\\.ya?ml$";
       editors = [ "alan-laptop-nixos" ];
-      hosts = [ "randy-big-nixos" "alan-big-nixos" ];
+      hosts = [ "randy-big-nixos" "alan-big-nixos" "alan-framework" ];
     }
   ];
 }
