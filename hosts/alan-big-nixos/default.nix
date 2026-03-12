@@ -10,7 +10,6 @@
     ../../modules/tailscale.nix
     ../../modules/bitcoin.nix
     ../../modules/filebrowser.nix
-    ../../modules/cloudflare-ddns.nix
   ];
 
   # Identity
@@ -56,9 +55,9 @@
   # Cloudflare DDNS
   services.cloudflare-ddns = {
     enable = true;
-    hostnames = [ "alan-big-nixos-wg.fifefin.com" ];
-    zone = "fifefin.com";
-    apiTokenFile = config.sops.secrets."cloudflare/api-token".path;
+    domains = [ "alan-big-nixos-wg.fifefin.com" ];
+    credentialsFile = config.sops.templates."cloudflare-env".path;
+    provider.ipv6 = "none";
   };
 
   # File browser

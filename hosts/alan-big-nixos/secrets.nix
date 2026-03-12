@@ -25,6 +25,11 @@
     mode = "0400";
   };
 
+  sops.templates."cloudflare-env" = {
+    content = "CLOUDFLARE_API_TOKEN=${config.sops.placeholder."cloudflare/api-token"}";
+    owner = "cloudflare-ddns";
+  };
+
   sops.secrets."filebrowser-passwords/admin" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "filebrowser";
