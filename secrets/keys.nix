@@ -18,7 +18,7 @@
     };
 
     alan-framework = {
-      recipient = "TODO_REPLACE_WITH_AGE_PUBKEY";
+      recipient = "age14hvqw052wzn8wlxrevzlgydthcenjc7jh4t76gwqljglknj6maash22pl5";
       description = "Root-only runtime key stored at /var/lib/sops-nix/key.txt.";
     };
   };
