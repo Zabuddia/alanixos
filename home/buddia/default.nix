@@ -13,6 +13,7 @@
 
   home.packages = with pkgs; [
     foot
+    chromium
   ];
 
   home.stateVersion = "25.11";

@@ -29,6 +29,13 @@
       url = "github:fort-nix/nix-bitcoin";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # OpenClaw gateway
+    nix-openclaw = {
+      url = "github:openclaw/nix-openclaw";
+      inputs.nixpkgs.follows = "nixpkgs-unstable";
+      inputs.home-manager.follows = "home-manager";
+    };
   };
 
   outputs = inputs:
@@ -45,6 +52,7 @@
           home-manager = true;
           sops = true;
           nix-bitcoin = true;
+          nix-openclaw = false;
           disko = false;
         };
       };
@@ -56,6 +64,7 @@
           home-manager = true;
           sops = true;
           nix-bitcoin = false;
+          nix-openclaw = false;
           disko = false;
         };
       };
@@ -67,6 +76,7 @@
           home-manager = true;
           sops = true;
           nix-bitcoin = false;
+          nix-openclaw = true;
           disko = false;
         };
       };
