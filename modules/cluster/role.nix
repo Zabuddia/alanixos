@@ -51,32 +51,67 @@ let
     stop_units=(${lib.concatStringsSep " " (map lib.escapeShellArg stopUnits)})
     state_dir=/var/lib/alanix/role-state
     last_role_file="$state_dir/last-role"
+    failure_file="$state_dir/last-start-failures"
     previous_role=unknown
+    failed_units=()
 
     ${lib.getExe' pkgs.coreutils "mkdir"} -p "$state_dir"
     if [ -r "$last_role_file" ]; then
       IFS= read -r previous_role < "$last_role_file"
     fi
 
+    unit_exists() {
+      ${lib.getExe' pkgs.systemd "systemctl"} list-unit-files "$1" >/dev/null 2>&1
+    }
+
+    start_unit() {
+      local unit="$1"
+      if ! unit_exists "$unit"; then
+        return 0
+      fi
+
+      if ! ${lib.getExe' pkgs.systemd "systemctl"} start "$unit"; then
+        echo "alanix-role-sync: failed to start $unit" >&2
+        failed_units+=("$unit")
+      fi
+    }
+
+    stop_unit() {
+      local unit="$1"
+      if unit_exists "$unit"; then
+        ${lib.getExe' pkgs.systemd "systemctl"} stop "$unit" || true
+      fi
+    }
+
     if [ ${lib.escapeShellArg cluster.role} = "active" ]; then
       for unit in "''${pre_restore_units[@]}"; do
-        ${lib.getExe' pkgs.systemd "systemctl"} start "$unit"
+        start_unit "$unit"
       done
 
       if [ "$previous_role" != "active" ] && ${lib.getExe' pkgs.systemd "systemctl"} list-unit-files alanix-restore-on-activate.service >/dev/null 2>&1; then
-        ${lib.getExe' pkgs.systemd "systemctl"} start alanix-restore-on-activate.service
+        if ! ${lib.getExe' pkgs.systemd "systemctl"} start alanix-restore-on-activate.service; then
+          echo "alanix-role-sync: failed to run alanix-restore-on-activate.service" >&2
+          failed_units+=("alanix-restore-on-activate.service")
+        fi
       fi
 
       for unit in "''${post_restore_units[@]}"; do
-        ${lib.getExe' pkgs.systemd "systemctl"} start "$unit"
+        start_unit "$unit"
       done
     else
       for unit in "''${stop_units[@]}"; do
-        ${lib.getExe' pkgs.systemd "systemctl"} stop "$unit" || true
+        stop_unit "$unit"
       done
     fi
 
     printf '%s\n' ${lib.escapeShellArg cluster.role} > "$last_role_file"
+
+    if [ "''${#failed_units[@]}" -gt 0 ]; then
+      printf '%s\n' "''${failed_units[@]}" > "$failure_file"
+      echo "alanix-role-sync: completed with failed units: ''${failed_units[*]}" >&2
+    else
+      : > "$failure_file"
+    fi
   '';
 
   roleSyncActivationScript = ''
@@ -108,6 +143,10 @@ let
 in
 {
   system.activationScripts.alanix-role-sync = {
+    deps = [
+      "etc"
+      "users"
+    ];
     supportsDryActivation = true;
     text = roleSyncActivationScript;
   };
