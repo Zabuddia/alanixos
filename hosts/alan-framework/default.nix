@@ -56,18 +56,20 @@
 
   alanix.openclaw = {
     enable = true;
-    bind = "custom";
-    customBindHost = "100.65.58.114";
+    bind = "loopback";
     port = 18789;
     enableResponsesApi = true;
     enableChatCompletionsApi = true;
-    extraConfig.channels.telegram = {
-      enabled = true;
-      tokenFile = config.sops.templates."telegram-bot-token".path;
-      allowFrom = [ 7336229793 ];
-      dmPolicy = "allowlist";
-      groupPolicy = "disabled";
-      configWrites = false;
+    extraConfig = {
+      tailscale.mode = "serve";
+      channels.telegram = {
+        enabled = true;
+        tokenFile = config.sops.templates."telegram-bot-token".path;
+        allowFrom = [ 7336229793 ];
+        dmPolicy = "allowlist";
+        groupPolicy = "disabled";
+        configWrites = false;
+      };
     };
   };
 
