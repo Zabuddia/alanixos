@@ -56,7 +56,8 @@
 
   alanix.openclaw = {
     enable = true;
-    bind = "tailnet";
+    bind = "custom";
+    customBindHost = "100.65.58.114";
     port = 18789;
     enableResponsesApi = true;
     enableChatCompletionsApi = true;
