@@ -6,6 +6,53 @@ let
   openclawGatewayPackage = openclawPkgs.openclaw-gateway;
   openclawSourceInfo = import "${inputs.nix-openclaw}/nix/sources/openclaw-source.nix";
   openclawSource = pkgs.fetchFromGitHub (lib.removeAttrs openclawSourceInfo [ "pnpmDepsHash" ]);
+  nostrPluginPatch = pkgs.writeText "openclaw-nostr-plugin.patch" ''
+    diff --git a/src/nostr-bus.ts b/src/nostr-bus.ts
+    --- a/src/nostr-bus.ts
+    +++ b/src/nostr-bus.ts
+    @@ -490,7 +490,7 @@
+       const sub = pool.subscribeMany(
+         relays,
+    -    [{ kinds: [4], "#p": [pk], since }] as unknown as Parameters<typeof pool.subscribeMany>[1],
+    +    { kinds: [4], "#p": [pk], since } as Parameters<typeof pool.subscribeMany>[1],
+         {
+           onevent: handleEvent,
+           oneose: () => {
+    diff --git a/src/nostr-profile-import.ts b/src/nostr-profile-import.ts
+    --- a/src/nostr-profile-import.ts
+    +++ b/src/nostr-profile-import.ts
+    @@ -124,13 +124,11 @@
+           const sub = pool.subscribeMany(
+             [relay],
+    -        [
+    -          {
+    -            kinds: [0],
+    -            authors: [pubkey],
+    -            limit: 1,
+    -          },
+    -        ] as unknown as Parameters<typeof pool.subscribeMany>[1],
+    +        {
+    +          kinds: [0],
+    +          authors: [pubkey],
+    +          limit: 1,
+    +        } as Parameters<typeof pool.subscribeMany>[1],
+             {
+               onevent(event) {
+                 events.push({ event, relay });
+  '';
+  patchedNostrPluginSource = pkgs.runCommand "openclaw-nostr-plugin-source" { nativeBuildInputs = [ pkgs.patch ]; } ''
+    cp -R "${openclawSource}/extensions/nostr" "$out"
+    chmod -R u+w "$out"
+    cd "$out"
+    patch -p1 < "${nostrPluginPatch}"
+  '';
+  nostrPluginInstallRevision =
+    "${openclawSourceInfo.rev}-${builtins.hashString "sha256" (builtins.readFile nostrPluginPatch)}";
+  bundledPluginsDir = pkgs.runCommand "openclaw-bundled-plugins" { } ''
+    mkdir -p "$out"
+    cp -R "${openclawGatewayPackage}/lib/openclaw/extensions/." "$out/"
+    rm -rf "$out/nostr"
+  '';
   types = lib.types;
   openclawCli = pkgs.symlinkJoin {
     name = "openclaw-gateway-system";
@@ -26,14 +73,14 @@ let
   installNostrPluginScript = pkgs.writeShellScript "openclaw-install-nostr-plugin" ''
     set -euo pipefail
 
-    src_dir="${openclawSource}/extensions/nostr"
+    src_dir="${patchedNostrPluginSource}"
     target_dir="${nostrPluginInstallDir}"
     rev_file="$target_dir/.nix-openclaw-source-rev"
 
     needs_install=0
     if [ ! -d "$target_dir" ] || [ ! -f "$rev_file" ]; then
       needs_install=1
-    elif [ "$(cat "$rev_file")" != "${openclawSourceInfo.rev}" ]; then
+    elif [ "$(cat "$rev_file")" != "${nostrPluginInstallRevision}" ]; then
       needs_install=1
     fi
 
@@ -49,7 +96,7 @@ let
       cd "$target_dir"
       npm install --omit=dev --omit=peer --silent --ignore-scripts
     )
-    printf '%s\n' "${openclawSourceInfo.rev}" > "$rev_file"
+    printf '%s\n' "${nostrPluginInstallRevision}" > "$rev_file"
   '';
 in
 {
@@ -255,8 +302,8 @@ in
 
         (lib.mkIf cfg.nostr.enable {
           plugins = {
+            allow = [ "nostr" ];
             load.paths = [ nostrPluginInstallDir ];
-            entries.nostr.enabled = true;
           };
 
           channels.nostr =
@@ -281,6 +328,9 @@ in
         OPENCLAW_SKIP_CANVAS_HOST = "1";
         OPENCLAW_SKIP_GMAIL_WATCHER = "1";
         OPENCLAW_DISABLE_BONJOUR = "1";
+      }
+      // lib.optionalAttrs cfg.nostr.enable {
+        OPENCLAW_BUNDLED_PLUGINS_DIR = "${bundledPluginsDir}";
       };
 
       execStartPre = lib.optionals cfg.nostr.enable [ "${installNostrPluginScript}" ];
