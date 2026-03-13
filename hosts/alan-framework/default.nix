@@ -76,7 +76,7 @@
 
     telegram = {
       enable = true;
-      allowFrom = [ 7336229793 ];
+      allowFrom = [ 7336229793 5255330939 ];
     };
 
     # sudo -u openclaw HOME=/var/lib/openclaw openclaw plugins install @openclaw/nostr
