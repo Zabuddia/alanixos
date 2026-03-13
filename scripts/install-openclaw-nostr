@@ -23,5 +23,12 @@ sudo perl -0pi -e 's@\[\n\s*\{\n\s*kinds: \[0\],\n\s*authors: \[pubkey\],\n\s*li
 sudo perl -0pi -e 's@// Return cleanup function\\s*return \\{\\s*stop: \\(\\) => \\{\\s*bus\\.close\\(\\);\\s*activeBuses\\.delete\\(account\\.accountId\\);\\s*metricsSnapshots\\.delete\\(account\\.accountId\\);\\s*ctx\\.log\\?\\.info\\(`\\[\\$\\{account\\.accountId\\}\\] Nostr provider stopped`\\);\\s*\\},\\s*\\};@try {\\n        await new Promise<void>((resolve) => {\\n          if (ctx.abortSignal.aborted) {\\n            resolve();\\n            return;\\n          }\\n          ctx.abortSignal.addEventListener(\"abort\", () => resolve(), { once: true });\\n        });\\n      } finally {\\n        bus.close();\\n        activeBuses.delete(account.accountId);\\n        metricsSnapshots.delete(account.accountId);\\n        ctx.log?.info(\"[\" + account.accountId + \"] Nostr provider stopped\");\\n      }@s' \
   "$plugin_dir/src/channel.ts"
 
+sudo grep -F 'ctx.abortSignal.addEventListener("abort", () => resolve(), { once: true });' \
+  "$plugin_dir/src/channel.ts" >/dev/null
+sudo grep -F '{ kinds: [4], "#p": [pk], since } as Parameters<typeof pool.subscribeMany>[1]' \
+  "$plugin_dir/src/nostr-bus.ts" >/dev/null
+sudo grep -F 'authors: [pubkey],' \
+  "$plugin_dir/src/nostr-profile-import.ts" >/dev/null
+
 sudo systemctl start openclaw-gateway
 sudo tail -n 80 /var/lib/openclaw/logs/gateway.log | rg -i 'nostr|plugin|relay|error'
