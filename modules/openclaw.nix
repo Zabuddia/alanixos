@@ -20,6 +20,7 @@ let
   llmModelAlias =
     if hasLlm && llmCfg.alias != null then llmCfg.alias else if hasLlm then llmCfg.model.name else null;
   llmModelRef = "local-llama/${llmModelAlias}";
+  nostrPluginInstallDir = "${config.services.openclaw-gateway.stateDir}/extensions/nostr";
 in
 {
   options.alanix.openclaw = {
@@ -223,7 +224,10 @@ in
         })
 
         (lib.mkIf cfg.nostr.enable {
-          plugins.allow = [ "nostr" ];
+          plugins = {
+            allow = [ "nostr" ];
+            load.paths = [ nostrPluginInstallDir ];
+          };
 
           channels.nostr =
             {
