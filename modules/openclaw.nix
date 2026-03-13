@@ -3,10 +3,24 @@
 let
   cfg = config.alanix.openclaw;
   openclawPkgs = inputs.nix-openclaw.packages.${pkgs.stdenv.hostPlatform.system};
+  openclawGatewayPackage = openclawPkgs.openclaw-gateway.overrideAttrs (old: {
+    installPhase = old.installPhase + ''
+      nostr_tools_src="$(find "$out/lib/openclaw/node_modules/.pnpm" -path "*/nostr-tools@*/node_modules/nostr-tools" -print | head -n 1)"
+      if [ -n "$nostr_tools_src" ]; then
+        if [ ! -e "$out/lib/openclaw/node_modules/nostr-tools" ]; then
+          ln -s "$nostr_tools_src" "$out/lib/openclaw/node_modules/nostr-tools"
+        fi
+        if [ ! -e "$out/lib/openclaw/extensions/nostr/node_modules/nostr-tools" ]; then
+          mkdir -p "$out/lib/openclaw/extensions/nostr/node_modules"
+          ln -s "$nostr_tools_src" "$out/lib/openclaw/extensions/nostr/node_modules/nostr-tools"
+        fi
+      fi
+    '';
+  });
   types = lib.types;
   openclawCli = pkgs.symlinkJoin {
     name = "openclaw-gateway-system";
-    paths = [ openclawPkgs.openclaw-gateway ];
+    paths = [ openclawGatewayPackage ];
     nativeBuildInputs = [ pkgs.makeWrapper ];
     postBuild = ''
       wrapProgram "$out/bin/openclaw" \
@@ -142,7 +156,7 @@ in
   config = lib.mkIf cfg.enable {
     services.openclaw-gateway = {
       enable = true;
-      package = openclawPkgs.openclaw-gateway;
+      package = openclawGatewayPackage;
       port = cfg.port;
       environmentFiles =
         [ config.sops.templates."openclaw-gateway-env".path ]
