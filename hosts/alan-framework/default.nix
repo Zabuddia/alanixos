@@ -61,7 +61,7 @@
     enableResponsesApi = true;
     enableChatCompletionsApi = true;
     extraConfig = {
-      tailscale.mode = "serve";
+      gateway.tailscale.mode = "serve";
       channels.telegram = {
         enabled = true;
         tokenFile = config.sops.templates."telegram-bot-token".path;
