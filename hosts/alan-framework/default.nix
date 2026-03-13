@@ -48,11 +48,11 @@
     host = "127.0.0.1";
     listenHost = "0.0.0.0";
     model = {
-      # name = "qwen3.5-35b-a3b";
-      # hfRepo = "unsloth/Qwen3.5-35B-A3B-GGUF";
-      # hfFile = "Qwen3.5-35B-A3B-UD-Q4_K_L.gguf";
-      name = "qwen3.5-122b-a10b";
-      hfRepo = "unsloth/Qwen3.5-122B-A10B-GGUF:Q4_K_M";
+      name = "qwen3.5-35b-a3b";
+      hfRepo = "unsloth/Qwen3.5-35B-A3B-GGUF";
+      hfFile = "Qwen3.5-35B-A3B-UD-Q5_K_XL.gguf";
+      # name = "qwen3.5-122b-a10b";
+      # hfRepo = "unsloth/Qwen3.5-122B-A10B-GGUF:Q3_K_S";
     };
     # ctxSize = 262144;
     ctxSize = 131072;
