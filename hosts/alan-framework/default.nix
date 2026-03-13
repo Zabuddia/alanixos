@@ -54,8 +54,8 @@
       # name = "qwen3.5-122b-a10b";
       # hfRepo = "unsloth/Qwen3.5-122B-A10B-GGUF:Q3_K_S";
     };
-    # ctxSize = 262144;
-    ctxSize = 131072;
+    ctxSize = 262144;
+    # ctxSize = 131072;
     gpuLayers = "all";
     parallel = 2;
   };
