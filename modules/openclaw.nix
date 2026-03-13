@@ -25,6 +25,12 @@ in
       default = "tailnet";
     };
 
+    customBindHost = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Explicit host/IP to bind when bind = \"custom\".";
+    };
+
     port = lib.mkOption {
       type = lib.types.port;
       default = 18789;
@@ -75,19 +81,23 @@ in
 
       config = lib.mkMerge [
         {
-          gateway = {
-            mode = "local";
-            bind = cfg.bind;
-            auth.mode = "token";
-            reload = {
-              mode = "hot";
-              debounceMs = 500;
+          gateway =
+            {
+              mode = "local";
+              bind = cfg.bind;
+              auth.mode = "token";
+              reload = {
+                mode = "hot";
+                debounceMs = 500;
+              };
+              http.endpoints = {
+                responses.enabled = cfg.enableResponsesApi;
+                chatCompletions.enabled = cfg.enableChatCompletionsApi;
+              };
+            }
+            // lib.optionalAttrs (cfg.customBindHost != null) {
+              customBindHost = cfg.customBindHost;
             };
-            http.endpoints = {
-              responses.enabled = cfg.enableResponsesApi;
-              chatCompletions.enabled = cfg.enableChatCompletionsApi;
-            };
-          };
 
           discovery.mdns.mode = "minimal";
           plugins.enabled = false;
