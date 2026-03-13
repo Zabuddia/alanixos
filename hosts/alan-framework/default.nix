@@ -45,7 +45,8 @@
   alanix.llm = {
     enable = true;
     backend = "vulkan";
-    host = "100.65.58.114";
+    host = "127.0.0.1";
+    listenHost = "0.0.0.0";
     model = {
       name = "qwen3.5-35b-a3b";
       hfRepo = "unsloth/Qwen3.5-35B-A3B-GGUF";
