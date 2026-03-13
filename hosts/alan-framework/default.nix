@@ -51,7 +51,7 @@
     };
     ctxSize = 32768;
     gpuLayers = "all";
-    parallel = 4;
+    parallel = 1;
   };
 
   alanix.openclaw = {
