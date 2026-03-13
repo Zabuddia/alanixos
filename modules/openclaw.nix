@@ -6,48 +6,18 @@ let
   openclawGatewayPackage = openclawPkgs.openclaw-gateway;
   openclawSourceInfo = import "${inputs.nix-openclaw}/nix/sources/openclaw-source.nix";
   openclawSource = pkgs.fetchFromGitHub (lib.removeAttrs openclawSourceInfo [ "pnpmDepsHash" ]);
-  nostrPluginPatch = pkgs.writeText "openclaw-nostr-plugin.patch" ''
-    diff --git a/src/nostr-bus.ts b/src/nostr-bus.ts
-    --- a/src/nostr-bus.ts
-    +++ b/src/nostr-bus.ts
-    @@ -490,7 +490,7 @@
-       const sub = pool.subscribeMany(
-         relays,
-    -    [{ kinds: [4], "#p": [pk], since }] as unknown as Parameters<typeof pool.subscribeMany>[1],
-    +    { kinds: [4], "#p": [pk], since } as Parameters<typeof pool.subscribeMany>[1],
-         {
-           onevent: handleEvent,
-           oneose: () => {
-    diff --git a/src/nostr-profile-import.ts b/src/nostr-profile-import.ts
-    --- a/src/nostr-profile-import.ts
-    +++ b/src/nostr-profile-import.ts
-    @@ -124,13 +124,11 @@
-           const sub = pool.subscribeMany(
-             [relay],
-    -        [
-    -          {
-    -            kinds: [0],
-    -            authors: [pubkey],
-    -            limit: 1,
-    -          },
-    -        ] as unknown as Parameters<typeof pool.subscribeMany>[1],
-    +        {
-    +          kinds: [0],
-    +          authors: [pubkey],
-    +          limit: 1,
-    +        } as Parameters<typeof pool.subscribeMany>[1],
-             {
-               onevent(event) {
-                 events.push({ event, relay });
-  '';
-  patchedNostrPluginSource = pkgs.runCommand "openclaw-nostr-plugin-source" { nativeBuildInputs = [ pkgs.patch ]; } ''
+  patchedNostrPluginSource = pkgs.runCommand "openclaw-nostr-plugin-source" { } ''
     cp -R "${openclawSource}/extensions/nostr" "$out"
     chmod -R u+w "$out"
-    cd "$out"
-    patch -p1 < "${nostrPluginPatch}"
+    substituteInPlace "$out/src/nostr-bus.ts" \
+      --replace-fail \
+      '[{ kinds: [4], "#p": [pk], since }] as unknown as Parameters<typeof pool.subscribeMany>[1]' \
+      '{ kinds: [4], "#p": [pk], since } as Parameters<typeof pool.subscribeMany>[1]'
+    perl -0pi -e 's@\[\n\s*\{\n\s*kinds: \[0\],\n\s*authors: \[pubkey\],\n\s*limit: 1,\n\s*\},\n\s*\] as unknown as Parameters<typeof pool\.subscribeMany>\[1\]@\{\n            kinds: [0],\n            authors: [pubkey],\n            limit: 1,\n          } as Parameters<typeof pool.subscribeMany>[1]@g' \
+      "$out/src/nostr-profile-import.ts"
   '';
   nostrPluginInstallRevision =
-    "${openclawSourceInfo.rev}-${builtins.hashString "sha256" (builtins.readFile nostrPluginPatch)}";
+    "${openclawSourceInfo.rev}-subscribe-many-filter-fix-v2";
   bundledPluginsDir = pkgs.runCommand "openclaw-bundled-plugins" { } ''
     mkdir -p "$out"
     cp -R "${openclawGatewayPackage}/lib/openclaw/extensions/." "$out/"
