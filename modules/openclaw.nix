@@ -4,25 +4,6 @@ let
   cfg = config.alanix.openclaw;
   openclawPkgs = inputs.nix-openclaw.packages.${pkgs.stdenv.hostPlatform.system};
   openclawGatewayPackage = openclawPkgs.openclaw-gateway;
-  openclawSourceInfo = import "${inputs.nix-openclaw}/nix/sources/openclaw-source.nix";
-  openclawSource = pkgs.fetchFromGitHub (lib.removeAttrs openclawSourceInfo [ "pnpmDepsHash" ]);
-  patchedNostrPluginSource = pkgs.runCommand "openclaw-nostr-plugin-source" { } ''
-    cp -R "${openclawSource}/extensions/nostr" "$out"
-    chmod -R u+w "$out"
-    substituteInPlace "$out/src/nostr-bus.ts" \
-      --replace-fail \
-      '[{ kinds: [4], "#p": [pk], since }] as unknown as Parameters<typeof pool.subscribeMany>[1]' \
-      '{ kinds: [4], "#p": [pk], since } as Parameters<typeof pool.subscribeMany>[1]'
-    perl -0pi -e 's@\[\n\s*\{\n\s*kinds: \[0\],\n\s*authors: \[pubkey\],\n\s*limit: 1,\n\s*\},\n\s*\] as unknown as Parameters<typeof pool\.subscribeMany>\[1\]@\{\n            kinds: [0],\n            authors: [pubkey],\n            limit: 1,\n          } as Parameters<typeof pool.subscribeMany>[1]@g' \
-      "$out/src/nostr-profile-import.ts"
-  '';
-  nostrPluginInstallRevision =
-    "${openclawSourceInfo.rev}-subscribe-many-filter-fix-v2";
-  bundledPluginsDir = pkgs.runCommand "openclaw-bundled-plugins" { } ''
-    mkdir -p "$out"
-    cp -R "${openclawGatewayPackage}/lib/openclaw/extensions/." "$out/"
-    rm -rf "$out/nostr"
-  '';
   types = lib.types;
   openclawCli = pkgs.symlinkJoin {
     name = "openclaw-gateway-system";
@@ -39,35 +20,6 @@ let
   llmModelAlias =
     if hasLlm && llmCfg.alias != null then llmCfg.alias else if hasLlm then llmCfg.model.name else null;
   llmModelRef = "local-llama/${llmModelAlias}";
-  nostrPluginInstallDir = "${config.services.openclaw-gateway.stateDir}/extensions/nostr";
-  installNostrPluginScript = pkgs.writeShellScript "openclaw-install-nostr-plugin" ''
-    set -euo pipefail
-
-    src_dir="${patchedNostrPluginSource}"
-    target_dir="${nostrPluginInstallDir}"
-    rev_file="$target_dir/.nix-openclaw-source-rev"
-
-    needs_install=0
-    if [ ! -d "$target_dir" ] || [ ! -f "$rev_file" ]; then
-      needs_install=1
-    elif [ "$(cat "$rev_file")" != "${nostrPluginInstallRevision}" ]; then
-      needs_install=1
-    fi
-
-    if [ "$needs_install" -eq 0 ]; then
-      exit 0
-    fi
-
-    rm -rf "$target_dir"
-    mkdir -p "$(dirname "$target_dir")"
-    cp -R "$src_dir" "$target_dir"
-    chmod -R u+w "$target_dir"
-    (
-      cd "$target_dir"
-      npm install --omit=dev --omit=peer --silent --ignore-scripts
-    )
-    printf '%s\n' "${nostrPluginInstallRevision}" > "$rev_file"
-  '';
 in
 {
   options.alanix.openclaw = {
@@ -271,10 +223,7 @@ in
         })
 
         (lib.mkIf cfg.nostr.enable {
-          plugins = {
-            allow = [ "nostr" ];
-            load.paths = [ nostrPluginInstallDir ];
-          };
+          plugins.allow = [ "nostr" ];
 
           channels.nostr =
             {
@@ -298,15 +247,9 @@ in
         OPENCLAW_SKIP_CANVAS_HOST = "1";
         OPENCLAW_SKIP_GMAIL_WATCHER = "1";
         OPENCLAW_DISABLE_BONJOUR = "1";
-      }
-      // lib.optionalAttrs cfg.nostr.enable {
-        OPENCLAW_BUNDLED_PLUGINS_DIR = "${bundledPluginsDir}";
       };
 
-      execStartPre = lib.optionals cfg.nostr.enable [ "${installNostrPluginScript}" ];
-      servicePath =
-        lib.optionals cfg.nostr.enable [ pkgs.nodejs ]
-        ++ lib.optionals config.services.tailscale.enable [ config.services.tailscale.package ];
+      servicePath = lib.optionals config.services.tailscale.enable [ config.services.tailscale.package ];
     };
 
     environment.systemPackages = [
