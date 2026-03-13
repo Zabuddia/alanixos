@@ -3,6 +3,16 @@
 let
   cfg = config.alanix.openclaw;
   openclawPkgs = inputs.nix-openclaw.packages.${pkgs.stdenv.hostPlatform.system};
+  openclawCli = pkgs.symlinkJoin {
+    name = "openclaw-tools-system";
+    paths = [ openclawPkgs.openclaw-tools ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      wrapProgram "$out/bin/openclaw" \
+        --set-default OPENCLAW_CONFIG_PATH "${config.services.openclaw-gateway.configPath}" \
+        --set-default OPENCLAW_STATE_DIR "${config.services.openclaw-gateway.stateDir}"
+    '';
+  };
   hasLlm = lib.hasAttrByPath [ "alanix" "llm" ] config;
   llmCfg = if hasLlm then config.alanix.llm else null;
   llmModelAlias =
@@ -133,6 +143,8 @@ in
       ];
 
       environment = {
+        HOME = config.services.openclaw-gateway.stateDir;
+        OPENCLAW_NIX_MODE = "1";
         OPENCLAW_SKIP_BROWSER_CONTROL_SERVER = "1";
         OPENCLAW_SKIP_CANVAS_HOST = "1";
         OPENCLAW_SKIP_CRON = "1";
@@ -142,7 +154,7 @@ in
     };
     environment.systemPackages = [
       openclawPkgs.openclaw-gateway
-      openclawPkgs.openclaw-tools
+      openclawCli
     ];
   };
 }
