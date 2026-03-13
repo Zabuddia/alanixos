@@ -29,6 +29,7 @@
 
   # Networking
   networking.networkmanager.enable = true;
+  services.tailscale.extraSetFlags = [ "--operator=openclaw" ];
 
   # Firewall
   networking.firewall.enable = true;
