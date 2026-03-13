@@ -66,6 +66,7 @@
       gateway.controlUi.allowedOrigins = [
         "https://alan-framework.tailbb2802.ts.net"
       ];
+      gateway.controlUi.dangerouslyDisableDeviceAuth = true;
       channels.telegram = {
         enabled = true;
         tokenFile = config.sops.templates."telegram-bot-token".path;
