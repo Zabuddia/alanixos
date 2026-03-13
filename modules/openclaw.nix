@@ -3,6 +3,7 @@
 let
   cfg = config.alanix.openclaw;
   openclawPkgs = inputs.nix-openclaw.packages.${pkgs.stdenv.hostPlatform.system};
+  types = lib.types;
   openclawCli = pkgs.symlinkJoin {
     name = "openclaw-gateway-system";
     paths = [ openclawPkgs.openclaw-gateway ];
@@ -18,7 +19,6 @@ let
   llmModelAlias =
     if hasLlm && llmCfg.alias != null then llmCfg.alias else if hasLlm then llmCfg.model.name else null;
   llmModelRef = "local-llama/${llmModelAlias}";
-  tokenPlaceholder = config.sops.placeholder.${cfg.tokenSecret};
 in
 {
   options.alanix.openclaw = {
@@ -62,6 +62,76 @@ in
       default = false;
     };
 
+    enableTailscaleServe = lib.mkOption {
+      type = types.bool;
+      default = false;
+    };
+
+    controlUi = {
+      allowedOrigins = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+      };
+
+      dangerouslyDisableDeviceAuth = lib.mkOption {
+        type = types.bool;
+        default = false;
+      };
+    };
+
+    telegram = {
+      enable = lib.mkEnableOption "OpenClaw Telegram channel";
+
+      tokenSecret = lib.mkOption {
+        type = types.str;
+        default = "telegram/bot-token";
+      };
+
+      allowFrom = lib.mkOption {
+        type = types.listOf (types.oneOf [ types.int types.str ]);
+        default = [ ];
+      };
+
+      dmPolicy = lib.mkOption {
+        type = types.str;
+        default = "allowlist";
+      };
+
+      groupPolicy = lib.mkOption {
+        type = types.str;
+        default = "disabled";
+      };
+
+      configWrites = lib.mkOption {
+        type = types.bool;
+        default = false;
+      };
+    };
+
+    nostr = {
+      enable = lib.mkEnableOption "OpenClaw Nostr channel";
+
+      privateKeySecret = lib.mkOption {
+        type = types.str;
+        default = "nostr/private-key";
+      };
+
+      dmPolicy = lib.mkOption {
+        type = types.str;
+        default = "pairing";
+      };
+
+      allowFrom = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+      };
+
+      relays = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+      };
+    };
+
     extraConfig = lib.mkOption {
       type = lib.types.attrs;
       default = { };
@@ -70,24 +140,13 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    sops.secrets.${cfg.tokenSecret} = {
-      owner = "openclaw";
-      group = "openclaw";
-      mode = "0400";
-    };
-
-    sops.templates."openclaw-gateway-env" = {
-      content = "OPENCLAW_GATEWAY_TOKEN=${tokenPlaceholder}";
-      owner = "openclaw";
-      group = "openclaw";
-      mode = "0400";
-    };
-
     services.openclaw-gateway = {
       enable = true;
       package = openclawPkgs.openclaw-gateway;
       port = cfg.port;
-      environmentFiles = [ config.sops.templates."openclaw-gateway-env".path ];
+      environmentFiles =
+        [ config.sops.templates."openclaw-gateway-env".path ]
+        ++ lib.optionals cfg.nostr.enable [ config.sops.templates."openclaw-nostr-env".path ];
 
       config = lib.mkMerge [
         {
@@ -95,7 +154,10 @@ in
             {
               mode = "local";
               bind = cfg.bind;
-              auth.mode = "token";
+              auth = {
+                mode = "token";
+                allowTailscale = cfg.enableTailscaleServe;
+              };
               reload = {
                 mode = "hot";
                 debounceMs = 500;
@@ -104,9 +166,19 @@ in
                 responses.enabled = cfg.enableResponsesApi;
                 chatCompletions.enabled = cfg.enableChatCompletionsApi;
               };
+              controlUi =
+                lib.optionalAttrs (cfg.controlUi.allowedOrigins != [ ]) {
+                  allowedOrigins = cfg.controlUi.allowedOrigins;
+                }
+                // lib.optionalAttrs cfg.controlUi.dangerouslyDisableDeviceAuth {
+                  dangerouslyDisableDeviceAuth = true;
+                };
             }
             // lib.optionalAttrs (cfg.customBindHost != null) {
               customBindHost = cfg.customBindHost;
+            }
+            // lib.optionalAttrs cfg.enableTailscaleServe {
+              tailscale.mode = "serve";
             };
 
           discovery.mdns.mode = "minimal";
@@ -138,6 +210,32 @@ in
           };
         })
 
+        (lib.mkIf cfg.telegram.enable {
+          channels.telegram = {
+            enabled = true;
+            tokenFile = config.sops.templates."openclaw-telegram-bot-token".path;
+            allowFrom = cfg.telegram.allowFrom;
+            dmPolicy = cfg.telegram.dmPolicy;
+            groupPolicy = cfg.telegram.groupPolicy;
+            configWrites = cfg.telegram.configWrites;
+          };
+        })
+
+        (lib.mkIf cfg.nostr.enable {
+          plugins.entries.nostr.enabled = true;
+
+          channels.nostr =
+            {
+              enabled = true;
+              privateKey = "\${NOSTR_PRIVATE_KEY}";
+              dmPolicy = cfg.nostr.dmPolicy;
+              allowFrom = cfg.nostr.allowFrom;
+            }
+            // lib.optionalAttrs (cfg.nostr.relays != [ ]) {
+              relays = cfg.nostr.relays;
+            };
+        })
+
         cfg.extraConfig
       ];
 
@@ -146,7 +244,6 @@ in
         OPENCLAW_NIX_MODE = "1";
         OPENCLAW_SKIP_BROWSER_CONTROL_SERVER = "1";
         OPENCLAW_SKIP_CANVAS_HOST = "1";
-        OPENCLAW_SKIP_CRON = "1";
         OPENCLAW_SKIP_GMAIL_WATCHER = "1";
         OPENCLAW_DISABLE_BONJOUR = "1";
       };

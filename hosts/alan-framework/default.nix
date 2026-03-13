@@ -66,21 +66,20 @@
     port = 18789;
     enableResponsesApi = true;
     enableChatCompletionsApi = true;
-    extraConfig = {
-      gateway.tailscale.mode = "serve";
-      gateway.controlUi.allowedOrigins = [
+    enableTailscaleServe = true;
+    controlUi = {
+      allowedOrigins = [
         "https://alan-framework.tailbb2802.ts.net"
       ];
-      gateway.controlUi.dangerouslyDisableDeviceAuth = true;
-      channels.telegram = {
-        enabled = true;
-        tokenFile = config.sops.templates."telegram-bot-token".path;
-        allowFrom = [ 7336229793 ];
-        dmPolicy = "allowlist";
-        groupPolicy = "disabled";
-        configWrites = false;
-      };
+      dangerouslyDisableDeviceAuth = true;
     };
+
+    telegram = {
+      enable = true;
+      allowFrom = [ 7336229793 ];
+    };
+
+    nostr.enable = true;
   };
 
   # Basic tools
