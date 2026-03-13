@@ -20,8 +20,52 @@ sudo perl -0pi -e 's@\[\{ kinds: \[4\], "#p": \[pk\], since \}\] as unknown as P
 sudo perl -0pi -e 's@\[\n\s*\{\n\s*kinds: \[0\],\n\s*authors: \[pubkey\],\n\s*limit: 1,\n\s*\},\n\s*\] as unknown as Parameters<typeof pool\.subscribeMany>\[1\]@\{\n            kinds: [0],\n            authors: [pubkey],\n            limit: 1,\n          } as Parameters<typeof pool.subscribeMany>[1]@g' \
   "$plugin_dir/src/nostr-profile-import.ts"
 
-sudo perl -0pi -e 's@// Return cleanup function\\s*return \\{\\s*stop: \\(\\) => \\{\\s*bus\\.close\\(\\);\\s*activeBuses\\.delete\\(account\\.accountId\\);\\s*metricsSnapshots\\.delete\\(account\\.accountId\\);\\s*ctx\\.log\\?\\.info\\(`\\[\\$\\{account\\.accountId\\}\\] Nostr provider stopped`\\);\\s*\\},\\s*\\};@try {\\n        await new Promise<void>((resolve) => {\\n          if (ctx.abortSignal.aborted) {\\n            resolve();\\n            return;\\n          }\\n          ctx.abortSignal.addEventListener(\"abort\", () => resolve(), { once: true });\\n        });\\n      } finally {\\n        bus.close();\\n        activeBuses.delete(account.accountId);\\n        metricsSnapshots.delete(account.accountId);\\n        ctx.log?.info(\"[\" + account.accountId + \"] Nostr provider stopped\");\\n      }@s' \
-  "$plugin_dir/src/channel.ts"
+sudo perl -0 - "$plugin_dir/src/channel.ts" > /dev/null <<'PERL'
+use strict;
+use warnings;
+
+my $path = shift @ARGV;
+local $/;
+open my $fh, '<', $path or die "open $path: $!";
+my $src = <$fh>;
+close $fh;
+
+my $from = <<'FROM';
+      // Return cleanup function
+      return {
+        stop: () => {
+          bus.close();
+          activeBuses.delete(account.accountId);
+          metricsSnapshots.delete(account.accountId);
+          ctx.log?.info(`[${account.accountId}] Nostr provider stopped`);
+        },
+      };
+FROM
+
+my $to = <<'TO';
+      try {
+        await new Promise<void>((resolve) => {
+          if (ctx.abortSignal.aborted) {
+            resolve();
+            return;
+          }
+          ctx.abortSignal.addEventListener("abort", () => resolve(), { once: true });
+        });
+      } finally {
+        bus.close();
+        activeBuses.delete(account.accountId);
+        metricsSnapshots.delete(account.accountId);
+        ctx.log?.info("[" + account.accountId + "] Nostr provider stopped");
+      }
+TO
+
+my $count = ($src =~ s/\Q$from\E/$to/);
+die "failed to patch channel lifecycle in $path\n" unless $count == 1;
+
+open my $out, '>', $path or die "write $path: $!";
+print {$out} $src;
+close $out;
+PERL
 
 sudo grep -F 'ctx.abortSignal.addEventListener("abort", () => resolve(), { once: true });' \
   "$plugin_dir/src/channel.ts" >/dev/null
