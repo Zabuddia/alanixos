@@ -79,12 +79,17 @@
       allowFrom = [ 7336229793 5255330939 ];
     };
 
-    # sudo -u openclaw HOME=/var/lib/openclaw openclaw plugins install @openclaw/nostr
+    # bash ./scripts/install-openclaw-nostr
     # npub137vv20ctylhalqcyu783wxe6q9fqfnf2f76tyltkg8pj8m5ejcwsftxzqz
     nostr = {
       enable = true;
       dmPolicy = "allowlist";
       allowFrom = [ "npub1yfuharj8jmlld3qwuffk2zc0lvsc3ajptvyt5v3cnwfltaugy0fs4dl80d" ];
+      relays = [
+        "wss://relay.damus.io"
+        "wss://nos.lol"
+        "wss://relay.primal.net"
+      ];
     };
   };
 
