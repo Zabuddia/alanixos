@@ -225,8 +225,8 @@ in
 
         (lib.mkIf cfg.nostr.enable {
           plugins = {
-            allow = [ "nostr" ];
             load.paths = [ nostrPluginInstallDir ];
+            entries.nostr.enabled = true;
           };
 
           channels.nostr =
