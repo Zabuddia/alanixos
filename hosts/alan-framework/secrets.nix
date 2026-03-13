@@ -18,6 +18,12 @@
     mode = "0400";
   };
 
+  sops.secrets."telegram/bot-token" = {
+    owner = "openclaw";
+    group = "openclaw";
+    mode = "0400";
+  };
+
   sops.templates."cloudflare-env" = {
     content = "CLOUDFLARE_API_TOKEN=${config.sops.placeholder."cloudflare/api-token"}";
     owner = "cloudflare-ddns";

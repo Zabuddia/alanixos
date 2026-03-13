@@ -61,6 +61,10 @@
     port = 18789;
     enableResponsesApi = true;
     enableChatCompletionsApi = true;
+    extraConfig.channels.telegram = {
+      tokenFile = config.sops.secrets."telegram/bot-token".path;
+      allowFrom = [ 7336229793 ];
+    };
   };
 
   # Basic tools
