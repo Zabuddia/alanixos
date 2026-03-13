@@ -3,17 +3,9 @@
 let
   cfg = config.alanix.openclaw;
   openclawPkgs = inputs.nix-openclaw.packages.${pkgs.stdenv.hostPlatform.system};
-  openclawGatewayPackage = openclawPkgs.openclaw-gateway.overrideAttrs (old: {
-    postInstall = (old.postInstall or "") + ''
-      if [ -d "$out/lib/openclaw/extensions/nostr" ] && [ -d "$out/lib/openclaw/node_modules" ]; then
-        nostr_tools_src="$(find "$out/lib/openclaw/node_modules" -path "*/node_modules/nostr-tools" -print | head -n 1)"
-        if [ -n "$nostr_tools_src" ] && [ ! -e "$out/lib/openclaw/extensions/nostr/node_modules/nostr-tools" ]; then
-          mkdir -p "$out/lib/openclaw/extensions/nostr/node_modules"
-          ln -s "$nostr_tools_src" "$out/lib/openclaw/extensions/nostr/node_modules/nostr-tools"
-        fi
-      fi
-    '';
-  });
+  openclawGatewayPackage = openclawPkgs.openclaw-gateway;
+  openclawSourceInfo = import "${inputs.nix-openclaw}/nix/sources/openclaw-source.nix";
+  openclawSource = pkgs.fetchFromGitHub (lib.removeAttrs openclawSourceInfo [ "pnpmDepsHash" ]);
   types = lib.types;
   openclawCli = pkgs.symlinkJoin {
     name = "openclaw-gateway-system";
@@ -30,6 +22,35 @@ let
   llmModelAlias =
     if hasLlm && llmCfg.alias != null then llmCfg.alias else if hasLlm then llmCfg.model.name else null;
   llmModelRef = "local-llama/${llmModelAlias}";
+  nostrPluginInstallDir = "${config.services.openclaw-gateway.stateDir}/extensions/nostr";
+  installNostrPluginScript = pkgs.writeShellScript "openclaw-install-nostr-plugin" ''
+    set -euo pipefail
+
+    src_dir="${openclawSource}/extensions/nostr"
+    target_dir="${nostrPluginInstallDir}"
+    rev_file="$target_dir/.nix-openclaw-source-rev"
+
+    needs_install=0
+    if [ ! -d "$target_dir" ] || [ ! -f "$rev_file" ]; then
+      needs_install=1
+    elif [ "$(cat "$rev_file")" != "${openclawSourceInfo.rev}" ]; then
+      needs_install=1
+    fi
+
+    if [ "$needs_install" -eq 0 ]; then
+      exit 0
+    fi
+
+    rm -rf "$target_dir"
+    mkdir -p "$(dirname "$target_dir")"
+    cp -R "$src_dir" "$target_dir"
+    chmod -R u+w "$target_dir"
+    (
+      cd "$target_dir"
+      npm install --omit=dev --omit=peer --silent --ignore-scripts
+    )
+    printf '%s\n' "${openclawSourceInfo.rev}" > "$rev_file"
+  '';
 in
 {
   options.alanix.openclaw = {
@@ -233,7 +254,10 @@ in
         })
 
         (lib.mkIf cfg.nostr.enable {
-          plugins.entries.nostr.enabled = true;
+          plugins = {
+            load.paths = [ nostrPluginInstallDir ];
+            entries.nostr.enabled = true;
+          };
 
           channels.nostr =
             {
@@ -258,11 +282,12 @@ in
         OPENCLAW_SKIP_GMAIL_WATCHER = "1";
         OPENCLAW_DISABLE_BONJOUR = "1";
       };
-    };
 
-    systemd.services.openclaw-gateway.path = lib.optionals config.services.tailscale.enable [
-      config.services.tailscale.package
-    ];
+      execStartPre = lib.optionals cfg.nostr.enable [ "${installNostrPluginScript}" ];
+      servicePath =
+        lib.optionals cfg.nostr.enable [ pkgs.nodejs ]
+        ++ lib.optionals config.services.tailscale.enable [ config.services.tailscale.package ];
+    };
 
     environment.systemPackages = [
       openclawCli
