@@ -135,7 +135,6 @@ in
       environment = {
         OPENCLAW_SKIP_BROWSER_CONTROL_SERVER = "1";
         OPENCLAW_SKIP_CANVAS_HOST = "1";
-        OPENCLAW_SKIP_CHANNELS = "1";
         OPENCLAW_SKIP_CRON = "1";
         OPENCLAW_SKIP_GMAIL_WATCHER = "1";
         OPENCLAW_DISABLE_BONJOUR = "1";
