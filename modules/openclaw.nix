@@ -7,6 +7,7 @@ let
   llmCfg = if hasLlm then config.alanix.llm else null;
   llmModelAlias =
     if hasLlm && llmCfg.alias != null then llmCfg.alias else if hasLlm then llmCfg.model.name else null;
+  llmModelRef = "local-llama/${llmModelAlias}";
   tokenPlaceholder = config.sops.placeholder.${cfg.tokenSecret};
 in
 {
@@ -93,7 +94,7 @@ in
         }
 
         (lib.mkIf (hasLlm && llmCfg.enable) {
-          providers.local-llama = {
+          models.providers.local-llama = {
             api = "openai-completions";
             baseUrl = "http://${llmCfg.host}:${toString llmCfg.port}/v1";
             authHeader = false;
@@ -108,11 +109,12 @@ in
             ];
           };
 
-          model = "local-llama";
-          models.local-llama = {
-            provider = "local-llama";
-            model = llmModelAlias;
-            streaming = true;
+          agents.defaults = {
+            model.primary = llmModelRef;
+            models.${llmModelRef} = {
+              alias = llmModelAlias;
+              streaming = true;
+            };
           };
         })
 
