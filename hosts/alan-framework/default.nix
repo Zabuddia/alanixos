@@ -63,6 +63,9 @@
     enableChatCompletionsApi = true;
     extraConfig = {
       gateway.tailscale.mode = "serve";
+      gateway.controlUi.allowedOrigins = [
+        "https://alan-framework.tailbb2802.ts.net"
+      ];
       channels.telegram = {
         enabled = true;
         tokenFile = config.sops.templates."telegram-bot-token".path;
