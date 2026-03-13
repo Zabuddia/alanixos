@@ -107,6 +107,7 @@ in
           models.providers.local-llama = {
             api = "openai-completions";
             baseUrl = "http://${llmCfg.host}:${toString llmCfg.port}/v1";
+            apiKey = "local-llama";
             authHeader = false;
             injectNumCtxForOpenAICompat = true;
             models = [
