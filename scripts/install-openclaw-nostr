@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+state_dir="${OPENCLAW_STATE_DIR:-/var/lib/openclaw}"
+config_path="${OPENCLAW_CONFIG_PATH:-$state_dir/plugin-install.json}"
+plugin_dir="$state_dir/extensions/nostr"
+
+sudo systemctl stop openclaw-gateway
+sudo rm -rf "$plugin_dir" "$config_path"
+
+sudo -u openclaw env \
+  HOME="$state_dir" \
+  OPENCLAW_STATE_DIR="$state_dir" \
+  OPENCLAW_CONFIG_PATH="$config_path" \
+  openclaw plugins install @openclaw/nostr
+
+sudo perl -0pi -e 's@\[\{ kinds: \[4\], "#p": \[pk\], since \}\] as unknown as Parameters<typeof pool\.subscribeMany>\[1\]@\{ kinds: [4], "#p": [pk], since } as Parameters<typeof pool.subscribeMany>[1]@g' \
+  "$plugin_dir/src/nostr-bus.ts"
+
+sudo perl -0pi -e 's@\[\n\s*\{\n\s*kinds: \[0\],\n\s*authors: \[pubkey\],\n\s*limit: 1,\n\s*\},\n\s*\] as unknown as Parameters<typeof pool\.subscribeMany>\[1\]@\{\n            kinds: [0],\n            authors: [pubkey],\n            limit: 1,\n          } as Parameters<typeof pool.subscribeMany>[1]@g' \
+  "$plugin_dir/src/nostr-profile-import.ts"
+
+sudo systemctl start openclaw-gateway
+sudo tail -n 80 /var/lib/openclaw/logs/gateway.log | rg -i 'nostr|plugin|relay|error'
