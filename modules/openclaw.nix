@@ -153,8 +153,8 @@ in
       };
     };
     environment.systemPackages = [
-      openclawPkgs.openclaw-gateway
       openclawCli
+      openclawPkgs.openclaw-tools
     ];
   };
 }
