@@ -75,6 +75,7 @@ in
       config = lib.mkMerge [
         {
           gateway = {
+            mode = "local";
             bind = cfg.bind;
             auth.mode = "token";
             reload = {
