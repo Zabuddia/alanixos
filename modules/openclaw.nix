@@ -5,14 +5,22 @@ let
   openclawPkgs = inputs.nix-openclaw.packages.${pkgs.stdenv.hostPlatform.system};
   openclawGatewayPackage = openclawPkgs.openclaw-gateway.overrideAttrs (old: {
     installPhase = old.installPhase + ''
-      nostr_tools_src="$(find "$out/lib/openclaw/node_modules/.pnpm" -path "*/nostr-tools@*/node_modules/nostr-tools" -print | head -n 1)"
-      if [ -n "$nostr_tools_src" ]; then
-        if [ ! -e "$out/lib/openclaw/node_modules/nostr-tools" ]; then
-          ln -s "$nostr_tools_src" "$out/lib/openclaw/node_modules/nostr-tools"
-        fi
-        if [ ! -e "$out/lib/openclaw/extensions/nostr/node_modules/nostr-tools" ]; then
-          mkdir -p "$out/lib/openclaw/extensions/nostr/node_modules"
-          ln -s "$nostr_tools_src" "$out/lib/openclaw/extensions/nostr/node_modules/nostr-tools"
+
+      if [ -d "$out/lib/openclaw/extensions/nostr" ]; then
+        store_path_file="''${PNPM_STORE_PATH_FILE:-.pnpm-store-path}"
+        if [ -f "$store_path_file" ]; then
+          store_path="$(cat "$store_path_file")"
+          export PNPM_STORE_DIR="$store_path"
+          export PNPM_STORE_PATH="$store_path"
+          export NPM_CONFIG_STORE_DIR="$store_path"
+          export NPM_CONFIG_STORE_PATH="$store_path"
+          export PNPM_CONFIG_MANAGE_PACKAGE_MANAGER_VERSIONS=false
+          export HOME="$(mktemp -d)"
+
+          (
+            cd "$out/lib/openclaw/extensions/nostr"
+            pnpm install --offline --prod --ignore-scripts --store-dir "$store_path"
+          )
         fi
       fi
     '';
