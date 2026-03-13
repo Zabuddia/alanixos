@@ -4,8 +4,8 @@ let
   cfg = config.alanix.openclaw;
   openclawPkgs = inputs.nix-openclaw.packages.${pkgs.stdenv.hostPlatform.system};
   openclawCli = pkgs.symlinkJoin {
-    name = "openclaw-tools-system";
-    paths = [ openclawPkgs.openclaw-tools ];
+    name = "openclaw-gateway-system";
+    paths = [ openclawPkgs.openclaw-gateway ];
     nativeBuildInputs = [ pkgs.makeWrapper ];
     postBuild = ''
       wrapProgram "$out/bin/openclaw" \
