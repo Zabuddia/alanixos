@@ -152,6 +152,11 @@ in
         OPENCLAW_DISABLE_BONJOUR = "1";
       };
     };
+
+    systemd.services.openclaw-gateway.path = lib.optionals config.services.tailscale.enable [
+      config.services.tailscale.package
+    ];
+
     environment.systemPackages = [
       openclawCli
       openclawPkgs.openclaw-tools
