@@ -79,6 +79,7 @@
       allowFrom = [ 7336229793 ];
     };
 
+    # sudo -u openclaw HOME=/var/lib/openclaw openclaw plugins install @openclaw/nostr
     # npub137vv20ctylhalqcyu783wxe6q9fqfnf2f76tyltkg8pj8m5ejcwsftxzqz
     nostr = {
       enable = true;
