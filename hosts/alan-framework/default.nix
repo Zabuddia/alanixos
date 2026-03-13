@@ -63,7 +63,7 @@
     enableChatCompletionsApi = true;
     extraConfig.channels.telegram = {
       enabled = true;
-      tokenFile = config.sops.secrets."telegram/bot-token".path;
+      tokenFile = config.sops.templates."telegram-bot-token".path;
       allowFrom = [ 7336229793 ];
       dmPolicy = "allowlist";
       groupPolicy = "disabled";
