@@ -25,7 +25,7 @@ let
   staticArgs =
     [
       "--host"
-      cfg.host
+      cfg.listenHost
       "--port"
       (toString cfg.port)
       "--alias"
@@ -76,6 +76,12 @@ in
     host = lib.mkOption {
       type = lib.types.str;
       default = "127.0.0.1";
+    };
+
+    listenHost = lib.mkOption {
+      type = lib.types.str;
+      default = cfg.host;
+      description = "Address/interface llama-server binds to.";
     };
 
     port = lib.mkOption {
