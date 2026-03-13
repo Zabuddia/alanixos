@@ -51,9 +51,9 @@
       hfRepo = "unsloth/Qwen3.5-35B-A3B-GGUF";
       hfFile = "Qwen3.5-35B-A3B-UD-Q4_K_L.gguf";
     };
-    ctxSize = 32768;
+    ctxSize = 262144;
     gpuLayers = "all";
-    parallel = 1;
+    parallel = 2;
   };
 
   alanix.openclaw = {
