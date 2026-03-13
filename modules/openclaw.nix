@@ -110,7 +110,6 @@ in
             };
 
           discovery.mdns.mode = "minimal";
-          plugins.enabled = false;
         }
 
         (lib.mkIf (hasLlm && llmCfg.enable) {
