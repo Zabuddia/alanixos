@@ -79,7 +79,11 @@
       allowFrom = [ 7336229793 ];
     };
 
-    nostr.enable = true;
+    nostr = {
+      enable = true;
+      dmPolicy = "allowlist";
+      allowFrom = [ "npub1yfuharj8jmlld3qwuffk2zc0lvsc3ajptvyt5v3cnwfltaugy0fs4dl80d" ];
+    };
   };
 
   # Basic tools
