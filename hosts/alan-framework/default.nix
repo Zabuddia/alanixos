@@ -79,10 +79,7 @@
       allowFrom = [ 7336229793 5255330939 ];
     };
 
-    webSearch = {
-      enable = true;
-      braveMode = "llm-context";
-    };
+    webSearch.enable = true;
 
     # bash ./scripts/install-openclaw-nostr
     # npub137vv20ctylhalqcyu783wxe6q9fqfnf2f76tyltkg8pj8m5ejcwsftxzqz
