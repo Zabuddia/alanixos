@@ -1,4 +1,9 @@
 { pkgs, hostname, config, ... }:
+let
+  openclawRebuild = pkgs.writeShellScriptBin "openclaw-rebuild" ''
+    exec /run/current-system/sw/bin/nixos-rebuild switch --flake path:/home/buddia/.nixos#alan-framework
+  '';
+in
 {
   imports = [
     ./hardware-configuration.nix
@@ -26,10 +31,41 @@
 
   # Nix basics
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
+  programs.git = {
+    enable = true;
+    config.safe.directory = [
+      "/home/buddia/.nixos"
+      "/home/buddia/alanixos"
+    ];
+  };
 
   # Networking
   networking.networkmanager.enable = true;
   services.tailscale.extraSetFlags = [ "--operator=openclaw" ];
+
+  security.sudo.extraRules = [
+    {
+      users = [ "openclaw" ];
+      runAs = "root:root";
+      commands = [
+        {
+          command = "${openclawRebuild}/bin/openclaw-rebuild";
+          options = [ "NOPASSWD" ];
+        }
+      ];
+    }
+  ];
+
+  system.activationScripts.openclawRepoAccess.text = ''
+    ${pkgs.acl}/bin/setfacl -m u:openclaw:rx /home/buddia
+
+    for repo in /home/buddia/.nixos /home/buddia/alanixos; do
+      if [ -e "$repo" ]; then
+        ${pkgs.acl}/bin/setfacl -R -m u:openclaw:rwX "$repo"
+        ${pkgs.findutils}/bin/find "$repo" -type d -exec ${pkgs.acl}/bin/setfacl -m d:u:openclaw:rwX '{}' +
+      fi
+    done
+  '';
 
   # Firewall
   networking.firewall.enable = true;
@@ -74,6 +110,36 @@
       dangerouslyDisableDeviceAuth = true;
     };
 
+    extraConfig = {
+      commands.bash = true;
+
+      tools = {
+        elevated = {
+          enabled = true;
+          allowFrom = {
+            telegram = [
+              "id:7336229793"
+              "id:5255330939"
+            ];
+            nostr = [
+              "npub1yfuharj8jmlld3qwuffk2zc0lvsc3ajptvyt5v3cnwfltaugy0fs4dl80d"
+            ];
+          };
+        };
+
+        exec = {
+          host = "gateway";
+          security = "full";
+          ask = "off";
+          pathPrepend = [
+            "/run/wrappers/bin"
+            "/run/current-system/sw/bin"
+            "/nix/var/nix/profiles/default/bin"
+          ];
+        };
+      };
+    };
+
     telegram = {
       enable = true;
       allowFrom = [ 7336229793 5255330939 ];
@@ -107,5 +173,6 @@
     sops
     tree
     wget
+    openclawRebuild
   ];
 }
