@@ -147,10 +147,10 @@ in
 
     webSearch.enable = true;
 
-    # bash ./scripts/install-openclaw-nostr
     # npub137vv20ctylhalqcyu783wxe6q9fqfnf2f76tyltkg8pj8m5ejcwsftxzqz
     nostr = {
       enable = true;
+      accountName = "Alan Framework Clawbot";
       dmPolicy = "allowlist";
       allowFrom = [ "npub1yfuharj8jmlld3qwuffk2zc0lvsc3ajptvyt5v3cnwfltaugy0fs4dl80d" ];
       relays = [
@@ -158,6 +158,11 @@ in
         "wss://nos.lol"
         "wss://relay.primal.net"
       ];
+      profile = {
+        username = "alan-framework-clawbot";
+        displayName = "Alan Framework Clawbot";
+        bio = "OpenClaw assistant running on alan-framework.";
+      };
     };
   };
 
