@@ -20,83 +20,67 @@ let
   llmModelAlias =
     if hasLlm && llmCfg.alias != null then llmCfg.alias else if hasLlm then llmCfg.model.name else null;
   llmModelRef = "local-llama/${llmModelAlias}";
-  nostrPluginPatch = pkgs.writeText "openclaw-nostr-plugin.patch" ''
-    diff --git a/src/channel.ts b/src/channel.ts
-    --- a/src/channel.ts
-    +++ b/src/channel.ts
-    @@ -274,13 +274,20 @@ export const nostrPlugin: ChannelPlugin = {
-          ctx.log?.info(
-            `[''${account.accountId}] Nostr provider started, connected to ''${account.relays.length} relay(s)`,
-          );
-
-    -      // Return cleanup function
-    -      return {
-    -        stop: () => {
-    -          bus.close();
-    -          activeBuses.delete(account.accountId);
-    -          metricsSnapshots.delete(account.accountId);
-    -          ctx.log?.info(`[''${account.accountId}] Nostr provider stopped`);
-    -        },
-    -      };
-    +      try {
-    +        await new Promise<void>((resolve) => {
-    +          if (ctx.abortSignal.aborted) {
-    +            resolve();
-    +            return;
-    +          }
-    +          ctx.abortSignal.addEventListener("abort", () => resolve(), { once: true });
-    +        });
-    +      } finally {
-    +        bus.close();
-    +        activeBuses.delete(account.accountId);
-    +        metricsSnapshots.delete(account.accountId);
-    +        ctx.log?.info("[" + account.accountId + "] Nostr provider stopped");
-    +      }
-        },
-      },
-    };
-    diff --git a/src/nostr-bus.ts b/src/nostr-bus.ts
-    --- a/src/nostr-bus.ts
-    +++ b/src/nostr-bus.ts
-    @@ -490,7 +490,7 @@
-      const sub = pool.subscribeMany(
-        relays,
-    -    [{ kinds: [4], "#p": [pk], since }] as unknown as Parameters<typeof pool.subscribeMany>[1],
-    +    { kinds: [4], "#p": [pk], since } as Parameters<typeof pool.subscribeMany>[1],
-        {
-          onevent: handleEvent,
-          oneose: () => {
-    diff --git a/src/nostr-profile-import.ts b/src/nostr-profile-import.ts
-    --- a/src/nostr-profile-import.ts
-    +++ b/src/nostr-profile-import.ts
-    @@ -124,13 +124,11 @@
-          const sub = pool.subscribeMany(
-            [relay],
-    -        [
-    -          {
-    -            kinds: [0],
-    -            authors: [pubkey],
-    -            limit: 1,
-    -          },
-    -        ] as unknown as Parameters<typeof pool.subscribeMany>[1],
-    +        {
-    +          kinds: [0],
-    +          authors: [pubkey],
-    +          limit: 1,
-    +        } as Parameters<typeof pool.subscribeMany>[1],
-            {
-              onevent(event) {
-                events.push({ event, relay });
-  '';
   # The bundled Nostr plugin needs local fixes for the current runtime contract
   # and nostr-tools subscribeMany API shape.
   nostrPluginInstallDir = pkgs.runCommandLocal "openclaw-nostr-plugin-source" {
-    nativeBuildInputs = [ pkgs.patch ];
+    nativeBuildInputs = [ pkgs.perl ];
   } ''
     mkdir -p "$out"
     cp -a ${openclawGatewayPackage}/lib/openclaw/extensions/nostr/. "$out"/
     chmod -R u+w "$out"
-    patch -p1 -d "$out" < ${nostrPluginPatch}
+
+    perl -0pi -e 's@\[\{ kinds: \[4\], "#p": \[pk\], since \}\] as unknown as Parameters<typeof pool\.subscribeMany>\[1\]@\{ kinds: [4], "#p": [pk], since } as Parameters<typeof pool.subscribeMany>[1]@g' \
+      "$out/src/nostr-bus.ts"
+
+    perl -0pi -e 's@\[\n\s*\{\n\s*kinds: \[0\],\n\s*authors: \[pubkey\],\n\s*limit: 1,\n\s*\},\n\s*\] as unknown as Parameters<typeof pool\.subscribeMany>\[1\]@\{\n          kinds: [0],\n          authors: [pubkey],\n          limit: 1,\n        } as Parameters<typeof pool.subscribeMany>[1]@g' \
+      "$out/src/nostr-profile-import.ts"
+
+    perl -0 "$out/src/channel.ts" > /dev/null <<'PERL'
+use strict;
+use warnings;
+
+my $path = shift @ARGV;
+local $/;
+open my $fh, '<', $path or die "open $path: $!";
+my $src = <$fh>;
+close $fh;
+
+my $from = <<'FROM';
+      // Return cleanup function
+      return {
+        stop: () => {
+          bus.close();
+          activeBuses.delete(account.accountId);
+          metricsSnapshots.delete(account.accountId);
+          ctx.log?.info(`[''${account.accountId}] Nostr provider stopped`);
+        },
+      };
+FROM
+
+my $to = <<'TO';
+      try {
+        await new Promise<void>((resolve) => {
+          if (ctx.abortSignal.aborted) {
+            resolve();
+            return;
+          }
+          ctx.abortSignal.addEventListener("abort", () => resolve(), { once: true });
+        });
+      } finally {
+        bus.close();
+        activeBuses.delete(account.accountId);
+        metricsSnapshots.delete(account.accountId);
+        ctx.log?.info("[" + account.accountId + "] Nostr provider stopped");
+      }
+TO
+
+my $count = ($src =~ s/\Q$from\E/$to/);
+die "failed to patch Nostr channel lifecycle in $path\n" unless $count == 1;
+
+open my $out_fh, '>', $path or die "write $path: $!";
+print {$out_fh} $src;
+close $out_fh;
+PERL
   '';
   nostrProfile = lib.filterAttrs (_: value: value != null) {
     name = cfg.nostr.profile.username;
