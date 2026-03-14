@@ -31,6 +31,7 @@ in
 
   # Nix basics
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
+  programs.nix-ld.enable = true;
   programs.git = {
     enable = true;
     config.safe.directory = [

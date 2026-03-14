@@ -31,6 +31,9 @@ let
     perl -0pi -e 's@\[\n\s*\{\n\s*kinds: \[0\],\n\s*authors: \[pubkey\],\n\s*limit: 1,\n\s*\},\n\s*\] as unknown as Parameters<typeof pool\.subscribeMany>\[1\]@\{\n          kinds: [0],\n          authors: [pubkey],\n          limit: 1,\n        } as Parameters<typeof pool.subscribeMany>[1]@g' \
       "$out/lib/openclaw/extensions/nostr/src/nostr-profile-import.ts"
 
+    perl -0pi -e 's@if \(trimmed\.startsWith\("npub1"\)\) \{\n    const decoded = nip19\.decode\(trimmed\);\n    if \(decoded\.type !== "npub"\) \{\n      throw new Error\("Invalid npub key"\);\n    \}\n    // Convert Uint8Array to hex string\n    return Array\.from\(decoded\.data as unknown as Uint8Array\)\n      \.map\(\(b\) => b\.toString\(16\)\.padStart\(2, "0"\)\)\n      \.join\(""\);\n  \}@if (trimmed.startsWith("npub1")) {\n    const decoded = nip19.decode(trimmed);\n    if (decoded.type !== "npub") {\n      throw new Error("Invalid npub key");\n    }\n    const hex =\n      typeof decoded.data === "string"\n        ? decoded.data\n        : Array.from(decoded.data)\n            .map((b) => b.toString(16).padStart(2, "0"))\n            .join("");\n    if (!/^[0-9a-fA-F]{64}$/.test(hex)) {\n      throw new Error("Decoded npub was not 32 bytes");\n    }\n    return hex.toLowerCase();\n  }@g' \
+      "$out/lib/openclaw/extensions/nostr/src/nostr-bus.ts"
+
     perl -0 - "$out/lib/openclaw/extensions/nostr/src/channel.ts" > /dev/null <<'PERL'
 use strict;
 use warnings;
