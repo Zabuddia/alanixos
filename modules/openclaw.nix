@@ -5,10 +5,25 @@ let
   openclawPkgs = inputs.nix-openclaw.packages.${pkgs.stdenv.hostPlatform.system};
   openclawGatewayPackageBase = openclawPkgs.openclaw-gateway;
   openclawGatewayPackage = pkgs.runCommandLocal "openclaw-gateway-with-patched-nostr" {
-    nativeBuildInputs = [ pkgs.perl ];
+    nativeBuildInputs = [
+      pkgs.findutils
+      pkgs.perl
+    ];
   } ''
     cp -a ${openclawGatewayPackageBase} "$out"
+    chmod u+w "$out/bin/openclaw"
     chmod -R u+w "$out/lib/openclaw/extensions/nostr"
+    chmod u+w "$out/lib/openclaw/node_modules"
+
+    substituteInPlace "$out/bin/openclaw" \
+      --replace-fail "${openclawGatewayPackageBase}" "$out"
+
+    nostrToolsPath="$(find "$out/lib/openclaw/node_modules/.pnpm" -maxdepth 3 -path '*/node_modules/nostr-tools' | head -n1)"
+    if [ -z "$nostrToolsPath" ]; then
+      echo "failed to locate nostr-tools inside bundled gateway node_modules" >&2
+      exit 1
+    fi
+    ln -s "$nostrToolsPath" "$out/lib/openclaw/node_modules/nostr-tools"
 
     perl -0pi -e 's@\[\{ kinds: \[4\], "#p": \[pk\], since \}\] as unknown as Parameters<typeof pool\.subscribeMany>\[1\]@\{ kinds: [4], "#p": [pk], since } as Parameters<typeof pool.subscribeMany>[1]@g' \
       "$out/lib/openclaw/extensions/nostr/src/nostr-bus.ts"
