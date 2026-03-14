@@ -3,39 +3,20 @@
 let
   cfg = config.alanix.openclaw;
   openclawPkgs = inputs.nix-openclaw.packages.${pkgs.stdenv.hostPlatform.system};
-  openclawGatewayPackage = openclawPkgs.openclaw-gateway;
-  types = lib.types;
-  openclawCli = pkgs.symlinkJoin {
-    name = "openclaw-gateway-system";
-    paths = [ openclawGatewayPackage ];
-    nativeBuildInputs = [ pkgs.makeWrapper ];
-    postBuild = ''
-      wrapProgram "$out/bin/openclaw" \
-        --set-default OPENCLAW_CONFIG_PATH "${config.services.openclaw-gateway.configPath}" \
-        --set-default OPENCLAW_STATE_DIR "${config.services.openclaw-gateway.stateDir}"
-    '';
-  };
-  hasLlm = lib.hasAttrByPath [ "alanix" "llm" ] config;
-  llmCfg = if hasLlm then config.alanix.llm else null;
-  llmModelAlias =
-    if hasLlm && llmCfg.alias != null then llmCfg.alias else if hasLlm then llmCfg.model.name else null;
-  llmModelRef = "local-llama/${llmModelAlias}";
-  # The bundled Nostr plugin needs local fixes for the current runtime contract
-  # and nostr-tools subscribeMany API shape.
-  nostrPluginInstallDir = pkgs.runCommandLocal "openclaw-nostr-plugin-source" {
+  openclawGatewayPackageBase = openclawPkgs.openclaw-gateway;
+  openclawGatewayPackage = pkgs.runCommandLocal "openclaw-gateway-with-patched-nostr" {
     nativeBuildInputs = [ pkgs.perl ];
   } ''
-    mkdir -p "$out"
-    cp -a ${openclawGatewayPackage}/lib/openclaw/extensions/nostr/. "$out"/
-    chmod -R u+w "$out"
+    cp -a ${openclawGatewayPackageBase} "$out"
+    chmod -R u+w "$out/lib/openclaw/extensions/nostr"
 
     perl -0pi -e 's@\[\{ kinds: \[4\], "#p": \[pk\], since \}\] as unknown as Parameters<typeof pool\.subscribeMany>\[1\]@\{ kinds: [4], "#p": [pk], since } as Parameters<typeof pool.subscribeMany>[1]@g' \
-      "$out/src/nostr-bus.ts"
+      "$out/lib/openclaw/extensions/nostr/src/nostr-bus.ts"
 
     perl -0pi -e 's@\[\n\s*\{\n\s*kinds: \[0\],\n\s*authors: \[pubkey\],\n\s*limit: 1,\n\s*\},\n\s*\] as unknown as Parameters<typeof pool\.subscribeMany>\[1\]@\{\n          kinds: [0],\n          authors: [pubkey],\n          limit: 1,\n        } as Parameters<typeof pool.subscribeMany>[1]@g' \
-      "$out/src/nostr-profile-import.ts"
+      "$out/lib/openclaw/extensions/nostr/src/nostr-profile-import.ts"
 
-    perl -0 - "$out/src/channel.ts" > /dev/null <<'PERL'
+    perl -0 - "$out/lib/openclaw/extensions/nostr/src/channel.ts" > /dev/null <<'PERL'
 use strict;
 use warnings;
 
@@ -82,6 +63,22 @@ print {$out_fh} $src;
 close $out_fh;
 PERL
   '';
+  types = lib.types;
+  openclawCli = pkgs.symlinkJoin {
+    name = "openclaw-gateway-system";
+    paths = [ openclawGatewayPackage ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      wrapProgram "$out/bin/openclaw" \
+        --set-default OPENCLAW_CONFIG_PATH "${config.services.openclaw-gateway.configPath}" \
+        --set-default OPENCLAW_STATE_DIR "${config.services.openclaw-gateway.stateDir}"
+    '';
+  };
+  hasLlm = lib.hasAttrByPath [ "alanix" "llm" ] config;
+  llmCfg = if hasLlm then config.alanix.llm else null;
+  llmModelAlias =
+    if hasLlm && llmCfg.alias != null then llmCfg.alias else if hasLlm then llmCfg.model.name else null;
+  llmModelRef = "local-llama/${llmModelAlias}";
   nostrProfile = lib.filterAttrs (_: value: value != null) {
     name = cfg.nostr.profile.username;
     displayName = cfg.nostr.profile.displayName;
@@ -296,6 +293,9 @@ in
       enable = true;
       package = openclawGatewayPackage;
       port = cfg.port;
+      execStartPre = lib.optionals cfg.nostr.enable [
+        "${pkgs.coreutils}/bin/rm -rf ${config.services.openclaw-gateway.stateDir}/extensions/nostr"
+      ];
       environmentFiles =
         [ config.sops.templates."openclaw-gateway-env".path ]
         ++ lib.optionals cfg.nostr.enable [ config.sops.templates."openclaw-nostr-env".path ]
@@ -375,10 +375,7 @@ in
         })
 
         (lib.mkIf cfg.nostr.enable {
-          plugins = {
-            load.paths = [ nostrPluginInstallDir ];
-            entries.nostr.enabled = true;
-          };
+          plugins.entries.nostr.enabled = true;
 
           channels.nostr =
             {
