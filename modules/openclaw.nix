@@ -35,7 +35,7 @@ let
     perl -0pi -e 's@\[\n\s*\{\n\s*kinds: \[0\],\n\s*authors: \[pubkey\],\n\s*limit: 1,\n\s*\},\n\s*\] as unknown as Parameters<typeof pool\.subscribeMany>\[1\]@\{\n          kinds: [0],\n          authors: [pubkey],\n          limit: 1,\n        } as Parameters<typeof pool.subscribeMany>[1]@g' \
       "$out/src/nostr-profile-import.ts"
 
-    perl -0 "$out/src/channel.ts" > /dev/null <<'PERL'
+    perl -0 - "$out/src/channel.ts" > /dev/null <<'PERL'
 use strict;
 use warnings;
 
