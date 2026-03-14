@@ -51,6 +51,13 @@ in
         mode = "0400";
       };
     })
+    (lib.mkIf (openclawCfg.enable && openclawCfg.webSearch.enable) {
+      ${openclawCfg.webSearch.apiKeySecret} = {
+        owner = "openclaw";
+        group = "openclaw";
+        mode = "0400";
+      };
+    })
   ];
 
   sops.templates = lib.mkMerge [
@@ -79,6 +86,14 @@ in
     (lib.mkIf (openclawCfg.enable && openclawCfg.nostr.enable) {
       "openclaw-nostr-env" = {
         content = "NOSTR_PRIVATE_KEY=${config.sops.placeholder.${openclawCfg.nostr.privateKeySecret}}";
+        owner = "openclaw";
+        group = "openclaw";
+        mode = "0400";
+      };
+    })
+    (lib.mkIf (openclawCfg.enable && openclawCfg.webSearch.enable) {
+      "openclaw-brave-env" = {
+        content = "BRAVE_API_KEY=${config.sops.placeholder.${openclawCfg.webSearch.apiKeySecret}}";
         owner = "openclaw";
         group = "openclaw";
         mode = "0400";
