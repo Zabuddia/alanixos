@@ -134,6 +134,23 @@ in
       };
     };
 
+    webSearch = {
+      enable = lib.mkEnableOption "OpenClaw web search";
+
+      apiKeySecret = lib.mkOption {
+        type = types.str;
+        default = "brave/api-key";
+      };
+
+      braveMode = lib.mkOption {
+        type = types.enum [
+          "web"
+          "llm-context"
+        ];
+        default = "web";
+      };
+    };
+
     extraConfig = lib.mkOption {
       type = lib.types.attrs;
       default = { };
@@ -148,7 +165,8 @@ in
       port = cfg.port;
       environmentFiles =
         [ config.sops.templates."openclaw-gateway-env".path ]
-        ++ lib.optionals cfg.nostr.enable [ config.sops.templates."openclaw-nostr-env".path ];
+        ++ lib.optionals cfg.nostr.enable [ config.sops.templates."openclaw-nostr-env".path ]
+        ++ lib.optionals cfg.webSearch.enable [ config.sops.templates."openclaw-brave-env".path ];
 
       config = lib.mkMerge [
         {
@@ -238,6 +256,17 @@ in
             }
             // lib.optionalAttrs (cfg.nostr.relays != [ ]) {
               relays = cfg.nostr.relays;
+            };
+        })
+
+        (lib.mkIf cfg.webSearch.enable {
+          tools.web.search =
+            {
+              enabled = true;
+              provider = "brave";
+            }
+            // lib.optionalAttrs (cfg.webSearch.braveMode != "web") {
+              brave.mode = cfg.webSearch.braveMode;
             };
         })
 
