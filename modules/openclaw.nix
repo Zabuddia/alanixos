@@ -20,7 +20,94 @@ let
   llmModelAlias =
     if hasLlm && llmCfg.alias != null then llmCfg.alias else if hasLlm then llmCfg.model.name else null;
   llmModelRef = "local-llama/${llmModelAlias}";
-  nostrPluginInstallDir = "${config.services.openclaw-gateway.stateDir}/extensions/nostr";
+  nostrPluginPatch = pkgs.writeText "openclaw-nostr-plugin.patch" ''
+    diff --git a/src/channel.ts b/src/channel.ts
+    --- a/src/channel.ts
+    +++ b/src/channel.ts
+    @@ -274,13 +274,20 @@ export const nostrPlugin: ChannelPlugin = {
+          ctx.log?.info(
+            `[''${account.accountId}] Nostr provider started, connected to ''${account.relays.length} relay(s)`,
+          );
+
+    -      // Return cleanup function
+    -      return {
+    -        stop: () => {
+    -          bus.close();
+    -          activeBuses.delete(account.accountId);
+    -          metricsSnapshots.delete(account.accountId);
+    -          ctx.log?.info(`[''${account.accountId}] Nostr provider stopped`);
+    -        },
+    -      };
+    +      try {
+    +        await new Promise<void>((resolve) => {
+    +          if (ctx.abortSignal.aborted) {
+    +            resolve();
+    +            return;
+    +          }
+    +          ctx.abortSignal.addEventListener("abort", () => resolve(), { once: true });
+    +        });
+    +      } finally {
+    +        bus.close();
+    +        activeBuses.delete(account.accountId);
+    +        metricsSnapshots.delete(account.accountId);
+    +        ctx.log?.info("[" + account.accountId + "] Nostr provider stopped");
+    +      }
+        },
+      },
+    };
+    diff --git a/src/nostr-bus.ts b/src/nostr-bus.ts
+    --- a/src/nostr-bus.ts
+    +++ b/src/nostr-bus.ts
+    @@ -490,7 +490,7 @@
+      const sub = pool.subscribeMany(
+        relays,
+    -    [{ kinds: [4], "#p": [pk], since }] as unknown as Parameters<typeof pool.subscribeMany>[1],
+    +    { kinds: [4], "#p": [pk], since } as Parameters<typeof pool.subscribeMany>[1],
+        {
+          onevent: handleEvent,
+          oneose: () => {
+    diff --git a/src/nostr-profile-import.ts b/src/nostr-profile-import.ts
+    --- a/src/nostr-profile-import.ts
+    +++ b/src/nostr-profile-import.ts
+    @@ -124,13 +124,11 @@
+          const sub = pool.subscribeMany(
+            [relay],
+    -        [
+    -          {
+    -            kinds: [0],
+    -            authors: [pubkey],
+    -            limit: 1,
+    -          },
+    -        ] as unknown as Parameters<typeof pool.subscribeMany>[1],
+    +        {
+    +          kinds: [0],
+    +          authors: [pubkey],
+    +          limit: 1,
+    +        } as Parameters<typeof pool.subscribeMany>[1],
+            {
+              onevent(event) {
+                events.push({ event, relay });
+  '';
+  # The bundled Nostr plugin needs local fixes for the current runtime contract
+  # and nostr-tools subscribeMany API shape.
+  nostrPluginInstallDir = pkgs.runCommandLocal "openclaw-nostr-plugin-source" {
+    nativeBuildInputs = [ pkgs.patch ];
+  } ''
+    mkdir -p "$out"
+    cp -a ${openclawGatewayPackage}/lib/openclaw/extensions/nostr/. "$out"/
+    chmod -R u+w "$out"
+    patch -p1 -d "$out" < ${nostrPluginPatch}
+  '';
+  nostrProfile = lib.filterAttrs (_: value: value != null) {
+    name = cfg.nostr.profile.username;
+    displayName = cfg.nostr.profile.displayName;
+    about = cfg.nostr.profile.bio;
+    picture = cfg.nostr.profile.avatarUrl;
+    banner = cfg.nostr.profile.bannerUrl;
+    website = cfg.nostr.profile.websiteUrl;
+    nip05 = cfg.nostr.profile.nip05;
+    lud16 = cfg.nostr.profile.lud16;
+  };
 in
 {
   options.alanix.openclaw = {
@@ -118,6 +205,18 @@ in
         default = "nostr/private-key";
       };
 
+      accountName = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Display name for the Nostr account in OpenClaw.";
+      };
+
+      defaultAccount = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Explicit default Nostr account id.";
+      };
+
       dmPolicy = lib.mkOption {
         type = types.str;
         default = "pairing";
@@ -131,6 +230,56 @@ in
       relays = lib.mkOption {
         type = types.listOf types.str;
         default = [ ];
+      };
+
+      profile = {
+        username = lib.mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Nostr profile username (NIP-01 name).";
+        };
+
+        displayName = lib.mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Nostr profile display name (NIP-01 display_name).";
+        };
+
+        bio = lib.mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Nostr profile bio/description (NIP-01 about).";
+        };
+
+        avatarUrl = lib.mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "HTTPS avatar URL for the Nostr profile.";
+        };
+
+        bannerUrl = lib.mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "HTTPS banner URL for the Nostr profile.";
+        };
+
+        websiteUrl = lib.mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "HTTPS website URL for the Nostr profile.";
+        };
+
+        nip05 = lib.mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Optional NIP-05 identifier (for example user@example.com).";
+        };
+
+        lud16 = lib.mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Optional Lightning address (LUD-16).";
+        };
       };
     };
 
@@ -254,8 +403,17 @@ in
               dmPolicy = cfg.nostr.dmPolicy;
               allowFrom = cfg.nostr.allowFrom;
             }
+            // lib.optionalAttrs (cfg.nostr.accountName != null) {
+              name = cfg.nostr.accountName;
+            }
+            // lib.optionalAttrs (cfg.nostr.defaultAccount != null) {
+              defaultAccount = cfg.nostr.defaultAccount;
+            }
             // lib.optionalAttrs (cfg.nostr.relays != [ ]) {
               relays = cfg.nostr.relays;
+            }
+            // lib.optionalAttrs (nostrProfile != { }) {
+              profile = nostrProfile;
             };
         })
 
