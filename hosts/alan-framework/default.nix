@@ -1,9 +1,4 @@
 { pkgs, hostname, config, ... }:
-let
-  openclawRebuild = pkgs.writeShellScriptBin "openclaw-rebuild" ''
-    exec /run/current-system/sw/bin/nixos-rebuild switch --flake path:/home/buddia/.nixos#alan-framework
-  '';
-in
 {
   imports = [
     ./hardware-configuration.nix
@@ -44,30 +39,6 @@ in
   networking.networkmanager.enable = true;
   services.tailscale.extraSetFlags = [ "--operator=openclaw" ];
 
-  security.sudo.extraRules = [
-    {
-      users = [ "openclaw" ];
-      runAs = "root:root";
-      commands = [
-        {
-          command = "${openclawRebuild}/bin/openclaw-rebuild";
-          options = [ "NOPASSWD" ];
-        }
-      ];
-    }
-  ];
-
-  system.activationScripts.openclawRepoAccess.text = ''
-    ${pkgs.acl}/bin/setfacl -m u:openclaw:rx /home/buddia
-
-    for repo in /home/buddia/.nixos /home/buddia/alanixos; do
-      if [ -e "$repo" ]; then
-        ${pkgs.acl}/bin/setfacl -R -m u:openclaw:rwX "$repo"
-        ${pkgs.findutils}/bin/find "$repo" -type d -exec ${pkgs.acl}/bin/setfacl -m d:u:openclaw:rwX '{}' +
-      fi
-    done
-  '';
-
   # Firewall
   networking.firewall.enable = true;
 
@@ -82,19 +53,55 @@ in
   alanix.llm = {
     enable = true;
     backend = "vulkan";
-    host = "127.0.0.1";
-    listenHost = "0.0.0.0";
-    model = {
-      name = "qwen3.5-35b-a3b";
-      hfRepo = "unsloth/Qwen3.5-35B-A3B-GGUF";
-      hfFile = "Qwen3.5-35B-A3B-UD-Q5_K_XL.gguf";
-      # name = "qwen3.5-122b-a10b";
-      # hfRepo = "unsloth/Qwen3.5-122B-A10B-GGUF:Q3_K_S";
+    instances = {
+      chat = {
+        enable = true;
+        host = "127.0.0.1";
+        listenHost = "0.0.0.0";
+        port = 8080;
+        model = {
+          name = "qwen3.5-35b-a3b";
+          hfRepo = "unsloth/Qwen3.5-35B-A3B-GGUF";
+          hfFile = "Qwen3.5-35B-A3B-UD-Q5_K_XL.gguf";
+        };
+        ctxSize = 262144;
+        gpuLayers = "all";
+        parallel = 1;
+      };
+
+      vision = {
+        enable = true;
+        host = "127.0.0.1";
+        listenHost = "0.0.0.0";
+        port = 8081;
+        input = [ "text" "image" ];
+        model = {
+          name = "qwen3-vl-30b-a3b-instruct";
+          hfRepo = "unsloth/Qwen3-VL-30B-A3B-Instruct-GGUF";
+          hfFile = "Qwen3-VL-30B-A3B-Instruct-Q4_K_M.gguf";
+          mmprojUrl = "https://huggingface.co/unsloth/Qwen3-VL-30B-A3B-Instruct-GGUF/resolve/main/mmproj-F16.gguf";
+        };
+        ctxSize = 32768;
+        gpuLayers = "all";
+        parallel = 1;
+      };
+
+      embeddings = {
+        enable = true;
+        host = "127.0.0.1";
+        listenHost = "0.0.0.0";
+        port = 8082;
+        model = {
+          name = "qwen3-embedding-4b";
+          hfRepo = "Qwen/Qwen3-Embedding-4B-GGUF";
+          hfFile = "Qwen3-Embedding-4B-Q5_K_M.gguf";
+        };
+        ctxSize = 8192;
+        gpuLayers = "all";
+        parallel = 1;
+        extraArgs = [ "--embeddings" ];
+      };
     };
-    ctxSize = 262144;
-    # ctxSize = 131072;
-    gpuLayers = "all";
-    parallel = 2;
   };
 
   alanix.openclaw = {
@@ -104,6 +111,9 @@ in
     enableResponsesApi = true;
     enableChatCompletionsApi = true;
     enableTailscaleServe = true;
+    primaryLlmInstance = "chat";
+    imageLlmInstance = "vision";
+    embeddingLlmInstance = "embeddings";
     controlUi = {
       allowedOrigins = [
         "https://alan-framework.tailbb2802.ts.net"
@@ -121,9 +131,6 @@ in
             telegram = [
               "id:7336229793"
               "id:5255330939"
-            ];
-            nostr = [
-              "npub1yfuharj8jmlld3qwuffk2zc0lvsc3ajptvyt5v3cnwfltaugy0fs4dl80d"
             ];
           };
         };
@@ -148,22 +155,12 @@ in
 
     webSearch.enable = true;
 
-    # npub137vv20ctylhalqcyu783wxe6q9fqfnf2f76tyltkg8pj8m5ejcwsftxzqz
-    nostr = {
+    browser = {
       enable = true;
-      accountName = "Alan Framework Clawbot";
-      dmPolicy = "allowlist";
-      allowFrom = [ "npub1yfuharj8jmlld3qwuffk2zc0lvsc3ajptvyt5v3cnwfltaugy0fs4dl80d" ];
-      relays = [
-        "wss://relay.damus.io"
-        "wss://nos.lol"
-        "wss://relay.primal.net"
-      ];
-      profile = {
-        username = "alan-framework-clawbot";
-        displayName = "Alan Framework Clawbot";
-        bio = "OpenClaw assistant running on alan-framework.";
-      };
+      evaluateEnabled = true;
+      headless = true;
+      package = pkgs.chromium;
+      executablePath = "${pkgs.chromium}/bin/chromium";
     };
   };
 
@@ -179,6 +176,5 @@ in
     sops
     tree
     wget
-    openclawRebuild
   ];
 }

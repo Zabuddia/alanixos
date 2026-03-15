@@ -2,6 +2,7 @@
 
 let
   cfg = config.alanix.llm;
+  inherit (lib) types;
 
   package =
     if cfg.backend == "cpu" then
@@ -11,61 +12,220 @@ let
     else
       pkgs-unstable.llama-cpp-vulkan;
 
-  modelAlias = if cfg.alias != null then cfg.alias else cfg.model.name;
+  mkModelOptions = descriptionPrefix: {
+    name = lib.mkOption {
+      type = types.str;
+      description = "${descriptionPrefix} model name/alias seed.";
+    };
 
-  modelArgs =
-    if cfg.model.path != null then
-      [ "--model" cfg.model.path ]
-    else if cfg.model.url != null then
-      [ "--model-url" cfg.model.url ]
+    path = lib.mkOption {
+      type = types.nullOr types.str;
+      default = null;
+    };
+
+    url = lib.mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "${descriptionPrefix} remote GGUF URL passed to llama-server via --model-url.";
+    };
+
+    hfRepo = lib.mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "${descriptionPrefix} Hugging Face repo passed to llama-server via --hf-repo.";
+    };
+
+    hfFile = lib.mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "${descriptionPrefix} optional Hugging Face GGUF file name passed via --hf-file.";
+    };
+
+    mmprojPath = lib.mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "${descriptionPrefix} optional multimodal projector GGUF path passed via --mmproj.";
+    };
+
+    mmprojUrl = lib.mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "${descriptionPrefix} optional multimodal projector GGUF URL passed via --mmproj-url.";
+    };
+  };
+
+  mkInstanceSubmodule = types.submodule ({ name, ... }: {
+    options = {
+      enable = lib.mkEnableOption "llama.cpp instance ${name}";
+
+      host = lib.mkOption {
+        type = types.str;
+        default = "127.0.0.1";
+      };
+
+      listenHost = lib.mkOption {
+        type = types.str;
+        default = "0.0.0.0";
+        description = "Address/interface llama-server binds to.";
+      };
+
+      port = lib.mkOption {
+        type = types.port;
+        default = 8080;
+      };
+
+      alias = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Model alias exposed by llama-server's OpenAI-compatible API.";
+      };
+
+      ctxSize = lib.mkOption {
+        type = types.int;
+        default = 32768;
+      };
+
+      batchSize = lib.mkOption {
+        type = types.int;
+        default = 2048;
+      };
+
+      ubatchSize = lib.mkOption {
+        type = types.int;
+        default = 512;
+      };
+
+      parallel = lib.mkOption {
+        type = types.int;
+        default = 1;
+      };
+
+      gpuLayers = lib.mkOption {
+        type = types.oneOf [
+          types.int
+          (types.enum [ "auto" "all" ])
+        ];
+        default = "all";
+      };
+
+      flashAttention = lib.mkOption {
+        type = types.enum [ "on" "off" "auto" ];
+        default = "on";
+      };
+
+      threads = lib.mkOption {
+        type = types.nullOr types.int;
+        default = null;
+        description = "Generation threads. Null means use all available threads via nproc.";
+      };
+
+      threadsBatch = lib.mkOption {
+        type = types.nullOr types.int;
+        default = null;
+        description = "Prompt/batch threads. Null means match threads.";
+      };
+
+      mmap = lib.mkOption {
+        type = types.bool;
+        default = true;
+      };
+
+      mlock = lib.mkOption {
+        type = types.bool;
+        default = false;
+      };
+
+      input = lib.mkOption {
+        type = types.listOf (types.enum [ "text" "image" "audio" ]);
+        default = [ "text" ];
+        description = "Capabilities advertised to OpenClaw for this model.";
+      };
+
+      imageMinTokens = lib.mkOption {
+        type = types.nullOr types.int;
+        default = null;
+      };
+
+      imageMaxTokens = lib.mkOption {
+        type = types.nullOr types.int;
+        default = null;
+      };
+
+      model = mkModelOptions "Instance ${name}";
+
+      extraArgs = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+      };
+    };
+  });
+
+  enabledInstances = lib.filterAttrs (_: instance: instance.enable) cfg.instances;
+
+  mkModelAlias = instance:
+    if instance.alias != null then instance.alias else instance.model.name;
+
+  mkModelArgs = instance:
+    if instance.model.path != null then
+      [ "--model" instance.model.path ]
+    else if instance.model.url != null then
+      [ "--model-url" instance.model.url ]
     else
-      [ "--hf-repo" cfg.model.hfRepo ]
-      ++ (lib.optionals (cfg.model.hfFile != null) [ "--hf-file" cfg.model.hfFile ]);
+      [ "--hf-repo" instance.model.hfRepo ]
+      ++ (lib.optionals (instance.model.hfFile != null) [ "--hf-file" instance.model.hfFile ]);
 
-  staticArgs =
+  mkStaticArgs = instance:
     [
       "--host"
-      cfg.listenHost
+      instance.listenHost
       "--port"
-      (toString cfg.port)
+      (toString instance.port)
       "--alias"
-      modelAlias
+      (mkModelAlias instance)
       "--ctx-size"
-      (toString cfg.ctxSize)
+      (toString instance.ctxSize)
       "--batch-size"
-      (toString cfg.batchSize)
+      (toString instance.batchSize)
       "--ubatch-size"
-      (toString cfg.ubatchSize)
+      (toString instance.ubatchSize)
       "--parallel"
-      (toString cfg.parallel)
+      (toString instance.parallel)
       "--flash-attn"
-      cfg.flashAttention
+      instance.flashAttention
       "--gpu-layers"
-      (toString cfg.gpuLayers)
+      (toString instance.gpuLayers)
     ]
-    ++ (lib.optionals cfg.mlock [ "--mlock" ])
-    ++ (lib.optionals (!cfg.mmap) [ "--no-mmap" ])
-    ++ modelArgs
-    ++ cfg.extraArgs;
+    ++ (lib.optionals instance.mlock [ "--mlock" ])
+    ++ (lib.optionals (!instance.mmap) [ "--no-mmap" ])
+    ++ (mkModelArgs instance)
+    ++ (lib.optionals (instance.model.mmprojPath != null) [ "--mmproj" instance.model.mmprojPath ])
+    ++ (lib.optionals (instance.model.mmprojUrl != null) [ "--mmproj-url" instance.model.mmprojUrl ])
+    ++ (lib.optionals (instance.imageMinTokens != null) [ "--image-min-tokens" (toString instance.imageMinTokens) ])
+    ++ (lib.optionals (instance.imageMaxTokens != null) [ "--image-max-tokens" (toString instance.imageMaxTokens) ])
+    ++ instance.extraArgs;
 
-  startScript = pkgs.writeShellScript "alanix-llama-server" ''
-    set -euo pipefail
+  mkStartScript = instanceName: instance:
+    pkgs.writeShellScript "alanix-llama-server-${instanceName}" ''
+      set -euo pipefail
 
-    threads=${if cfg.threads == null then "$(${pkgs.coreutils}/bin/nproc)" else toString cfg.threads}
-    threads_batch=${if cfg.threadsBatch == null then "$threads" else toString cfg.threadsBatch}
+      threads=${if instance.threads == null then "$(${pkgs.coreutils}/bin/nproc)" else toString instance.threads}
+      threads_batch=${if instance.threadsBatch == null then "$threads" else toString instance.threadsBatch}
 
-    exec ${lib.getExe' package "llama-server"} \
-      --threads "$threads" \
-      --threads-batch "$threads_batch" \
-      ${lib.escapeShellArgs staticArgs}
-  '';
+      exec ${lib.getExe' package "llama-server"} \
+        --threads "$threads" \
+        --threads-batch "$threads_batch" \
+        ${lib.escapeShellArgs (mkStaticArgs instance)}
+    '';
+
+  mkServiceName = instanceName:
+    if instanceName == "default" then "llama-server" else "llama-server-${instanceName}";
 in
 {
   options.alanix.llm = {
-    enable = lib.mkEnableOption "local llama.cpp server";
+    enable = lib.mkEnableOption "local llama.cpp servers";
 
     backend = lib.mkOption {
-      type = lib.types.enum [
+      type = types.enum [
         "cpu"
         "rocm"
         "vulkan"
@@ -73,138 +233,46 @@ in
       default = "vulkan";
     };
 
-    host = lib.mkOption {
-      type = lib.types.str;
-      default = "127.0.0.1";
-    };
-
-    listenHost = lib.mkOption {
-      type = lib.types.str;
-      default = cfg.host;
-      description = "Address/interface llama-server binds to.";
-    };
-
-    port = lib.mkOption {
-      type = lib.types.port;
-      default = 8080;
-    };
-
-    alias = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-      description = "Model alias exposed by llama-server's OpenAI-compatible API.";
-    };
-
-    ctxSize = lib.mkOption {
-      type = lib.types.int;
-      default = 32768;
-    };
-
-    batchSize = lib.mkOption {
-      type = lib.types.int;
-      default = 2048;
-    };
-
-    ubatchSize = lib.mkOption {
-      type = lib.types.int;
-      default = 512;
-    };
-
-    parallel = lib.mkOption {
-      type = lib.types.int;
-      default = 4;
-    };
-
-    gpuLayers = lib.mkOption {
-      type = lib.types.oneOf [
-        lib.types.int
-        (lib.types.enum [ "auto" "all" ])
-      ];
-      default = "all";
-    };
-
-    flashAttention = lib.mkOption {
-      type = lib.types.enum [ "on" "off" "auto" ];
-      default = "on";
-    };
-
-    threads = lib.mkOption {
-      type = lib.types.nullOr lib.types.int;
-      default = null;
-      description = "Generation threads. Null means use all available threads via nproc.";
-    };
-
-    threadsBatch = lib.mkOption {
-      type = lib.types.nullOr lib.types.int;
-      default = null;
-      description = "Prompt/batch threads. Null means match threads.";
-    };
-
-    mmap = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-    };
-
-    mlock = lib.mkOption {
-      type = lib.types.bool;
-      default = false;
-    };
-
     stateDir = lib.mkOption {
-      type = lib.types.str;
+      type = types.str;
       default = "/var/lib/llm";
     };
 
-    model = {
-      name = lib.mkOption {
-        type = lib.types.str;
-      };
-
-      path = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-      };
-
-      url = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = "Remote GGUF URL passed to llama-server via --model-url.";
-      };
-
-      hfRepo = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = "Hugging Face repo passed to llama-server via --hf-repo.";
-      };
-
-      hfFile = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = "Optional Hugging Face GGUF file name passed via --hf-file.";
-      };
-    };
-
-    extraArgs = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [ ];
+    instances = lib.mkOption {
+      type = types.attrsOf mkInstanceSubmodule;
+      default = { };
+      description = "Named llama.cpp server instances.";
     };
   };
 
   config = lib.mkIf cfg.enable {
-    assertions = [
-      {
-        assertion = lib.length (lib.filter (x: x != null) [
-          cfg.model.path
-          cfg.model.url
-          cfg.model.hfRepo
-        ]) == 1;
-        message = "alanix.llm.model: set exactly one of path, url, or hfRepo.";
-      }
-      {
-        assertion = cfg.model.hfRepo != null || cfg.model.hfFile == null;
-        message = "alanix.llm.model.hfFile requires alanix.llm.model.hfRepo.";
-      }
-    ];
+    assertions =
+      lib.flatten (
+        lib.mapAttrsToList
+          (instanceName: instance:
+            lib.optionals instance.enable [
+              {
+                assertion = lib.length (lib.filter (x: x != null) [
+                  instance.model.path
+                  instance.model.url
+                  instance.model.hfRepo
+                ]) == 1;
+                message = "alanix.llm.instances.${instanceName}.model: set exactly one of path, url, or hfRepo.";
+              }
+              {
+                assertion = instance.model.hfRepo != null || instance.model.hfFile == null;
+                message = "alanix.llm.instances.${instanceName}.model.hfFile requires alanix.llm.instances.${instanceName}.model.hfRepo.";
+              }
+              {
+                assertion = lib.length (lib.filter (x: x != null) [
+                  instance.model.mmprojPath
+                  instance.model.mmprojUrl
+                ]) <= 1;
+                message = "alanix.llm.instances.${instanceName}.model: set at most one of mmprojPath or mmprojUrl.";
+              }
+            ])
+          cfg.instances
+      );
 
     users.users.llm = {
       isSystemUser = true;
@@ -224,28 +292,32 @@ in
       "d ${cfg.stateDir}/logs 0750 llm llm - -"
     ];
 
-    systemd.services.llama-server = {
-      description = "Local llama.cpp model server";
-      after = [ "network.target" ];
-      wantedBy = [ "multi-user.target" ];
+    systemd.services =
+      lib.mapAttrs'
+        (instanceName: instance:
+          lib.nameValuePair (mkServiceName instanceName) {
+            description = "Local llama.cpp model server (${instanceName})";
+            after = [ "network.target" ];
+            wantedBy = [ "multi-user.target" ];
 
-      environment = {
-        HOME = cfg.stateDir;
-        XDG_CACHE_HOME = "${cfg.stateDir}/cache";
-        HF_HOME = "${cfg.stateDir}/huggingface";
-      };
+            environment = {
+              HOME = cfg.stateDir;
+              XDG_CACHE_HOME = "${cfg.stateDir}/cache";
+              HF_HOME = "${cfg.stateDir}/huggingface";
+            };
 
-      serviceConfig = {
-        User = "llm";
-        Group = "llm";
-        WorkingDirectory = cfg.stateDir;
-        ExecStart = startScript;
-        Restart = "always";
-        RestartSec = "5s";
-        StateDirectory = "llm";
-        LogsDirectory = "llm";
-      };
-    };
+            serviceConfig = {
+              User = "llm";
+              Group = "llm";
+              WorkingDirectory = cfg.stateDir;
+              ExecStart = mkStartScript instanceName instance;
+              Restart = "always";
+              RestartSec = "5s";
+              StateDirectory = "llm";
+              LogsDirectory = "llm";
+            };
+          })
+        enabledInstances;
 
     environment.systemPackages = [ package ];
   };
