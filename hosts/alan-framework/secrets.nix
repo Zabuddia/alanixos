@@ -44,13 +44,6 @@ in
         mode = "0400";
       };
     })
-    (lib.mkIf (openclawCfg.enable && openclawCfg.nostr.enable) {
-      ${openclawCfg.nostr.privateKeySecret} = {
-        owner = "openclaw";
-        group = "openclaw";
-        mode = "0400";
-      };
-    })
     (lib.mkIf (openclawCfg.enable && openclawCfg.webSearch.enable) {
       ${openclawCfg.webSearch.apiKeySecret} = {
         owner = "openclaw";
@@ -78,14 +71,6 @@ in
     (lib.mkIf (openclawCfg.enable && openclawCfg.telegram.enable) {
       "openclaw-telegram-bot-token" = {
         content = config.sops.placeholder.${openclawCfg.telegram.tokenSecret};
-        owner = "openclaw";
-        group = "openclaw";
-        mode = "0400";
-      };
-    })
-    (lib.mkIf (openclawCfg.enable && openclawCfg.nostr.enable) {
-      "openclaw-nostr-env" = {
-        content = "NOSTR_PRIVATE_KEY=${config.sops.placeholder.${openclawCfg.nostr.privateKeySecret}}";
         owner = "openclaw";
         group = "openclaw";
         mode = "0400";
