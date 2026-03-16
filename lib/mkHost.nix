@@ -15,8 +15,9 @@ in
 lib.nixosSystem {
   inherit system;
 
-  specialArgs = { 
+  specialArgs = {
     inherit inputs hostname pkgs-unstable;
+    allHosts = inputs.self.nixosConfigurations;
   };
 
   modules =

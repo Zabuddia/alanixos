@@ -1,67 +1,35 @@
-{ pkgs, hostname, config, ... }:
+{ hostname, config, ... }:
+
 {
   imports = [
     ./hardware-configuration.nix
     ./secrets.nix
-    ./users.nix
-    ./wireguard.nix
-    ../../modules/desktop
-    ../../modules/ssh.nix
-    ../../modules/tailscale.nix
-    ../../modules/bitcoin.nix
-    ../../modules/filebrowser.nix
+    ../../modules/network/wireguard.nix
+    ../../modules/roles/server.nix
+    ../../modules/services/bitcoin.nix
+    ../../modules/services/filebrowser.nix
   ];
+
+  alanix.ddns = {
+    enable = true;
+    provider = "cloudflare";
+    domains = [ "alan-big-nixos-wg.fifefin.com" ];
+    credentialsFile = config.sops.templates."cloudflare-env".path;
+  };
+
+  alanix.wireguard = {
+    enable = true;
+    vpnIP = "10.100.0.1";
+    endpoint = "alan-big-nixos-wg.fifefin.com:51820";
+    publicKey = "19Kloz2N3r2ksivuyLNtSplbDxS1kneNzVNRFhnQoCA=";
+    privateKeyFile = config.sops.secrets."wireguard-private-keys/${hostname}".path;
+  };
 
   alanix.desktop.enable = true;
 
-  # Identity
-  networking.hostName = hostname;
-  time.timeZone = "America/Denver";
-  system.stateVersion = "25.11";
-
-  # Bootloader
-  boot.loader.systemd-boot.enable = true;
-  boot.loader.efi.canTouchEfiVariables = true;
-
-  # Host basics
-  i18n.defaultLocale = "en_US.UTF-8";
-
-  # Nix basics
-  nix.settings.experimental-features = [ "nix-command" "flakes" ];
-  programs.nix-ld.enable = true;
-
-  # Networking
-  networking.networkmanager.enable = true;
-
-  # Firewall
-  networking.firewall.enable = true;
-
-  # Swap
   swapDevices = [
     { device = "/swapfile"; size = 8192; }
   ];
-
-  # Basic tools
-  environment.systemPackages = with pkgs; [
-    age
-    caddy
-    curl
-    git
-    htop
-    jq
-    restic
-    sops
-    tree
-    wget
-  ];
-
-  # Cloudflare DDNS
-  services.cloudflare-ddns = {
-    enable = true;
-    domains = [ "alan-big-nixos-wg.fifefin.com" ];
-    credentialsFile = config.sops.templates."cloudflare-env".path;
-    provider.ipv6 = "none";
-  };
 
   # File browser
   alanix.filebrowser = {

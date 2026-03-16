@@ -40,46 +40,17 @@
 
   outputs = inputs:
   let
+    lib = inputs.nixpkgs.lib;
     mkHost = import ./lib/mkHost.nix { inherit inputs; };
+    hostNames = builtins.attrNames (builtins.readDir ./hosts);
   in
   {
-    nixosConfigurations = {
-      alan-big-nixos = mkHost {
-        hostname = "alan-big-nixos";
-        system = "x86_64-linux";
-
-        features = {
-          home-manager = true;
-          sops = true;
-          nix-bitcoin = true;
-          nix-openclaw = false;
-          disko = false;
-        };
-      };
-      randy-big-nixos = mkHost {
-        hostname = "randy-big-nixos";
-        system = "x86_64-linux";
-
-        features = {
-          home-manager = true;
-          sops = true;
-          nix-bitcoin = false;
-          nix-openclaw = false;
-          disko = false;
-        };
-      };
-      alan-framework = mkHost {
-        hostname = "alan-framework";
-        system = "x86_64-linux";
-
-        features = {
-          home-manager = true;
-          sops = true;
-          nix-bitcoin = false;
-          nix-openclaw = true;
-          disko = false;
-        };
-      };
-    };
+    nixosConfigurations = lib.listToAttrs (map (hostname:
+      let meta = import ./hosts/${hostname}/meta.nix; in
+      lib.nameValuePair hostname (mkHost {
+        inherit hostname;
+        inherit (meta) system features;
+      })
+    ) hostNames);
   };
 }
