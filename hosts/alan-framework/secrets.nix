@@ -67,6 +67,13 @@ in
         group = "openclaw";
         mode = "0400";
       };
+
+      "openclaw-node-env" = {
+        content = "OPENCLAW_GATEWAY_TOKEN=${config.sops.placeholder.${openclawCfg.tokenSecret}}";
+        owner = "buddia";
+        group = "users";
+        mode = "0400";
+      };
     })
     (lib.mkIf (openclawCfg.enable && openclawCfg.telegram.enable) {
       "openclaw-telegram-bot-token" = {

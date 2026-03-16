@@ -85,6 +85,14 @@ let
       mkModelAlias embeddingInstance
     else
       null;
+
+  desktopNodeGatewayHost =
+    if cfg.desktopNode.gatewayHost != null then
+      cfg.desktopNode.gatewayHost
+    else if cfg.customBindHost != null then
+      cfg.customBindHost
+    else
+      "127.0.0.1";
 in
 {
   options.alanix.openclaw = {
@@ -241,6 +249,46 @@ in
       };
     };
 
+    canvas = {
+      enable = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Enable the OpenClaw canvas host on this system.";
+      };
+
+      nodePackage = lib.mkOption {
+        type = types.package;
+        default = pkgs.nodejs;
+        description = "Node.js package made available to the OpenClaw service for the canvas host.";
+      };
+    };
+
+    desktopNode = {
+      enable = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Run an OpenClaw node in a desktop user session for visible browser windows.";
+      };
+
+      user = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "User account that should run the desktop OpenClaw node.";
+      };
+
+      displayName = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Optional display name advertised by the desktop OpenClaw node.";
+      };
+
+      gatewayHost = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Gateway host the desktop node should connect to. Defaults to 127.0.0.1.";
+      };
+    };
+
     extraConfig = lib.mkOption {
       type = types.attrs;
       default = { };
@@ -261,6 +309,10 @@ in
       {
         assertion = cfg.embeddingLlmInstance == null || embeddingInstance != null;
         message = "alanix.openclaw.embeddingLlmInstance must reference an enabled alanix.llm.instances entry.";
+      }
+      {
+        assertion = !cfg.desktopNode.enable || cfg.desktopNode.user != null;
+        message = "alanix.openclaw.desktopNode.user must be set when desktopNode.enable = true.";
       }
     ];
 
@@ -388,20 +440,51 @@ in
       environment = {
         HOME = config.services.openclaw-gateway.stateDir;
         OPENCLAW_NIX_MODE = "1";
-        OPENCLAW_SKIP_BROWSER_CONTROL_SERVER = if cfg.browser.enable then "0" else "1";
-        OPENCLAW_SKIP_CANVAS_HOST = "1";
+        OPENCLAW_SKIP_BROWSER_CONTROL_SERVER = if cfg.browser.enable && !cfg.desktopNode.enable then "0" else "1";
+        OPENCLAW_SKIP_CANVAS_HOST = if cfg.canvas.enable then "0" else "1";
         OPENCLAW_SKIP_GMAIL_WATCHER = "1";
         OPENCLAW_DISABLE_BONJOUR = "1";
       };
 
       servicePath =
         lib.optionals config.services.tailscale.enable [ config.services.tailscale.package ]
-        ++ lib.optionals (cfg.browser.enable && cfg.browser.package != null) [ cfg.browser.package ];
+        ++ lib.optionals (cfg.browser.enable && cfg.browser.package != null) [ cfg.browser.package ]
+        ++ lib.optionals cfg.canvas.enable [ cfg.canvas.nodePackage ];
     };
 
     environment.systemPackages = [
       openclawCli
       openclawPkgs.openclaw-tools
     ];
+
+    home-manager.users = lib.mkIf cfg.desktopNode.enable {
+      ${cfg.desktopNode.user} = {
+        systemd.user.services.openclaw-node = {
+          Unit = {
+            Description = "OpenClaw desktop node";
+            After = [ "graphical-session.target" ];
+            PartOf = [ "graphical-session.target" ];
+          };
+
+          Service = {
+            ExecStart =
+              let
+                displayNameArg = lib.optionalString (cfg.desktopNode.displayName != null)
+                  " --display-name ${lib.escapeShellArg cfg.desktopNode.displayName}";
+              in
+              "${openclawCli}/bin/openclaw node run --host ${lib.escapeShellArg desktopNodeGatewayHost} --port ${toString cfg.port}${displayNameArg}";
+            Environment = [
+              "OPENCLAW_CONFIG_PATH=${config.services.openclaw-gateway.configPath}"
+              "OPENCLAW_STATE_DIR=%h/.local/state/openclaw"
+            ];
+            EnvironmentFile = [ config.sops.templates."openclaw-node-env".path ];
+            Restart = "always";
+            RestartSec = 2;
+          };
+
+          Install.WantedBy = [ "graphical-session.target" ];
+        };
+      };
+    };
   };
 }

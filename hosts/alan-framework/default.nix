@@ -158,9 +158,20 @@
     browser = {
       enable = true;
       evaluateEnabled = true;
-      headless = true;
+      headless = false;
       package = pkgs.chromium;
       executablePath = "${pkgs.chromium}/bin/chromium";
+    };
+
+    canvas = {
+      enable = true;
+      nodePackage = pkgs.nodejs;
+    };
+
+    desktopNode = {
+      enable = true;
+      user = "buddia";
+      displayName = "alan-framework-desktop";
     };
   };
 
