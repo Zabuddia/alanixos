@@ -1,7 +1,7 @@
 {
   editors = {
     alan-laptop-nixos = {
-      recipient = "age1tzastckgekm2ynyeqexsgknyprt4p5emgw722nq3tg6a2ghgla3salq90p";
+      recipient = "age1w6a0h33yazg69vdupphhxjk3a6rdmgq5qz6c4l2d637j3grzsclqxyyl7k";
       description = "Primary editor key kept on a laptop/workstation.";
     };
   };
