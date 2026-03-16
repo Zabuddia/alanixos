@@ -1,49 +1,33 @@
 { pkgs, hostname, config, ... }:
+
 {
   imports = [
     ./hardware-configuration.nix
     ./secrets.nix
-    ./users.nix
-    ./wireguard.nix
-    ../../modules/llm.nix
-    ../../modules/openclaw.nix
-    ../../modules/desktop
-    ../../modules/ssh.nix
-    ../../modules/tailscale.nix
+    ../../modules/network/wireguard.nix
+    ../../modules/roles/server.nix
+    ../../modules/services/llm.nix
+    ../../modules/services/openclaw.nix
   ];
+
+  alanix.ddns = {
+    enable = true;
+    provider = "cloudflare";
+    domains = [ "alan-framework-wg.fifefin.com" ];
+    credentialsFile = config.sops.templates."cloudflare-env".path;
+  };
+
+  alanix.wireguard = {
+    enable = true;
+    vpnIP = "10.100.0.3";
+    endpoint = "alan-framework-wg.fifefin.com:51820";
+    publicKey = "f6MBPUIr8jLqr8F4LDvJksJIN/BvGnDGG8OycXbrd1c=";
+    privateKeyFile = config.sops.secrets."wireguard-private-keys/${hostname}".path;
+  };
 
   alanix.desktop.enable = true;
 
-  # Identity
-  networking.hostName = hostname;
-  time.timeZone = "America/Denver";
-  system.stateVersion = "25.11";
-
-  # Bootloader
-  boot.loader.systemd-boot.enable = true;
-  boot.loader.efi.canTouchEfiVariables = true;
-
-  # Host basics
-  i18n.defaultLocale = "en_US.UTF-8";
-
-  # Nix basics
-  nix.settings.experimental-features = [ "nix-command" "flakes" ];
-  programs.nix-ld.enable = true;
-
-  # Networking
-  networking.networkmanager.enable = true;
   services.tailscale.extraSetFlags = [ "--operator=openclaw" ];
-
-  # Firewall
-  networking.firewall.enable = true;
-
-  # Cloudflare DDNS
-  services.cloudflare-ddns = {
-    enable = true;
-    domains = [ "alan-framework-wg.fifefin.com" ];
-    credentialsFile = config.sops.templates."cloudflare-env".path;
-    provider.ipv6 = "none";
-  };
 
   alanix.llm = {
     enable = true;
@@ -169,18 +153,4 @@
       displayName = "alan-framework-desktop";
     };
   };
-
-  # Basic tools
-  environment.systemPackages = with pkgs; [
-    age
-    caddy
-    curl
-    git
-    htop
-    jq
-    restic
-    sops
-    tree
-    wget
-  ];
 }
