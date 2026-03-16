@@ -26,6 +26,12 @@
         endpoint = "alan-framework-wg.fifefin.com:51820";
         publicKey = "f6MBPUIr8jLqr8F4LDvJksJIN/BvGnDGG8OycXbrd1c=";
       };
+
+      alan-laptop-nixos = {
+        vpnIP = "10.100.0.4";
+        endpoint = "alan-laptop-nixos-wg.fifefin.com:51820";
+        publicKey = "U96LblYX6Klccf6yFVmKDQZp4882rSPTWq2wzFmbVV4=";
+      };
     };
   };
 }

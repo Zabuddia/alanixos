@@ -9,19 +9,11 @@
   imports = [
     ./git.nix
     ./sh.nix
-    ./librewolf.nix
-    ./codium.nix
   ];
 
   home.packages = with pkgs; [
     foot
-    xournalpp
-    libreoffice
-    remmina
-    gimp
-    tor-browser
     chromium
-    firefox
   ];
 
   home.stateVersion = "25.11";
