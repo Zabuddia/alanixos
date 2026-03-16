@@ -10,6 +10,8 @@ let
         allowedIPs = [ "${peer.vpnIP}/32" ];
         endpoint = peer.endpoint;
         persistentKeepalive = 25;
+        dynamicEndpointRefreshSeconds = 60;
+        dynamicEndpointRefreshRestartSeconds = 5;
       }
     )
     (lib.filterAttrs
