@@ -1,7 +1,7 @@
 { hostname, pkgs, ... }:
 
 {
-  imports = [ ./desktop ];
+  imports = [ ./desktop ./network/wireguard.nix ./network/ddns.nix ];
   networking.hostName = hostname;
   time.timeZone = "America/Denver";
   system.stateVersion = "25.11";

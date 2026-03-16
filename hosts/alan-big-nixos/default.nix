@@ -4,7 +4,6 @@
   imports = [
     ./hardware-configuration.nix
     ./secrets.nix
-    ../../modules/network/wireguard.nix
     ../../modules/roles/server.nix
     ../../modules/services/bitcoin.nix
     ../../modules/services/filebrowser.nix
