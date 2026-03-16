@@ -4,7 +4,6 @@
   imports = [
     ./hardware-configuration.nix
     ./secrets.nix
-    ../../modules/network/wireguard.nix
     ../../modules/roles/workstation.nix
     ../../modules/services/sunshine.nix
   ];
@@ -23,6 +22,8 @@
     publicKey = "U96LblYX6Klccf6yFVmKDQZp4882rSPTWq2wzFmbVV4=";
     privateKeyFile = config.sops.secrets."wireguard-private-keys/${hostname}".path;
   };
+
+  alanix.desktop.enable = true;
 
   swapDevices = [
     { device = "/swapfile"; size = 8192; }

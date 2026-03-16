@@ -1,14 +1,11 @@
-{ config, ... }:
+{ config, pkgs-unstable, ... }:
 
 {
   imports = [
     ../base.nix
     ../network/ssh.nix
     ../network/tailscale.nix
-    ../network/ddns.nix
   ];
-
-  alanix.desktop.enable = true;
 
   users.mutableUsers = false;
 
@@ -20,5 +17,6 @@
 
   home-manager.useGlobalPkgs = true;
   home-manager.useUserPackages = true;
+  home-manager.extraSpecialArgs = { inherit pkgs-unstable; };
   home-manager.users.buddia = import ../../home/buddia/workstation.nix;
 }

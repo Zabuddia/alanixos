@@ -11,5 +11,6 @@
     tor-browser
     chromium
     firefox
+    moonlight-qt
   ];
 }
