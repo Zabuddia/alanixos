@@ -1,5 +1,6 @@
-{ pkgs, ... }:
-{
+{ config, pkgs, lib, ... }:
+
+lib.mkIf config.alanix.desktop.enable {
   programs.sway.enable = true;
   security.polkit.enable = true;
 

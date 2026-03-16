@@ -11,5 +11,5 @@
   home-manager.useGlobalPkgs = true;
   home-manager.useUserPackages = true;
   
-  home-manager.users.buddia = import ../../home/buddia;
+  home-manager.users.buddia = import ../../home/buddia/server.nix;
 }

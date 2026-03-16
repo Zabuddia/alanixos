@@ -5,12 +5,14 @@
     ./secrets.nix
     ./users.nix
     ./wireguard.nix
-    ../../modules/sway.nix
+    ../../modules/desktop
     ../../modules/ssh.nix
     ../../modules/tailscale.nix
     ../../modules/bitcoin.nix
     ../../modules/filebrowser.nix
   ];
+
+  alanix.desktop.enable = true;
 
   # Identity
   networking.hostName = hostname;
@@ -26,6 +28,7 @@
 
   # Nix basics
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
+  programs.nix-ld.enable = true;
 
   # Networking
   networking.networkmanager.enable = true;
