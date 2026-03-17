@@ -83,6 +83,10 @@ git push
 cd ~/.nixos
 git pull
 sops updatekeys --yes secrets/secrets.yaml
+
+# If the already-set-up machine is not a workstation then do:
+sudo SOPS_AGE_KEY_FILE="/var/lib/sops-nix/key.txt" sops updatekeys --yes secrets/secrets.yaml
+
 git add secrets/secrets.yaml
 git commit -m "Re-encrypt secrets for <hostname>"
 git push
