@@ -3,9 +3,7 @@
 {
   imports = [
     ./sway.nix
-    ./waybar.nix
-    ./terminal.nix
-    ./launcher.nix
+    ./audio.nix
   ];
 
   options.alanix.desktop.enable = lib.mkEnableOption "alanix desktop environment";
