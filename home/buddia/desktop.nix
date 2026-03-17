@@ -91,6 +91,7 @@
         on-click = "wlogout";
         tooltip = false;
       };
+
     }];
 
     style = ''
@@ -145,6 +146,7 @@
       #network.disconnected {
         color: #f38ba8;
       }
+
     '';
   };
 
@@ -155,7 +157,7 @@
       bars = [];
       startup = [
         { command = "waybar"; }
-        { command = "swaymsg workspace number 1"; always = false; }
+{ command = "sleep 2 && swaymsg workspace number 1"; always = false; }
       ];
       keybindings = lib.mkOptionDefault {
         "XF86AudioRaiseVolume" = "exec pactl set-sink-volume @DEFAULT_SINK@ +5%";

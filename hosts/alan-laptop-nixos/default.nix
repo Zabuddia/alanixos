@@ -23,6 +23,12 @@
     privateKeyFile = config.sops.secrets."wireguard-private-keys/${hostname}".path;
   };
 
+  alanix.tailscale = {
+    enable = true;
+    acceptRoutes = true;
+    operator = "buddia";
+  };
+
   alanix.desktop.enable = true;
 
   home-manager.users.buddia = {
