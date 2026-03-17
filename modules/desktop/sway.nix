@@ -13,4 +13,5 @@ lib.mkIf config.alanix.desktop.enable {
   };
 
   services.gnome.gcr-ssh-agent.enable = false;
+  services.udev.packages = [ pkgs.brightnessctl ];
 }

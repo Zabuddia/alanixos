@@ -5,10 +5,12 @@ let
   nixpkgs = inputs.nixpkgs;
   nixpkgs-unstable = inputs.nixpkgs-unstable;
   lib = nixpkgs.lib;
-  
+
+  nixpkgsConfig = { allowUnfree = true; };
+
   pkgs-unstable = import nixpkgs-unstable {
     inherit system;
-    config.allowUnfree = true;
+    config = nixpkgsConfig;
   };
 
 in

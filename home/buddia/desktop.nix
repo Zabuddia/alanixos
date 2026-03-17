@@ -1,7 +1,10 @@
-{ pkgs, lib, ... }:
+{ pkgs, pkgs-unstable, lib, ... }:
 
 {
-  home.packages = with pkgs; [ foot wofi waybar pulseaudio swaylock ];
+  home.file."Pictures/.keep".text = "";
+
+  home.packages = with pkgs; [ pulseaudio swaylock brightnessctl grim slurp xfce.thunar nnn imv mpv wl-clipboard ]
+    ++ (with pkgs-unstable; [ foot wofi ]);
 
   programs.wlogout = {
     enable = true;
@@ -24,6 +27,7 @@
 
   programs.waybar = {
     enable = true;
+    package = pkgs-unstable.waybar;
     settings = [{
       layer = "top";
       position = "top";
@@ -38,7 +42,6 @@
 
       "clock" = {
         format = "{:%a %d %b  %H:%M}";
-        format-alt = "{:%Y-%m-%d}";
         tooltip-format = "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>";
       };
 
@@ -158,7 +161,11 @@
         "XF86AudioRaiseVolume" = "exec pactl set-sink-volume @DEFAULT_SINK@ +5%";
         "XF86AudioLowerVolume" = "exec pactl set-sink-volume @DEFAULT_SINK@ -5%";
         "XF86AudioMute" = "exec pactl set-sink-mute @DEFAULT_SINK@ toggle";
+        "XF86MonBrightnessUp" = "exec brightnessctl set +5%";
+        "XF86MonBrightnessDown" = "exec brightnessctl set 5%-";
         "Mod4+Shift+e" = "exec wlogout";
+        "Print" = "exec sh -c 'grim - | tee ~/Pictures/screenshot-$(date +%Y%m%d-%H%M%S).png | wl-copy'";
+        "Shift+Print" = "exec sh -c 'grim -g \"$(slurp)\" - | tee ~/Pictures/screenshot-$(date +%Y%m%d-%H%M%S).png | wl-copy'";
       };
       input = {
         "type:touchpad" = {
