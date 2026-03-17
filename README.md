@@ -124,3 +124,14 @@ sudo nixos-rebuild switch --flake ~/.nixos#<hostname>
 ```bash
 reboot
 ```
+
+## Connect to eduroam
+
+```bash
+nmcli connection add type wifi ifname wlo1 con-name eduroam ssid eduroam \
+    wifi-sec.key-mgmt wpa-eap \
+    802-1x.eap peap \
+    802-1x.identity "your_netid@byu.edu" \
+    802-1x.password "your_password" \
+    802-1x.phase2-auth mschapv2
+```
