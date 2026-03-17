@@ -1,7 +1,7 @@
 { pkgs, ... }:
 
 {
-  imports = [ ./common.nix ./programs/librewolf.nix ./programs/codium.nix ];
+  imports = [ ./common.nix ./programs/librewolf.nix ./programs/codium.nix ./desktop.nix ];
 
   home.packages = with pkgs; [
     xournalpp
