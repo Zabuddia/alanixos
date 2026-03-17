@@ -30,6 +30,28 @@
       text = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKNJ7KX0IIt27KqD2c3dqMT8vbO0K/G1ibfC+a/WxijO fife.alan@protonmail.com";
       force = true;
     };
+
+    home.file.".ssh/id_ed25519_work.pub" = {
+      text = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINZHjKqhqWZalx6/NsQv1OGXJP6LBMfXS0QedqwhjFzl briggsconsulting.coaching@gmail.com";
+      force = true;
+    };
+
+    programs.ssh.matchBlocks = {
+      "github-personal" = {
+        hostname = "github.com";
+        user = "git";
+        identityFile = "~/.ssh/id_ed25519";
+        identitiesOnly = true;
+        controlPath = "none";
+      };
+      "github-work" = {
+        hostname = "github.com";
+        user = "git";
+        identityFile = "~/.ssh/id_ed25519_work";
+        identitiesOnly = true;
+        controlPath = "none";
+      };
+    };
   };
 
   swapDevices = [
