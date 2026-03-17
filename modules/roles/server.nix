@@ -4,7 +4,6 @@
   imports = [
     ../base.nix
     ../network/ssh.nix
-    ../network/tailscale.nix
   ];
 
   users.mutableUsers = false;

@@ -24,6 +24,12 @@
     privateKeyFile = config.sops.secrets."wireguard-private-keys/${hostname}".path;
   };
 
+  alanix.tailscale = {
+    enable = true;
+    acceptRoutes = true;
+    operator = "openclaw";
+  };
+
   alanix.desktop.enable = true;
 
   home-manager.users.buddia = {
@@ -32,8 +38,6 @@
       force = true;
     };
   };
-
-  services.tailscale.extraSetFlags = [ "--operator=openclaw" ];
 
   alanix.llm = {
     enable = true;
