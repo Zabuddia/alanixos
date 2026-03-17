@@ -29,4 +29,11 @@
     group = "root";
     mode = "0400";
   };
+
+  sops.secrets."ssh-private-keys/alan-laptop-nixos" = {
+    owner = "buddia";
+    group = "users";
+    mode = "0600";
+    path = "/home/buddia/.ssh/id_ed25519";
+  };
 }

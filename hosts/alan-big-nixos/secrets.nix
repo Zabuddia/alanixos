@@ -19,6 +19,13 @@
     mode = "0400";
   };
 
+  sops.secrets."ssh-private-keys/alan-big-nixos" = {
+    owner = "buddia";
+    group = "users";
+    mode = "0600";
+    path = "/home/buddia/.ssh/id_ed25519";
+  };
+
   sops.secrets."cloudflare/api-token" = {
     owner = "root";
     group = "root";

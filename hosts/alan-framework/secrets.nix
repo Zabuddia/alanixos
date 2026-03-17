@@ -29,6 +29,13 @@ in
         group = "root";
         mode = "0400";
       };
+
+      "ssh-private-keys/alan-framework" = {
+        owner = "buddia";
+        group = "users";
+        mode = "0600";
+        path = "/home/buddia/.ssh/id_ed25519";
+      };
     }
     (lib.mkIf openclawCfg.enable {
       ${openclawCfg.tokenSecret} = {
