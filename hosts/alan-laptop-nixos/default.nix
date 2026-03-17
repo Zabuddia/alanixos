@@ -25,6 +25,13 @@
 
   alanix.desktop.enable = true;
 
+  home-manager.users.buddia = {
+    home.file.".ssh/id_ed25519.pub" = {
+      text = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKNJ7KX0IIt27KqD2c3dqMT8vbO0K/G1ibfC+a/WxijO fife.alan@protonmail.com";
+      force = true;
+    };
+  };
+
   swapDevices = [
     { device = "/swapfile"; size = 8192; }
   ];
