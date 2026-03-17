@@ -1,101 +1,97 @@
-# Fresh NixOS + Flake + sops-nix Bootstrap Guide
+# NixOS Bootstrap Guide
 
-This document describes **every command** needed to take a **brand-new NixOS install**
-and rebuild it from an existing flake repo that uses **sops-nix with age**.
+How to set up a new machine from this flake repo.
 
-Assumptions:
 - User: `buddia`
-- Repo: `git@github.com:Zabuddia/alanixos.git`
+- Repo: `https://github.com/Zabuddia/alanixos`
 - Flake path: `~/.nixos`
-- Host: `randy-big-nixos`
-- Secrets: `secrets/secrets.yaml`
-- Encryption: **age**
-- You already have **another computer** that can decrypt secrets
+- Secrets: `secrets/secrets.yaml` (encrypted with age via sops-nix)
+- Prerequisite: another machine that is already set up and can decrypt secrets
 
 ---
 
-## PHASE 0 — Fresh NixOS Install
-1. Install NixOS normally
-2. Create user `buddia`
-3. Enable networking
-4. Boot into the system
+## Step 1 — Fresh NixOS install
+
+Install NixOS normally, create user `buddia`, enable networking, and boot in.
 
 ---
 
-## PHASE 1 — Enable tools
+## Step 2 — Enter a shell with required tools
+
 ```bash
 nix-shell -p git sops age
 ```
 
 ---
 
-## PHASE 2 — Git access (SSH)
-```bash
-ssh-keygen -t ed25519 -C "fife.alan@protonmail.com"
-cat ~/.ssh/id_ed25519.pub
-# Add key to GitHub → Settings → SSH keys
-```
+## Step 3 — Clone the repo
 
----
+SSH keys are deployed by sops-nix after the first rebuild, so use HTTPS for the initial clone:
 
-## PHASE 3 — Clone flake repo
 ```bash
-git clone git@github.com:Zabuddia/alanixos.git ~/.nixos
+git clone https://github.com/Zabuddia/alanixos.git ~/.nixos
 cd ~/.nixos
 ```
 
 ---
 
-## PHASE 4 — Generate machine sops key
+## Step 4 — Generate the machine's sops age key
 
-**Servers** store the key at `/var/lib/sops-nix/key.txt` (root-only, read by sops-nix at boot):
+This key is used by sops-nix to decrypt secrets at boot. It lives at `/var/lib/sops-nix/key.txt` and is root-only.
+
 ```bash
 sudo mkdir -p /var/lib/sops-nix
 sudo age-keygen -o /var/lib/sops-nix/key.txt
 sudo chmod 0400 /var/lib/sops-nix/key.txt
 sudo chown root:root /var/lib/sops-nix/key.txt
+```
+
+Print the public key — you'll need it in the next step:
+
+```bash
 sudo age-keygen -y /var/lib/sops-nix/key.txt
 ```
 
-Copy the printed `age1...` public key.
+**Workstations only** — also copy the key for `buddia` so you can run `sops` without sudo to edit secrets:
 
-**Editors** (laptops/workstations that need to edit secrets) store the key at `~/.config/sops/age/keys.txt`:
 ```bash
 mkdir -p ~/.config/sops/age
-age-keygen -o ~/.config/sops/age/keys.txt
+sudo cp /var/lib/sops-nix/key.txt ~/.config/sops/age/keys.txt
+sudo chown buddia:users ~/.config/sops/age/keys.txt
 chmod 0600 ~/.config/sops/age/keys.txt
-# SOPS picks this up automatically; or export explicitly:
-export SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt"
 ```
 
 ---
 
-## PHASE 5 — Add key to `secrets/keys.nix`
-Update `secrets/keys.nix` with the new recipient, then regenerate `.sops.yaml`.
+## Step 5 — Add the key to the repo (on this machine)
+
+Edit `secrets/keys.nix` and add the new machine's `age1...` public key, then regenerate `.sops.yaml`:
 
 ```bash
 vim secrets/keys.nix
 bash ./scripts/update-sops-config
 git add .sops.yaml
-git commit -m "Add randy-big-nixos age recipient"
+git commit -m "Add <hostname> age recipient"
 git push
 ```
 
 ---
 
-## PHASE 6 — Re-encrypt secrets (OTHER computer)
+## Step 6 — Re-encrypt secrets (on another already-set-up machine)
+
 ```bash
 cd ~/.nixos
 git pull
-SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt" sops updatekeys --yes secrets/secrets.yaml
+sops updatekeys --yes secrets/secrets.yaml
 git add secrets/secrets.yaml
-git commit -m "Re-encrypt secrets for randy-big-nixos"
+git commit -m "Re-encrypt secrets for <hostname>"
 git push
 ```
 
 ---
 
-## PHASE 7 — Pull updated secrets (NEW machine)
+## Step 7 — Pull the updated secrets (back on the new machine)
+
 ```bash
 cd ~/.nixos
 git pull
@@ -103,24 +99,24 @@ git pull
 
 ---
 
-## PHASE 8 — Hardware config
+## Step 8 — Copy hardware config
+
 ```bash
-cp /etc/nixos/hardware-configuration.nix ~/.nixos/hosts/randy-big-nixos/hardware-configuration.nix
-```
-
-
----
-
-## PHASE 9 — Rebuild
-```bash
-sudo nixos-rebuild switch --flake ~/.nixos#randy-big-nixos
+cp /etc/nixos/hardware-configuration.nix ~/.nixos/hosts/<hostname>/hardware-configuration.nix
 ```
 
 ---
 
-## PHASE 10 — Reboot
+## Step 9 — Rebuild
+
+```bash
+sudo nixos-rebuild switch --flake ~/.nixos#<hostname>
+```
+
+---
+
+## Step 10 — Reboot
+
 ```bash
 reboot
 ```
-
----
