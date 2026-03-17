@@ -1,9 +1,7 @@
 { pkgs, ... }:
 
 {
-  imports = [ ./common.nix ];
+  imports = [ ./common.nix ./programs/chromium.nix ];
 
-  home.packages = with pkgs; [
-    chromium
-  ];
+  home.packages = with pkgs; [ ];
 }
