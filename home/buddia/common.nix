@@ -1,7 +1,7 @@
 { pkgs-unstable, ... }:
 
 {
-  imports = [ ./programs/git.nix ./programs/sh.nix ];
+  imports = [ ./programs/git.nix ./programs/sh.nix ./programs/ssh.nix ];
 
   home.username = "buddia";
   home.homeDirectory = "/home/buddia";
