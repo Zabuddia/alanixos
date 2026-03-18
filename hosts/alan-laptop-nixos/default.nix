@@ -6,6 +6,7 @@
     ./secrets.nix
     ../../modules/roles/workstation.nix
     ../../modules/services/sunshine.nix
+    ../../modules/services/remote-desktop.nix
   ];
 
   alanix.ddns = {
@@ -30,6 +31,12 @@
   };
 
   alanix.desktop.enable = true;
+
+  alanix.remote-desktop = {
+    enable = true;
+    port = 5900;
+    user = "buddia";
+  };
 
   home-manager.users.buddia = {
     home.file.".ssh/id_ed25519.pub" = {
