@@ -4,7 +4,12 @@
   home.file."Pictures/.keep".text = "";
 
   home.packages = with pkgs; [ pulseaudio swaylock brightnessctl grim slurp xfce.thunar nnn imv mpv wl-clipboard ]
-    ++ (with pkgs-unstable; [ foot wofi ]);
+    ++ (with pkgs-unstable; [ wofi ]);
+
+  programs.foot = {
+    enable = true;
+    package = pkgs-unstable.foot;
+  };
 
   programs.wlogout = {
     enable = true;
@@ -154,10 +159,11 @@
     enable = true;
     config = {
       modifier = "Mod4";
+      terminal = "${pkgs-unstable.foot}/bin/foot";
       bars = [];
       startup = [
         { command = "waybar"; }
-{ command = "sleep 2 && swaymsg workspace number 1"; always = false; }
+        { command = "sleep 2 && swaymsg workspace number 1"; always = false; }
       ];
       keybindings = lib.mkOptionDefault {
         "XF86AudioRaiseVolume" = "exec pactl set-sink-volume @DEFAULT_SINK@ +5%";
