@@ -7,7 +7,7 @@ in
   options.desktop.enable = lib.mkEnableOption "desktop essentials for this user";
 
   config = {
-    assertions = lib.optionals cfg.enable [
+    _assertions = lib.optionals cfg.enable [
       {
         assertion = nixosConfig.alanix.desktop.enable;
         message = "alanix.users.accounts.${name}.desktop.enable requires alanix.desktop.enable = true.";
@@ -20,10 +20,12 @@ in
 
         home.packages =
           (with pkgs; [
+            adwaita-icon-theme
             pulseaudio
             swaylock
             brightnessctl
             grim
+            hicolor-icon-theme
             slurp
             xfce.thunar
             nnn
@@ -32,6 +34,14 @@ in
             wl-clipboard
           ])
           ++ (with pkgs-unstable; [ wofi ]);
+
+        gtk = {
+          enable = true;
+          iconTheme = {
+            name = "Adwaita";
+            package = pkgs.adwaita-icon-theme;
+          };
+        };
 
         programs.foot = {
           enable = true;

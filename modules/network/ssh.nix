@@ -9,24 +9,43 @@ in
 
     openFirewallOnWireguard = lib.mkOption {
       type = lib.types.bool;
+      default = false;
       description = "Whether to allow SSH on the WireGuard interface.";
     };
 
     startAgent = lib.mkOption {
       type = lib.types.bool;
+      default = false;
       description = "Whether to start the SSH agent service.";
     };
   };
 
-  config = lib.mkIf cfg.enable {
-    services.openssh = {
-      enable = true;
-      openFirewall = false;
-    };
+  config = lib.mkMerge [
+    {
+      assertions = [
+        {
+          assertion = !cfg.openFirewallOnWireguard || cfg.enable;
+          message = "alanix.ssh.openFirewallOnWireguard requires alanix.ssh.enable = true.";
+        }
+        {
+          assertion = !cfg.openFirewallOnWireguard || config.alanix.wireguard.enable;
+          message = "alanix.ssh.openFirewallOnWireguard requires alanix.wireguard.enable = true.";
+        }
+      ];
+    }
 
-    networking.firewall.interfaces.wg0.allowedTCPPorts =
-      lib.optionals cfg.openFirewallOnWireguard [ 22 ];
+    (lib.mkIf cfg.enable {
+      services.openssh = {
+        enable = true;
+        openFirewall = false;
+      };
 
-    programs.ssh.startAgent = cfg.startAgent;
-  };
+      networking.firewall.interfaces.wg0.allowedTCPPorts =
+        lib.optionals cfg.openFirewallOnWireguard [ 22 ];
+    })
+
+    (lib.mkIf cfg.startAgent {
+      programs.ssh.startAgent = true;
+    })
+  ];
 }

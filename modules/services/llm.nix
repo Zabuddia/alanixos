@@ -149,6 +149,7 @@ let
   });
 
   enabledInstances = lib.filterAttrs (_: instance: instance.enable) cfg.instances;
+  enabledPorts = lib.mapAttrsToList (_: instance: instance.port) enabledInstances;
 
   mkModelAlias = instance:
     if instance.alias != null then instance.alias else instance.model.name;
@@ -218,10 +219,12 @@ in
         "rocm"
         "vulkan"
       ];
+      default = "cpu";
     };
 
     stateDir = lib.mkOption {
       type = types.str;
+      default = "/var/lib/llm";
     };
 
     instances = lib.mkOption {
@@ -233,7 +236,17 @@ in
 
   config = lib.mkIf cfg.enable {
     assertions =
-      lib.flatten (
+      [
+        {
+          assertion = enabledInstances != { };
+          message = "alanix.llm.instances must contain at least one enabled instance when alanix.llm.enable = true.";
+        }
+        {
+          assertion = lib.length enabledPorts == lib.length (lib.unique enabledPorts);
+          message = "Enabled alanix.llm instances must use unique ports.";
+        }
+      ]
+      ++ lib.flatten (
         lib.mapAttrsToList
           (instanceName: instance:
             lib.optionals instance.enable [

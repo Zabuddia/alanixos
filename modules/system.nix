@@ -7,57 +7,68 @@ in
 {
   options.alanix.system = {
     stateVersion = lib.mkOption {
-      type = types.str;
+      type = types.nullOr types.str;
+      default = null;
       description = "NixOS state version for this host.";
     };
 
     timeZone = lib.mkOption {
       type = types.str;
+      default = "America/Denver";
       description = "System time zone.";
     };
 
     locale = lib.mkOption {
       type = types.str;
+      default = "en_US.UTF-8";
       description = "Default locale.";
     };
 
     enableSystemdBoot = lib.mkOption {
       type = types.bool;
+      default = true;
       description = "Whether to enable the systemd-boot bootloader.";
     };
 
     canTouchEfiVariables = lib.mkOption {
       type = types.bool;
+      default = true;
       description = "Whether the bootloader may update EFI variables.";
     };
 
     allowUnfree = lib.mkOption {
       type = types.bool;
+      default = true;
       description = "Whether unfree packages are allowed.";
     };
 
     experimentalFeatures = lib.mkOption {
       type = types.listOf types.str;
+      default = [ "nix-command" "flakes" ];
       description = "Enabled Nix experimental features.";
     };
 
     enableNixLd = lib.mkOption {
       type = types.bool;
+      default = true;
       description = "Whether to enable nix-ld.";
     };
 
     enableNetworkManager = lib.mkOption {
       type = types.bool;
+      default = true;
       description = "Whether to enable NetworkManager.";
     };
 
     enableFirewall = lib.mkOption {
       type = types.bool;
+      default = true;
       description = "Whether to enable the NixOS firewall.";
     };
 
     packages = lib.mkOption {
       type = types.listOf types.package;
+      default = [ ];
       description = "Base system packages for this host.";
     };
 
@@ -80,24 +91,36 @@ in
     };
   };
 
-  config = {
-    networking.hostName = hostname;
-    time.timeZone = cfg.timeZone;
-    system.stateVersion = cfg.stateVersion;
+  config = lib.mkMerge [
+    {
+      assertions = [
+        {
+          assertion = cfg.stateVersion != null;
+          message = "alanix.system.stateVersion must be set.";
+        }
+      ];
 
-    boot.loader.systemd-boot.enable = cfg.enableSystemdBoot;
-    boot.loader.efi.canTouchEfiVariables = cfg.canTouchEfiVariables;
+      networking.hostName = hostname;
+      time.timeZone = cfg.timeZone;
 
-    i18n.defaultLocale = cfg.locale;
+      boot.loader.systemd-boot.enable = cfg.enableSystemdBoot;
+      boot.loader.efi.canTouchEfiVariables = cfg.canTouchEfiVariables;
 
-    nixpkgs.config.allowUnfree = cfg.allowUnfree;
-    nix.settings.experimental-features = cfg.experimentalFeatures;
-    programs.nix-ld.enable = cfg.enableNixLd;
+      i18n.defaultLocale = cfg.locale;
 
-    networking.networkmanager.enable = cfg.enableNetworkManager;
-    networking.firewall.enable = cfg.enableFirewall;
+      nixpkgs.config.allowUnfree = cfg.allowUnfree;
+      nix.settings.experimental-features = cfg.experimentalFeatures;
+      programs.nix-ld.enable = cfg.enableNixLd;
 
-    environment.systemPackages = cfg.packages;
-    swapDevices = cfg.swapDevices;
-  };
+      networking.networkmanager.enable = cfg.enableNetworkManager;
+      networking.firewall.enable = cfg.enableFirewall;
+
+      environment.systemPackages = cfg.packages;
+      swapDevices = cfg.swapDevices;
+    }
+
+    (lib.mkIf (cfg.stateVersion != null) {
+      system.stateVersion = cfg.stateVersion;
+    })
+  ];
 }

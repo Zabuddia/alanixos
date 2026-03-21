@@ -3,20 +3,7 @@
 {
   system = "x86_64-linux";
 
-  module = { config, pkgs, pkgs-unstable, ... }: let
-    systemPackages = with pkgs; [
-      age
-      caddy
-      curl
-      git
-      htop
-      jq
-      restic
-      sops
-      tree
-      wget
-    ];
-  in {
+  module = { config, pkgs, pkgs-unstable, ... }: {
     imports = [
       ./hardware-configuration.nix
       ./secrets.nix
@@ -33,7 +20,18 @@
       enableNixLd = true;
       enableNetworkManager = true;
       enableFirewall = true;
-      packages = systemPackages;
+      packages = with pkgs; [
+        age
+        caddy
+        curl
+        git
+        htop
+        jq
+        restic
+        sops
+        tree
+        wget
+      ];
       swapDevices = [
         {
           device = "/swapfile";
@@ -54,11 +52,17 @@
           enable = true;
           directory = "/home/buddia";
           stateVersion = "25.11";
-          unstablePackages = with pkgs-unstable; [ yt-dlp ];
-          files.".ssh/id_ed25519.pub" = {
-            text = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEAJK6Bk63YjxmL9CI3F5yCjhG3MPAuuplydZ5ZmPFzW fife.alan@protonmail.com";
-            force = true;
+          files = {
+            ".ssh/id_ed25519.pub" = {
+              text = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEAJK6Bk63YjxmL9CI3F5yCjhG3MPAuuplydZ5ZmPFzW fife.alan@protonmail.com";
+              source = null;
+              force = true;
+              executable = null;
+            };
           };
+          packages = [ ];
+          unstablePackages = with pkgs-unstable; [ yt-dlp ];
+          modules = [ ];
         };
 
         git = {
@@ -67,10 +71,30 @@
           user.name = "Alan Fife";
           user.email = "fife.alan@protonmail.com";
           init.defaultBranch = "main";
+          extraSettings = { };
         };
 
         sh.enable = true;
+
+        ssh = {
+          enable = false;
+          matchBlocks = { };
+        };
+
+        desktop.enable = false;
         chromium.enable = true;
+        librewolf.enable = false;
+        nextcloudClient.enable = false;
+        trayscale.enable = false;
+        vscode.enable = false;
+      };
+    };
+
+    alanix.desktop = {
+      enable = true;
+      autoLogin = {
+        enable = false;
+        user = null;
       };
     };
 
@@ -106,8 +130,6 @@
       acceptRoutes = true;
       operator = "buddia";
     };
-
-    alanix.desktop.enable = true;
 
     alanix.bitcoin = {
       enable = true;
@@ -147,16 +169,96 @@
       database = "/var/lib/filebrowser/filebrowser.db";
       users = {
         admin = {
-          passwordSecret = "filebrowser-passwords/admin";
           admin = true;
           scope = ".";
+          password = null;
+          passwordFile = null;
+          passwordSecret = "filebrowser-passwords/admin";
         };
+
         buddia = {
-          passwordSecret = "filebrowser-passwords/buddia";
           admin = false;
           scope = "users/buddia";
+          password = null;
+          passwordFile = null;
+          passwordSecret = "filebrowser-passwords/buddia";
         };
       };
+    };
+
+    alanix.llm = {
+      enable = false;
+      backend = "cpu";
+      stateDir = "/var/lib/llm";
+      instances = { };
+    };
+
+    alanix.openclaw = {
+      enable = false;
+      bind = "loopback";
+      customBindHost = null;
+      port = 18789;
+      tokenSecret = null;
+      primaryLlmInstance = null;
+      imageLlmInstance = null;
+      embeddingLlmInstance = null;
+      enableResponsesApi = true;
+      enableChatCompletionsApi = true;
+      enableTailscaleServe = false;
+
+      controlUi = {
+        allowedOrigins = [ ];
+        dangerouslyDisableDeviceAuth = false;
+      };
+
+      telegram = {
+        enable = false;
+        tokenSecret = null;
+        allowFrom = [ ];
+        dmPolicy = null;
+        groupPolicy = null;
+        configWrites = false;
+      };
+
+      webSearch = {
+        enable = false;
+        apiKeySecret = null;
+        braveMode = "web";
+      };
+
+      browser = {
+        enable = false;
+        evaluateEnabled = false;
+        headless = true;
+        package = null;
+        executablePath = null;
+      };
+
+      canvas = {
+        enable = false;
+        nodePackage = null;
+      };
+
+      desktopNode = {
+        enable = false;
+        user = null;
+        displayName = null;
+        gatewayHost = null;
+      };
+
+      extraConfig = { };
+    };
+
+    alanix.remote-desktop = {
+      enable = false;
+      port = 5900;
+      user = null;
+    };
+
+    alanix.sunshine = {
+      enable = false;
+      autoStart = true;
+      capSysAdmin = false;
     };
   };
 }

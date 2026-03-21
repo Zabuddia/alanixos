@@ -9,11 +9,13 @@ in
 
     acceptRoutes = lib.mkOption {
       type = lib.types.bool;
+      default = false;
       description = "Accept subnet routes advertised by other Tailscale nodes.";
     };
 
     operator = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
+      default = null;
       description = "Unix user allowed to operate Tailscale as an operator (e.g. for serve/funnel).";
     };
   };
