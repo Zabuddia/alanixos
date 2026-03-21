@@ -15,22 +15,18 @@ in
 
     listenAddress = lib.mkOption {
       type = lib.types.str;
-      default = "0.0.0.0";
     };
 
     port = lib.mkOption {
       type = lib.types.port;
-      default = 8088;
     };
 
     root = lib.mkOption {
       type = lib.types.str;
-      default = "/srv/filebrowser";
     };
 
     database = lib.mkOption {
       type = lib.types.str;
-      default = "/var/lib/filebrowser/filebrowser.db";
     };
 
     users = lib.mkOption {
@@ -38,14 +34,10 @@ in
         options = {
           admin = lib.mkOption {
             type = lib.types.bool;
-            default = false;
           };
 
-          # Per-user directory scope relative to cfg.root.
-          # Default makes each user land in users/<username>
           scope = lib.mkOption {
             type = lib.types.str;
-            default = "users/${name}";
             description = "User scope relative to alanix.filebrowser.root (e.g. users/buddia).";
           };
 
@@ -76,7 +68,13 @@ in
   config = lib.mkIf cfg.enable {
     # Validate that each user has exactly one password source.
     assertions =
-      lib.flatten (lib.mapAttrsToList (uname: u:
+      [
+        {
+          assertion = cfg.users != { };
+          message = "alanix.filebrowser: users must not be empty when enable = true.";
+        }
+      ]
+      ++ lib.flatten (lib.mapAttrsToList (uname: u:
         let
           chosen = lib.filter (x: x) [
             (u.password != null)

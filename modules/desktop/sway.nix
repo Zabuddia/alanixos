@@ -6,10 +6,14 @@ lib.mkIf config.alanix.desktop.enable {
 
   services.greetd = {
     enable = true;
-    settings.default_session = {
-      command = "${pkgs.tuigreet}/bin/tuigreet --time --cmd sway";
-      user = "greeter";
-    };
+    settings.default_session =
+      if config.alanix.desktop.autoLogin.enable then {
+        command = "${pkgs.sway}/bin/sway";
+        user = config.alanix.desktop.autoLogin.user;
+      } else {
+        command = "${pkgs.tuigreet}/bin/tuigreet --time --cmd sway";
+        user = "greeter";
+      };
   };
 
   services.gnome.gcr-ssh-agent.enable = false;

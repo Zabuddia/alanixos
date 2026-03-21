@@ -2,6 +2,7 @@
 
 let
   cfg = config.alanix.remote-desktop;
+  userCfg = lib.attrByPath [ "alanix" "users" "accounts" cfg.user ] null config;
 in
 {
   options.alanix.remote-desktop = {
@@ -9,13 +10,11 @@ in
 
     port = lib.mkOption {
       type = lib.types.port;
-      default = 5900;
       description = "TCP port for wayvnc to listen on.";
     };
 
     user = lib.mkOption {
       type = lib.types.str;
-      default = "buddia";
       description = "User whose Wayland session to serve via wayvnc.";
     };
   };
@@ -26,6 +25,18 @@ in
         assertion = config.alanix.wireguard.enable;
         message = "alanix.remote-desktop: requires alanix.wireguard.enable = true (VNC is restricted to wg0).";
       }
+      {
+        assertion = config.alanix.desktop.enable;
+        message = "alanix.remote-desktop: requires alanix.desktop.enable = true.";
+      }
+      {
+        assertion = userCfg != null && userCfg.enable;
+        message = "alanix.remote-desktop.user must reference an enabled alanix.users.accounts entry.";
+      }
+      {
+        assertion = userCfg != null && userCfg.enable && userCfg.home.enable;
+        message = "alanix.remote-desktop.user must reference an alanix.users.accounts entry with home.enable = true.";
+      }
     ];
 
     # Restrict VNC access to the WireGuard interface only
@@ -33,25 +44,26 @@ in
 
     environment.systemPackages = [ pkgs.wayvnc ];
 
-    # Inject wayvnc as a user systemd service into the specified user's session.
     # wayvnc attaches to the running Wayland compositor via $WAYLAND_DISPLAY.
     # NOTE: requires the user to be logged into Sway — no pre-login access.
-    home-manager.users.${cfg.user} = { ... }: {
-      systemd.user.services.wayvnc = {
-        Unit = {
-          Description = "wayvnc VNC server for Wayland session";
-          After = [ "graphical-session.target" ];
-          PartOf = [ "graphical-session.target" ];
+    alanix._internal.homeModules.${cfg.user} = [
+      {
+        systemd.user.services.wayvnc = {
+          Unit = {
+            Description = "wayvnc VNC server for Wayland session";
+            After = [ "graphical-session.target" ];
+            PartOf = [ "graphical-session.target" ];
+          };
+          Service = {
+            ExecStart = "${pkgs.wayvnc}/bin/wayvnc 0.0.0.0 ${toString cfg.port}";
+            Restart = "on-failure";
+            RestartSec = "3s";
+          };
+          Install = {
+            WantedBy = [ "graphical-session.target" ];
+          };
         };
-        Service = {
-          ExecStart = "${pkgs.wayvnc}/bin/wayvnc 0.0.0.0 ${toString cfg.port}";
-          Restart = "on-failure";
-          RestartSec = "3s";
-        };
-        Install = {
-          WantedBy = [ "graphical-session.target" ];
-        };
-      };
-    };
+      }
+    ];
   };
 }

@@ -42,15 +42,11 @@
   let
     lib = inputs.nixpkgs.lib;
     mkHost = import ./lib/mkHost.nix { inherit inputs; };
-    hostNames = builtins.attrNames (builtins.readDir ./hosts);
+    hostNames = builtins.attrNames (lib.filterAttrs (_: type: type == "directory") (builtins.readDir ./hosts));
   in
   {
     nixosConfigurations = lib.listToAttrs (map (hostname:
-      let meta = import ./hosts/${hostname}/meta.nix; in
-      lib.nameValuePair hostname (mkHost {
-        inherit hostname;
-        inherit (meta) system features;
-      })
+      lib.nameValuePair hostname (mkHost { inherit hostname; })
     ) hostNames);
   };
 }

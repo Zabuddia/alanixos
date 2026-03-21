@@ -1,33 +1,27 @@
 { inputs }:
-{ hostname, system, features }:
+{ hostname }:
 
 let
+  host = import ../hosts/${hostname}/default.nix { inherit inputs hostname; };
+  system = host.system;
   nixpkgs = inputs.nixpkgs;
-  nixpkgs-unstable = inputs.nixpkgs-unstable;
   lib = nixpkgs.lib;
-
-  nixpkgsConfig = { allowUnfree = true; };
-
-  pkgs-unstable = import nixpkgs-unstable {
-    inherit system;
-    config = nixpkgsConfig;
-  };
-
 in
 lib.nixosSystem {
   inherit system;
 
   specialArgs = {
-    inherit inputs hostname pkgs-unstable;
+    inherit inputs hostname;
     allHosts = inputs.self.nixosConfigurations;
   };
 
-  modules =
-    (lib.optionals features.sops [ inputs.sops-nix.nixosModules.sops ])
-    ++ (lib.optionals features.home-manager [ inputs.home-manager.nixosModules.home-manager ])
-    ++ (lib.optionals features.nix-bitcoin [ inputs.nix-bitcoin.nixosModules.default ])
-    ++ (lib.optionals features.nix-openclaw [ inputs.nix-openclaw.nixosModules.openclaw-gateway ])
-    ++ (lib.optionals features.disko [ inputs.disko.nixosModules.disko ])
-
-    ++ [ ../hosts/${hostname}/default.nix ];
+  modules = [
+    inputs.sops-nix.nixosModules.sops
+    inputs.home-manager.nixosModules.home-manager
+    inputs.nix-bitcoin.nixosModules.default
+    inputs.nix-openclaw.nixosModules.openclaw-gateway
+    inputs.disko.nixosModules.disko
+    ../modules
+    host.module
+  ];
 }
