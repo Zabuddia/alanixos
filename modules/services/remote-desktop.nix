@@ -1,17 +1,8 @@
-{ config, lib, pkgs, utils, ... }:
+{ config, lib, pkgs, ... }:
 
 let
   cfg = config.alanix.remote-desktop;
   userCfg = lib.attrByPath [ "alanix" "users" "accounts" cfg.user ] null config;
-  wayvncArgs =
-    [
-      "--max-fps=${toString cfg.maxFps}"
-    ]
-    ++ lib.optionals (cfg.keyboardLayout != null) [ "--keyboard=${cfg.keyboardLayout}" ]
-    ++ lib.optionals cfg.renderCursor [ "--render-cursor" ]
-    ++ lib.optionals cfg.transientSeat [ "--transient-seat" ]
-    ++ cfg.extraArgs
-    ++ [ "0.0.0.0" (toString cfg.port) ];
 in
 {
   options.alanix.remote-desktop = {
@@ -25,37 +16,6 @@ in
     user = lib.mkOption {
       type = lib.types.str;
       description = "User whose Wayland session to serve via wayvnc.";
-    };
-
-    keyboardLayout = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-      example = "us";
-      description = "Optional wayvnc keyboard layout override to better match the client keyboard.";
-    };
-
-    maxFps = lib.mkOption {
-      type = lib.types.ints.positive;
-      default = 60;
-      description = "Maximum frame rate for remote desktop capture.";
-    };
-
-    renderCursor = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = "Render the cursor in the captured stream for better client compatibility.";
-    };
-
-    transientSeat = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = "Use a transient wlroots seat for each remote session.";
-    };
-
-    extraArgs = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [ ];
-      description = "Additional raw wayvnc command line arguments.";
     };
   };
 
@@ -82,7 +42,7 @@ in
     # Restrict VNC access to the WireGuard interface only
     networking.firewall.interfaces.wg0.allowedTCPPorts = [ cfg.port ];
 
-    programs.wayvnc.enable = true;
+    environment.systemPackages = [ pkgs.wayvnc ];
 
     # wayvnc attaches to the running Wayland compositor via $WAYLAND_DISPLAY.
     # NOTE: requires the user to be logged into Sway — no pre-login access.
@@ -95,7 +55,7 @@ in
             PartOf = [ "graphical-session.target" ];
           };
           Service = {
-            ExecStart = utils.escapeSystemdExecArgs ([ "${pkgs.wayvnc}/bin/wayvnc" ] ++ wayvncArgs);
+            ExecStart = "${pkgs.wayvnc}/bin/wayvnc 0.0.0.0 ${toString cfg.port}";
             Restart = "on-failure";
             RestartSec = "3s";
           };
