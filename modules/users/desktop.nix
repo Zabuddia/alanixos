@@ -214,6 +214,9 @@ in
 
         wayland.windowManager.sway = {
           enable = true;
+          extraConfigEarly = ''
+            include /etc/sway/config.d/*
+          '';
           config = {
             modifier = "Mod4";
             terminal = "${pkgs-unstable.foot}/bin/foot";
