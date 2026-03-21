@@ -96,6 +96,19 @@
         enable = false;
         user = null;
       };
+      idle = {
+        lockSeconds = null;
+        displayOffSeconds = null;
+        suspendSeconds = null;
+      };
+    };
+
+    alanix.power = {
+      enable = false;
+      enablePowerProfilesDaemon = true;
+      enableUpower = true;
+      enableThermald = true;
+      enablePowertop = true;
     };
 
     alanix.ssh = {
@@ -235,6 +248,7 @@
 
     alanix.remote-desktop = {
       enable = false;
+      autoStart = true;
       port = 5900;
       user = null;
     };

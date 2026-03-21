@@ -2,6 +2,7 @@
 
 let
   cfg = config.desktop;
+  idleCfg = nixosConfig.alanix.desktop.idle;
 in
 {
   options.desktop.enable = lib.mkEnableOption "desktop essentials for this user";
@@ -65,6 +66,26 @@ in
             { event = "before-sleep"; command = "${pkgs.swaylock}/bin/swaylock -f"; }
             { event = "lock"; command = "${pkgs.swaylock}/bin/swaylock -f"; }
           ];
+          timeouts =
+            lib.optionals (idleCfg.lockSeconds != null) [
+              {
+                timeout = idleCfg.lockSeconds;
+                command = "${pkgs.swaylock}/bin/swaylock -f";
+              }
+            ]
+            ++ lib.optionals (idleCfg.displayOffSeconds != null) [
+              {
+                timeout = idleCfg.displayOffSeconds;
+                command = "${pkgs.sway}/bin/swaymsg 'output * power off'";
+                resumeCommand = "${pkgs.sway}/bin/swaymsg 'output * power on'";
+              }
+            ]
+            ++ lib.optionals (idleCfg.suspendSeconds != null) [
+              {
+                timeout = idleCfg.suspendSeconds;
+                command = "systemctl suspend";
+              }
+            ];
         };
 
         programs.waybar = {

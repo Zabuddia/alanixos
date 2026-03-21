@@ -2,6 +2,7 @@
   imports = [
     ./pkgs.nix
     ./system.nix
+    ./power.nix
     ./users.nix
     ./desktop
     ./network/ssh.nix
