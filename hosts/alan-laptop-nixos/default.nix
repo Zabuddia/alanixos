@@ -72,6 +72,8 @@
             };
           };
           packages = with pkgs; [
+            featherpad
+            marktext
             xournalpp
             libreoffice
             remmina
