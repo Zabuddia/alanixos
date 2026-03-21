@@ -106,6 +106,10 @@ in
       wayvncLauncher
     ];
 
+    environment.etc."sway/config.d/20-alanix-wayvnc.conf" = lib.mkIf (cfg.autoStart && autoStartUser != null) {
+      text = "exec systemctl --user start alanix-wayvnc.service\n";
+    };
+
     home-manager.users = lib.mkIf (cfg.autoStart && autoStartUser != null) {
       ${autoStartUser} = {
         systemd.user.services.alanix-wayvnc = {
