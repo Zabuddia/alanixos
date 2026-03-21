@@ -2,17 +2,34 @@
 
 let
   cfg = config.alanix.remote-desktop;
+  desktopUsers = lib.filterAttrs (_: userCfg: userCfg.enable && userCfg.home.enable && userCfg.desktop.enable)
+    config.alanix.users.accounts;
+  desktopUserNames = builtins.attrNames desktopUsers;
+  autoStartUser =
+    if builtins.length desktopUserNames == 1
+    then builtins.head desktopUserNames
+    else null;
   wayvncLauncher = pkgs.writeShellScriptBin "alanix-wayvnc" ''
     set -eu
 
-    runtime_dir="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    runtime_dir="''${XDG_RUNTIME_DIR:-/run/user/$(${pkgs.coreutils}/bin/id -u)}"
 
-    if [ -z "''${SWAYSOCK:-}" ]; then
-      SWAYSOCK="$(${pkgs.findutils}/bin/find "$runtime_dir" -maxdepth 1 -type s -name 'sway-ipc.*.sock' | ${pkgs.coreutils}/bin/head -n1)"
+    for _ in $(${pkgs.coreutils}/bin/seq 1 30); do
+      if [ -n "''${SWAYSOCK:-}" ] && [ -S "$SWAYSOCK" ]; then
+        break
+      fi
+
+      SWAYSOCK="$(${pkgs.findutils}/bin/find "$runtime_dir" -maxdepth 1 -type s -name 'sway-ipc.*.sock' | ${pkgs.coreutils}/bin/head -n1 || true)"
       export SWAYSOCK
-    fi
 
-    if [ -z "''${SWAYSOCK:-}" ]; then
+      if [ -n "''${SWAYSOCK:-}" ] && [ -S "$SWAYSOCK" ]; then
+        break
+      fi
+
+      ${pkgs.coreutils}/bin/sleep 1
+    done
+
+    if [ -z "''${SWAYSOCK:-}" ] || [ ! -S "$SWAYSOCK" ]; then
       echo "alanix-wayvnc: could not find SWAYSOCK" >&2
       exit 1
     fi
@@ -20,12 +37,12 @@ let
     ${
       lib.optionalString (cfg.output != null) ''
         found_output=0
-        for _ in $(seq 1 15); do
+        for _ in $(${pkgs.coreutils}/bin/seq 1 30); do
           if ${pkgs.sway}/bin/swaymsg -r -t get_outputs 2>/dev/null | ${pkgs.gnugrep}/bin/grep -Fq ${lib.escapeShellArg "\"name\": ${builtins.toJSON cfg.output}"}; then
             found_output=1
             break
           fi
-          sleep 1
+          ${pkgs.coreutils}/bin/sleep 1
         done
 
         if [ "$found_output" -ne 1 ]; then
@@ -71,6 +88,15 @@ in
         assertion = config.alanix.desktop.enable;
         message = "alanix.remote-desktop: requires alanix.desktop.enable = true.";
       }
+    ] ++ lib.optionals cfg.autoStart [
+      {
+        assertion = desktopUserNames != [ ];
+        message = "alanix.remote-desktop.autoStart requires one enabled alanix.users.accounts entry with home.enable and desktop.enable.";
+      }
+      {
+        assertion = builtins.length desktopUserNames <= 1;
+        message = "alanix.remote-desktop.autoStart supports exactly one desktop user; found: ${lib.concatStringsSep ", " desktopUserNames}.";
+      }
     ];
 
     networking.firewall.interfaces.wg0.allowedTCPPorts = [ cfg.port ];
@@ -80,8 +106,25 @@ in
       wayvncLauncher
     ];
 
-    environment.etc."sway/config.d/20-alanix-wayvnc.conf" = lib.mkIf cfg.autoStart {
-      text = "exec ${wayvncLauncher}/bin/alanix-wayvnc\n";
+    home-manager.users = lib.mkIf (cfg.autoStart && autoStartUser != null) {
+      ${autoStartUser} = {
+        systemd.user.services.alanix-wayvnc = {
+          Unit = {
+            Description = "WayVNC remote desktop server";
+            After = [ "graphical-session.target" ];
+            PartOf = [ "graphical-session.target" ];
+          };
+
+          Service = {
+            ExecStart = "${wayvncLauncher}/bin/alanix-wayvnc";
+            Environment = [ "XDG_RUNTIME_DIR=%t" ];
+            Restart = "always";
+            RestartSec = 2;
+          };
+
+          Install.WantedBy = [ "graphical-session.target" ];
+        };
+      };
     };
   };
 }
