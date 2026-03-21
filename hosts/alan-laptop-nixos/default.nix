@@ -133,6 +133,7 @@
         enable = false;
         user = null;
       };
+      createHeadlessOutput = false;
       swayOutputRules = [ ];
       idle = {
         lockSeconds = 300;
@@ -288,12 +289,14 @@
       enable = true;
       autoStart = false;
       port = 5900;
+      output = null;
       user = "buddia";
     };
 
     alanix.sunshine = {
       enable = true;
       autoStart = false;
+      openFirewall = false;
       capSysAdmin = true;
     };
   };
