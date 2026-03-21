@@ -290,7 +290,6 @@
       autoStart = false;
       port = 5900;
       output = null;
-      user = "buddia";
     };
 
     alanix.sunshine = {
