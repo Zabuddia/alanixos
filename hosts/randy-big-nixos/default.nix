@@ -261,6 +261,7 @@
       openFirewall = false;
       capSysAdmin = false;
       webUi = {
+        port = 47990;
         username = null;
         passwordFile = null;
       };

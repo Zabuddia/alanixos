@@ -3,6 +3,7 @@
 
 let
   cfg = config.alanix.sunshine;
+  basePort = cfg.webUi.port - 1;
   webUiConfigured = cfg.webUi.username != null || cfg.webUi.passwordFile != null;
   webUiComplete = cfg.webUi.username != null && cfg.webUi.passwordFile != null;
   enabledAccounts = builtins.attrValues config.alanix.users.accounts;
@@ -50,6 +51,12 @@ in
     };
 
     webUi = {
+      port = lib.mkOption {
+        type = lib.types.port;
+        default = 47990;
+        description = "Port for the Sunshine Web UI. Sunshine's internal base port is derived as webUi.port - 1.";
+      };
+
       username = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
@@ -78,13 +85,23 @@ in
         assertion = !webUiConfigured || webUiComplete;
         message = "alanix.sunshine.webUi.username and alanix.sunshine.webUi.passwordFile must either both be set or both be null.";
       }
+      {
+        assertion = cfg.webUi.port >= 1025;
+        message = "alanix.sunshine.webUi.port must be at least 1025 because Sunshine derives its base port as webUi.port - 1.";
+      }
     ];
 
     boot.kernelModules = [ "uhid" ];
 
+    services.udev.extraRules = ''
+      KERNEL=="uinput", SUBSYSTEM=="misc", OPTIONS+="static_node=uinput", GROUP="input", MODE="0660", TAG+="uaccess"
+      KERNEL=="uhid", SUBSYSTEM=="misc", GROUP="input", MODE="0660", TAG+="uaccess"
+    '';
+
     services.sunshine = {
       enable = true;
       inherit (cfg) autoStart openFirewall capSysAdmin;
+      settings.port = basePort;
     };
 
     systemd.user.services.sunshine.serviceConfig.ExecStartPre =
