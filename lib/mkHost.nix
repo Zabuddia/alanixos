@@ -1,17 +1,23 @@
 { inputs }:
-{ hostname }:
+{ host, hostname }:
 
 let
-  host = import ../hosts/${hostname}/default.nix { inherit inputs hostname; };
-  system = host.system;
   nixpkgs = inputs.nixpkgs;
   lib = nixpkgs.lib;
+in
+if !(host ? system) then
+  throw "hosts/${hostname}/default.nix must define a top-level `system` attribute."
+else if !(host ? module) then
+  throw "hosts/${hostname}/default.nix must define a top-level `module` attribute."
+else
+let
+  system = host.system;
 in
 lib.nixosSystem {
   inherit system;
 
   specialArgs = {
-    inherit inputs hostname;
+    inherit hostname inputs;
     allHosts = inputs.self.nixosConfigurations;
   };
 

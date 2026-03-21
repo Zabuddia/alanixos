@@ -18,7 +18,7 @@ in
   };
 
   config = {
-    assertions = lib.optionals (!cfg.enable && cfg.matchBlocks != { }) [
+    _assertions = lib.optionals (!cfg.enable && cfg.matchBlocks != { }) [
       {
         assertion = false;
         message = "alanix.users.accounts.${name}.ssh.matchBlocks requires alanix.users.accounts.${name}.ssh.enable = true.";

@@ -1,4 +1,5 @@
 { config, lib, ... }:
+
 let
   openclawCfg = config.alanix.openclaw;
 in
@@ -37,21 +38,21 @@ in
         path = "/home/buddia/.ssh/id_ed25519";
       };
     }
-    (lib.mkIf openclawCfg.enable {
+    (lib.mkIf (openclawCfg.enable && openclawCfg.tokenSecret != null) {
       ${openclawCfg.tokenSecret} = {
         owner = "openclaw";
         group = "openclaw";
         mode = "0400";
       };
     })
-    (lib.mkIf (openclawCfg.enable && openclawCfg.telegram.enable) {
+    (lib.mkIf (openclawCfg.enable && openclawCfg.telegram.enable && openclawCfg.telegram.tokenSecret != null) {
       ${openclawCfg.telegram.tokenSecret} = {
         owner = "openclaw";
         group = "openclaw";
         mode = "0400";
       };
     })
-    (lib.mkIf (openclawCfg.enable && openclawCfg.webSearch.enable) {
+    (lib.mkIf (openclawCfg.enable && openclawCfg.webSearch.enable && openclawCfg.webSearch.apiKeySecret != null) {
       ${openclawCfg.webSearch.apiKeySecret} = {
         owner = "openclaw";
         group = "openclaw";
@@ -67,7 +68,7 @@ in
         owner = "cloudflare-ddns";
       };
     }
-    (lib.mkIf openclawCfg.enable {
+    (lib.mkIf (openclawCfg.enable && openclawCfg.tokenSecret != null) {
       "openclaw-gateway-env" = {
         content = "OPENCLAW_GATEWAY_TOKEN=${config.sops.placeholder.${openclawCfg.tokenSecret}}";
         owner = "openclaw";
@@ -82,7 +83,7 @@ in
         mode = "0400";
       };
     })
-    (lib.mkIf (openclawCfg.enable && openclawCfg.telegram.enable) {
+    (lib.mkIf (openclawCfg.enable && openclawCfg.telegram.enable && openclawCfg.telegram.tokenSecret != null) {
       "openclaw-telegram-bot-token" = {
         content = config.sops.placeholder.${openclawCfg.telegram.tokenSecret};
         owner = "openclaw";
@@ -90,7 +91,7 @@ in
         mode = "0400";
       };
     })
-    (lib.mkIf (openclawCfg.enable && openclawCfg.webSearch.enable) {
+    (lib.mkIf (openclawCfg.enable && openclawCfg.webSearch.enable && openclawCfg.webSearch.apiKeySecret != null) {
       "openclaw-brave-env" = {
         content = "BRAVE_API_KEY=${config.sops.placeholder.${openclawCfg.webSearch.apiKeySecret}}";
         owner = "openclaw";

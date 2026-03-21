@@ -42,7 +42,7 @@ in
   };
 
   config = {
-    assertions = lib.optionals cfg.enable [
+    _assertions = lib.optionals cfg.enable [
       {
         assertion = cfg.github.user != null;
         message = "alanix.users.accounts.${name}.git.github.user must be set when git is enabled.";

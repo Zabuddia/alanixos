@@ -3,24 +3,7 @@
 {
   system = "x86_64-linux";
 
-  module = { config, pkgs, pkgs-unstable, ... }: let
-    systemPackages = with pkgs; [
-      age
-      caddy
-      curl
-      git
-      htop
-      jq
-      restic
-      sops
-      tree
-      wget
-      vlc
-      ffmpeg
-      w_scan2
-      nano
-    ];
-  in {
+  module = { config, pkgs, pkgs-unstable, ... }: {
     imports = [
       ./hardware-configuration.nix
       ./secrets.nix
@@ -37,7 +20,22 @@
       enableNixLd = true;
       enableNetworkManager = true;
       enableFirewall = true;
-      packages = systemPackages;
+      packages = with pkgs; [
+        age
+        caddy
+        curl
+        git
+        htop
+        jq
+        restic
+        sops
+        tree
+        wget
+        vlc
+        ffmpeg
+        w_scan2
+        nano
+      ];
       swapDevices = [
         {
           device = "/swapfile";
@@ -61,17 +59,22 @@
           files = {
             ".ssh/id_ed25519.pub" = {
               text = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKNJ7KX0IIt27KqD2c3dqMT8vbO0K/G1ibfC+a/WxijO fife.alan@protonmail.com";
+              source = null;
               force = true;
+              executable = null;
             };
+
             ".ssh/id_ed25519_work.pub" = {
               text = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINZHjKqhqWZalx6/NsQv1OGXJP6LBMfXS0QedqwhjFzl briggsconsulting.coaching@gmail.com";
+              source = null;
               force = true;
+              executable = null;
             };
           };
           packages = with pkgs; [
             xournalpp
             libreoffice
-            wlvncc
+            remmina
             tor-browser
           ];
           unstablePackages = with pkgs-unstable; [
@@ -80,6 +83,7 @@
             firefox
             moonlight-qt
           ];
+          modules = [ ];
         };
 
         git = {
@@ -88,6 +92,7 @@
           user.name = "Alan Fife";
           user.email = "fife.alan@protonmail.com";
           init.defaultBranch = "main";
+          extraSettings = { };
         };
 
         sh.enable = true;
@@ -102,6 +107,7 @@
               identitiesOnly = true;
               controlPath = "none";
             };
+
             "github-work" = {
               hostname = "github.com";
               user = "git";
@@ -115,9 +121,17 @@
         desktop.enable = true;
         chromium.enable = true;
         librewolf.enable = true;
-        vscode.enable = true;
         nextcloudClient.enable = true;
         trayscale.enable = true;
+        vscode.enable = true;
+      };
+    };
+
+    alanix.desktop = {
+      enable = true;
+      autoLogin = {
+        enable = false;
+        user = null;
       };
     };
 
@@ -154,7 +168,107 @@
       operator = "buddia";
     };
 
-    alanix.desktop.enable = true;
+    alanix.bitcoin = {
+      enable = false;
+      configVersion = null;
+      generateSecrets = false;
+      operatorName = null;
+      useDoas = false;
+      hideProcessInformation = false;
+      exposeSshOnionService = false;
+      copyRootSshKeysToOperator = false;
+      enableNodeInfo = false;
+      backupsFrequency = null;
+
+      bitcoind = {
+        listen = null;
+        dbCache = null;
+        txindex = null;
+      };
+
+      fulcrum.enable = false;
+
+      mempool = {
+        enable = false;
+        electrumServer = null;
+        frontend = {
+          address = null;
+          port = null;
+        };
+      };
+    };
+
+    alanix.filebrowser = {
+      enable = false;
+      listenAddress = null;
+      port = null;
+      root = null;
+      database = null;
+      users = { };
+    };
+
+    alanix.llm = {
+      enable = false;
+      backend = "cpu";
+      stateDir = "/var/lib/llm";
+      instances = { };
+    };
+
+    alanix.openclaw = {
+      enable = false;
+      bind = "loopback";
+      customBindHost = null;
+      port = 18789;
+      tokenSecret = null;
+      primaryLlmInstance = null;
+      imageLlmInstance = null;
+      embeddingLlmInstance = null;
+      enableResponsesApi = true;
+      enableChatCompletionsApi = true;
+      enableTailscaleServe = false;
+
+      controlUi = {
+        allowedOrigins = [ ];
+        dangerouslyDisableDeviceAuth = false;
+      };
+
+      telegram = {
+        enable = false;
+        tokenSecret = null;
+        allowFrom = [ ];
+        dmPolicy = null;
+        groupPolicy = null;
+        configWrites = false;
+      };
+
+      webSearch = {
+        enable = false;
+        apiKeySecret = null;
+        braveMode = "web";
+      };
+
+      browser = {
+        enable = false;
+        evaluateEnabled = false;
+        headless = true;
+        package = null;
+        executablePath = null;
+      };
+
+      canvas = {
+        enable = false;
+        nodePackage = null;
+      };
+
+      desktopNode = {
+        enable = false;
+        user = null;
+        displayName = null;
+        gatewayHost = null;
+      };
+
+      extraConfig = { };
+    };
 
     alanix.remote-desktop = {
       enable = true;

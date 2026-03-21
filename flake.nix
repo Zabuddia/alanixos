@@ -43,10 +43,24 @@
     lib = inputs.nixpkgs.lib;
     mkHost = import ./lib/mkHost.nix { inherit inputs; };
     hostNames = builtins.attrNames (lib.filterAttrs (_: type: type == "directory") (builtins.readDir ./hosts));
+    hostDefinitions = lib.genAttrs hostNames (hostname: import ./hosts/${hostname}/default.nix { inherit hostname; });
+    nixosConfigurations = lib.mapAttrs
+      (hostname: host:
+        mkHost {
+          inherit host hostname;
+        })
+      hostDefinitions;
+    checks = lib.foldl'
+      (acc: hostname:
+        let
+          host = nixosConfigurations.${hostname};
+          system = host.pkgs.stdenv.hostPlatform.system;
+        in
+        lib.recursiveUpdate acc (lib.setAttrByPath [ system hostname ] host.config.system.build.toplevel))
+      { }
+      hostNames;
   in
   {
-    nixosConfigurations = lib.listToAttrs (map (hostname:
-      lib.nameValuePair hostname (mkHost { inherit hostname; })
-    ) hostNames);
+    inherit checks nixosConfigurations;
   };
 }

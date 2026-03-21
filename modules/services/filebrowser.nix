@@ -5,28 +5,50 @@ let
   dbPath = cfg.database;
 
   declaredUsernames = builtins.attrNames cfg.users;
-
-  # Plain list; we'll escape it once inside the script.
   declaredUsersList = lib.concatStringsSep " " declaredUsernames;
+  hasValue = value: value != null && value != "";
+  baseConfigReady =
+    hasValue cfg.listenAddress
+    && cfg.port != null
+    && hasValue cfg.root
+    && hasValue cfg.database;
+  declaredScopes =
+    lib.filter (scope: scope != null) (lib.mapAttrsToList (_: userCfg: userCfg.scope) cfg.users);
+  sanitizedUsersForRestart =
+    lib.mapAttrs
+      (_: userCfg:
+        userCfg
+        // {
+          password =
+            if userCfg.password == null then
+              null
+            else
+              builtins.hashString "sha256" userCfg.password;
+        })
+      cfg.users;
 in
 {
   options.alanix.filebrowser = {
     enable = lib.mkEnableOption "File Browser (Alanix)";
 
     listenAddress = lib.mkOption {
-      type = lib.types.str;
+      type = lib.types.nullOr lib.types.str;
+      default = null;
     };
 
     port = lib.mkOption {
-      type = lib.types.port;
+      type = lib.types.nullOr lib.types.port;
+      default = null;
     };
 
     root = lib.mkOption {
-      type = lib.types.str;
+      type = lib.types.nullOr lib.types.str;
+      default = null;
     };
 
     database = lib.mkOption {
-      type = lib.types.str;
+      type = lib.types.nullOr lib.types.str;
+      default = null;
     };
 
     users = lib.mkOption {
@@ -34,10 +56,12 @@ in
         options = {
           admin = lib.mkOption {
             type = lib.types.bool;
+            default = false;
           };
 
           scope = lib.mkOption {
-            type = lib.types.str;
+            type = lib.types.nullOr lib.types.str;
+            default = null;
             description = "User scope relative to alanix.filebrowser.root (e.g. users/buddia).";
           };
 
@@ -66,12 +90,39 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    # Validate that each user has exactly one password source.
     assertions =
       [
         {
           assertion = cfg.users != { };
           message = "alanix.filebrowser: users must not be empty when enable = true.";
+        }
+        {
+          assertion = hasValue cfg.listenAddress;
+          message = "alanix.filebrowser.listenAddress must be set when alanix.filebrowser.enable = true.";
+        }
+        {
+          assertion = cfg.port != null;
+          message = "alanix.filebrowser.port must be set when alanix.filebrowser.enable = true.";
+        }
+        {
+          assertion = hasValue cfg.root;
+          message = "alanix.filebrowser.root must be set when alanix.filebrowser.enable = true.";
+        }
+        {
+          assertion = hasValue cfg.database;
+          message = "alanix.filebrowser.database must be set when alanix.filebrowser.enable = true.";
+        }
+        {
+          assertion = cfg.root == null || lib.hasPrefix "/" cfg.root;
+          message = "alanix.filebrowser.root must be an absolute path.";
+        }
+        {
+          assertion = cfg.database == null || lib.hasPrefix "/" cfg.database;
+          message = "alanix.filebrowser.database must be an absolute path.";
+        }
+        {
+          assertion = lib.length declaredScopes == lib.length (lib.unique declaredScopes);
+          message = "alanix.filebrowser.users.*.scope must be unique.";
         }
       ]
       ++ lib.flatten (lib.mapAttrsToList (uname: u:
@@ -83,13 +134,29 @@ in
           ];
         in [
           {
+            assertion = builtins.match "^[A-Za-z0-9._-]+$" uname != null;
+            message = "alanix.filebrowser.users.${uname}: usernames may contain only letters, digits, dot, underscore, and hyphen.";
+          }
+          {
             assertion = (builtins.length chosen) == 1;
             message = "alanix.filebrowser.users.${uname}: set exactly one of password, passwordFile, or passwordSecret.";
+          }
+          {
+            assertion = hasValue u.scope;
+            message = "alanix.filebrowser.users.${uname}.scope must be set.";
+          }
+          {
+            assertion = u.scope == null || !lib.hasPrefix "/" u.scope;
+            message = "alanix.filebrowser.users.${uname}.scope must be relative to alanix.filebrowser.root.";
+          }
+          {
+            assertion = u.passwordSecret == null || lib.hasAttrByPath [ "sops" "secrets" u.passwordSecret ] config;
+            message = "alanix.filebrowser.users.${uname}.passwordSecret must reference a declared sops secret.";
           }
         ]
       ) cfg.users);
 
-    services.filebrowser = {
+    services.filebrowser = lib.mkIf baseConfigReady {
       enable = true;
       user = "filebrowser";
       group = "filebrowser";
@@ -110,8 +177,7 @@ in
       createHome = true;
     };
 
-    # Base + per-user directories (owned by filebrowser so uploads work)
-    systemd.tmpfiles.rules =
+    systemd.tmpfiles.rules = lib.mkIf baseConfigReady (
       [
         "d /var/lib/filebrowser 0750 filebrowser filebrowser - -"
         "d ${cfg.root} 0770 filebrowser filebrowser - -"
@@ -119,12 +185,12 @@ in
       ]
       ++ (lib.mapAttrsToList (uname: u:
         "d ${cfg.root}/${u.scope} 0770 filebrowser filebrowser - -"
-      ) cfg.users);
+      ) cfg.users)
+    );
 
     environment.systemPackages = [ pkgs.filebrowser ];
 
-    # Reconcile users iff users are declared
-    systemd.services.filebrowser-reconcile-users = lib.mkIf (cfg.users != {}) {
+    systemd.services.filebrowser-reconcile-users = lib.mkIf (cfg.users != {} && baseConfigReady) {
       description = "Reconcile File Browser users (create declared; remove undeclared)";
       before = [ "filebrowser.service" ];
       requiredBy = [ "filebrowser.service" ];
@@ -144,22 +210,21 @@ in
 
       script =
         let
-          # Compute PASSFILE_<user> variables.
           passfileLines =
             lib.concatStringsSep "\n"
               (lib.mapAttrsToList (uname: u:
                 let
                   var = "PASSFILE_" + lib.replaceStrings [ "-" "." ] [ "_" "_" ] uname;
+                  runtimePassfile = "$RUNTIME_DIRECTORY/${lib.replaceStrings [ "-" "." ] [ "_" "_" ] uname}.pass";
                 in
                 if u.passwordFile != null then
                   ''${var}=${lib.escapeShellArg (toString u.passwordFile)}''
                 else if u.passwordSecret != null then
                   ''${var}=${lib.escapeShellArg config.sops.secrets.${u.passwordSecret}.path}''
                 else
-                  ''${var}="$RUNTIME_DIRECTORY/${lib.escapeShellArg uname}.pass"; ensure_runtime_passfile "${"$"}${var}" ${lib.escapeShellArg u.password}''
+                  ''${var}=${lib.escapeShellArg runtimePassfile}; ensure_runtime_passfile "${"$"}${var}" ${lib.escapeShellArg u.password}''
               ) cfg.users);
 
-          # Ensure user exists with scope + admin flag.
           ensureLines =
             lib.concatStringsSep "\n"
               (lib.mapAttrsToList (uname: u:
@@ -227,7 +292,6 @@ in
 
           ${ensureLines}
 
-          # Remove undeclared users (best-effort; File Browser may refuse deleting the first user)
           filebrowser users ls --database "$DB" | awk 'NR>1 {print $2}' | while read -r u; do
             keep=0
             for d in $DECLARED; do
@@ -243,9 +307,8 @@ in
         '';
     };
 
-    # Make the filebrowser service restart whenever the user config is changed
     systemd.services.filebrowser.restartTriggers = [
-      (builtins.toJSON cfg.users)
+      (builtins.toJSON sanitizedUsersForRestart)
     ];
 
   };

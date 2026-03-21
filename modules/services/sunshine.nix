@@ -10,11 +10,13 @@ in
 
     autoStart = lib.mkOption {
       type = lib.types.bool;
+      default = true;
       description = "Whether Sunshine should auto-start.";
     };
 
     capSysAdmin = lib.mkOption {
       type = lib.types.bool;
+      default = false;
       description = "Whether Sunshine should request CAP_SYS_ADMIN.";
     };
   };

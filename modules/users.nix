@@ -144,7 +144,7 @@ let
           };
         };
 
-        assertions = lib.mkOption {
+        _assertions = lib.mkOption {
           type = types.listOf assertionType;
           default = [ ];
           internal = true;
@@ -153,7 +153,7 @@ let
         };
       };
 
-      config.assertions =
+      config._assertions =
         lib.optionals config.enable (
           [
             {
@@ -193,43 +193,17 @@ let
 
   enabledAccounts = lib.filterAttrs (_: userCfg: userCfg.enable) cfg.accounts;
   homeEnabledAccounts = lib.filterAttrs (_: userCfg: userCfg.enable && userCfg.home.enable) cfg.accounts;
-  internalHomeModules = config.alanix._internal.homeModules;
-  internalHomeModuleUsers = builtins.attrNames internalHomeModules;
-
-  mkHomeConfig = username: userCfg:
-    lib.mkMerge [
-      {
-        imports = userCfg.home.modules ++ lib.attrByPath [ username ] [ ] internalHomeModules;
-        home.username = username;
-        programs.home-manager.enable = true;
-      }
-
-      (lib.mkIf (userCfg.home.directory != null) {
-        home.homeDirectory = userCfg.home.directory;
-      })
-
-      (lib.mkIf (userCfg.home.stateVersion != null) {
-        home.stateVersion = userCfg.home.stateVersion;
-      })
-
-      (lib.mkIf (userCfg.home.files != { }) {
-        home.file = mkHomeFiles userCfg.home.files;
-      })
-
-      (lib.mkIf (userCfg.home.packages != [ ] || userCfg.home.unstablePackages != [ ]) {
-        home.packages = userCfg.home.packages ++ userCfg.home.unstablePackages;
-      })
-    ];
+  mkHomeConfig = username: userCfg: {
+    imports = userCfg.home.modules;
+    home.username = username;
+    home.homeDirectory = userCfg.home.directory;
+    home.stateVersion = userCfg.home.stateVersion;
+    home.file = mkHomeFiles userCfg.home.files;
+    home.packages = userCfg.home.packages ++ userCfg.home.unstablePackages;
+    programs.home-manager.enable = true;
+  };
 in
 {
-  options.alanix._internal.homeModules = lib.mkOption {
-    type = types.attrsOf (types.listOf types.raw);
-    default = { };
-    internal = true;
-    visible = false;
-    description = "Internal Home Manager modules contributed by non-user modules.";
-  };
-
   options.alanix.users = {
     mutableUsers = lib.mkOption {
       type = types.bool;
@@ -267,28 +241,9 @@ in
     })
 
     {
-      assertions =
-        lib.flatten (
-          lib.mapAttrsToList
-            (_: userCfg: lib.optionals userCfg.enable userCfg.assertions)
-            cfg.accounts
-        )
-        ++ lib.flatten (map
-          (username:
-            let
-              userCfg = lib.attrByPath [ username ] null cfg.accounts;
-            in
-            [
-              {
-                assertion = userCfg != null && userCfg.enable;
-                message = "Internal Home Manager config targets alanix.users.accounts.${username}, but that account is not enabled.";
-              }
-              {
-                assertion = userCfg != null && userCfg.enable && userCfg.home.enable;
-                message = "Internal Home Manager config targets alanix.users.accounts.${username}, but home.enable is not set.";
-              }
-            ])
-          internalHomeModuleUsers);
+      assertions = lib.flatten (
+        lib.mapAttrsToList (_: userCfg: lib.optionals userCfg.enable userCfg._assertions) cfg.accounts
+      );
     }
   ];
 }

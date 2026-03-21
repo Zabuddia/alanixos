@@ -16,13 +16,7 @@ let
     '';
   };
 
-  hasLlm = lib.hasAttrByPath [ "alanix" "llm" "instances" ] config;
-  llmCfg = if hasLlm then config.alanix.llm else null;
-  llmInstances =
-    if hasLlm then
-      lib.filterAttrs (_: instance: instance.enable) llmCfg.instances
-    else
-      { };
+  llmInstances = lib.filterAttrs (_: instance: instance.enable) config.alanix.llm.instances;
 
   mkProviderName = instanceName: "local-llama-${instanceName}";
   mkModelAlias = instance: if instance.alias != null then instance.alias else instance.model.name;
@@ -99,6 +93,7 @@ let
       lib.attrByPath [ "alanix" "users" "accounts" cfg.desktopNode.user ] null config
     else
       null;
+  desktopUserHomeReady = desktopUser != null && desktopUser.enable && desktopUser.home.enable;
 in
 {
   options.alanix.openclaw = {
@@ -112,6 +107,7 @@ in
         "loopback"
         "tailnet"
       ];
+      default = "loopback";
     };
 
     customBindHost = lib.mkOption {
@@ -122,10 +118,12 @@ in
 
     port = lib.mkOption {
       type = types.port;
+      default = 18789;
     };
 
     tokenSecret = lib.mkOption {
-      type = types.str;
+      type = types.nullOr types.str;
+      default = null;
       description = "SOPS secret name used for OPENCLAW_GATEWAY_TOKEN.";
     };
 
@@ -149,23 +147,28 @@ in
 
     enableResponsesApi = lib.mkOption {
       type = types.bool;
+      default = true;
     };
 
     enableChatCompletionsApi = lib.mkOption {
       type = types.bool;
+      default = true;
     };
 
     enableTailscaleServe = lib.mkOption {
       type = types.bool;
+      default = false;
     };
 
     controlUi = {
       allowedOrigins = lib.mkOption {
         type = types.listOf types.str;
+        default = [ ];
       };
 
       dangerouslyDisableDeviceAuth = lib.mkOption {
         type = types.bool;
+        default = false;
       };
     };
 
@@ -173,23 +176,28 @@ in
       enable = lib.mkEnableOption "OpenClaw Telegram channel";
 
       tokenSecret = lib.mkOption {
-        type = types.str;
+        type = types.nullOr types.str;
+        default = null;
       };
 
       allowFrom = lib.mkOption {
         type = types.listOf (types.oneOf [ types.int types.str ]);
+        default = [ ];
       };
 
       dmPolicy = lib.mkOption {
-        type = types.str;
+        type = types.nullOr types.str;
+        default = null;
       };
 
       groupPolicy = lib.mkOption {
-        type = types.str;
+        type = types.nullOr types.str;
+        default = null;
       };
 
       configWrites = lib.mkOption {
         type = types.bool;
+        default = false;
       };
     };
 
@@ -197,7 +205,8 @@ in
       enable = lib.mkEnableOption "OpenClaw web search";
 
       apiKeySecret = lib.mkOption {
-        type = types.str;
+        type = types.nullOr types.str;
+        default = null;
       };
 
       braveMode = lib.mkOption {
@@ -205,6 +214,7 @@ in
           "web"
           "llm-context"
         ];
+        default = "web";
       };
     };
 
@@ -217,11 +227,13 @@ in
 
       evaluateEnabled = lib.mkOption {
         type = types.bool;
+        default = false;
         description = "Allow browser-side evaluate helpers when browser control is enabled.";
       };
 
       headless = lib.mkOption {
         type = types.bool;
+        default = true;
         description = "Launch the managed browser headlessly by default.";
       };
 
@@ -246,7 +258,8 @@ in
       };
 
       nodePackage = lib.mkOption {
-        type = types.package;
+        type = types.nullOr types.package;
+        default = null;
         description = "Node.js package made available to the OpenClaw service for the canvas host.";
       };
     };
@@ -287,8 +300,16 @@ in
   config = lib.mkIf cfg.enable {
     assertions = [
       {
+        assertion = cfg.tokenSecret != null;
+        message = "alanix.openclaw.tokenSecret must be set when alanix.openclaw.enable = true.";
+      }
+      {
         assertion = cfg.bind != "custom" || cfg.customBindHost != null;
         message = "alanix.openclaw.customBindHost must be set when bind = \"custom\".";
+      }
+      {
+        assertion = !cfg.enableTailscaleServe || config.alanix.tailscale.enable;
+        message = "alanix.openclaw.enableTailscaleServe requires alanix.tailscale.enable = true.";
       }
       {
         assertion = cfg.primaryLlmInstance == null || primaryInstance != null;
@@ -307,6 +328,10 @@ in
         message = "alanix.openclaw.desktopNode.user must be set when desktopNode.enable = true.";
       }
       {
+        assertion = !cfg.desktopNode.enable || config.alanix.desktop.enable;
+        message = "alanix.openclaw.desktopNode.enable requires alanix.desktop.enable = true.";
+      }
+      {
         assertion = !cfg.desktopNode.enable || (desktopUser != null && desktopUser.enable);
         message = "alanix.openclaw.desktopNode.user must reference an enabled alanix.users.accounts entry.";
       }
@@ -318,6 +343,26 @@ in
         assertion = !cfg.browser.enable || cfg.browser.package != null || cfg.browser.executablePath != null;
         message = "alanix.openclaw.browser: set package or executablePath when browser.enable = true.";
       }
+      {
+        assertion = !cfg.telegram.enable || cfg.telegram.tokenSecret != null;
+        message = "alanix.openclaw.telegram.tokenSecret must be set when alanix.openclaw.telegram.enable = true.";
+      }
+      {
+        assertion = !cfg.telegram.enable || cfg.telegram.dmPolicy != null;
+        message = "alanix.openclaw.telegram.dmPolicy must be set when alanix.openclaw.telegram.enable = true.";
+      }
+      {
+        assertion = !cfg.telegram.enable || cfg.telegram.groupPolicy != null;
+        message = "alanix.openclaw.telegram.groupPolicy must be set when alanix.openclaw.telegram.enable = true.";
+      }
+      {
+        assertion = !cfg.webSearch.enable || cfg.webSearch.apiKeySecret != null;
+        message = "alanix.openclaw.webSearch.apiKeySecret must be set when alanix.openclaw.webSearch.enable = true.";
+      }
+      {
+        assertion = !cfg.canvas.enable || cfg.canvas.nodePackage != null;
+        message = "alanix.openclaw.canvas.nodePackage must be set when alanix.openclaw.canvas.enable = true.";
+      }
     ];
 
     services.openclaw-gateway = {
@@ -325,8 +370,8 @@ in
       package = openclawGatewayPackage;
       port = cfg.port;
       environmentFiles =
-        [ config.sops.templates."openclaw-gateway-env".path ]
-        ++ lib.optionals cfg.webSearch.enable [ config.sops.templates."openclaw-brave-env".path ];
+        lib.optionals (cfg.tokenSecret != null) [ config.sops.templates."openclaw-gateway-env".path ]
+        ++ lib.optionals (cfg.webSearch.enable && cfg.webSearch.apiKeySecret != null) [ config.sops.templates."openclaw-brave-env".path ];
 
       config = lib.mkMerge [
         {
@@ -406,7 +451,7 @@ in
           };
         })
 
-        (lib.mkIf cfg.telegram.enable {
+        (lib.mkIf (cfg.telegram.enable && cfg.telegram.tokenSecret != null) {
           channels.telegram = {
             enabled = true;
             tokenFile = config.sops.templates."openclaw-telegram-bot-token".path;
@@ -417,7 +462,7 @@ in
           };
         })
 
-        (lib.mkIf cfg.webSearch.enable {
+        (lib.mkIf (cfg.webSearch.enable && cfg.webSearch.apiKeySecret != null) {
           tools.web.search =
             {
               enabled = true;
@@ -461,36 +506,34 @@ in
       openclawPkgs.openclaw-tools
     ];
 
-    alanix._internal.homeModules = lib.mkIf cfg.desktopNode.enable {
-      ${cfg.desktopNode.user} = [
-        {
-          systemd.user.services.openclaw-node = {
-            Unit = {
-              Description = "OpenClaw desktop node";
-              After = [ "graphical-session.target" ];
-              PartOf = [ "graphical-session.target" ];
-            };
-
-            Service = {
-              ExecStart =
-                let
-                  displayNameArg = lib.optionalString (cfg.desktopNode.displayName != null)
-                    " --display-name ${lib.escapeShellArg cfg.desktopNode.displayName}";
-                in
-                "${openclawCli}/bin/openclaw node run --host ${lib.escapeShellArg desktopNodeGatewayHost} --port ${toString cfg.port}${displayNameArg}";
-              Environment = [
-                "OPENCLAW_CONFIG_PATH=${config.services.openclaw-gateway.configPath}"
-                "OPENCLAW_STATE_DIR=%h/.local/state/openclaw"
-              ];
-              EnvironmentFile = [ config.sops.templates."openclaw-node-env".path ];
-              Restart = "always";
-              RestartSec = 2;
-            };
-
-            Install.WantedBy = [ "graphical-session.target" ];
+    home-manager.users = lib.mkIf desktopUserHomeReady {
+      ${cfg.desktopNode.user} = {
+        systemd.user.services.openclaw-node = {
+          Unit = {
+            Description = "OpenClaw desktop node";
+            After = [ "graphical-session.target" ];
+            PartOf = [ "graphical-session.target" ];
           };
-        }
-      ];
+
+          Service = {
+            ExecStart =
+              let
+                displayNameArg = lib.optionalString (cfg.desktopNode.displayName != null)
+                  " --display-name ${lib.escapeShellArg cfg.desktopNode.displayName}";
+              in
+              "${openclawCli}/bin/openclaw node run --host ${lib.escapeShellArg desktopNodeGatewayHost} --port ${toString cfg.port}${displayNameArg}";
+            Environment = [
+              "OPENCLAW_CONFIG_PATH=${config.services.openclaw-gateway.configPath}"
+              "OPENCLAW_STATE_DIR=%h/.local/state/openclaw"
+            ];
+            EnvironmentFile = lib.optionals (cfg.tokenSecret != null) [ config.sops.templates."openclaw-node-env".path ];
+            Restart = "always";
+            RestartSec = 2;
+          };
+
+          Install.WantedBy = [ "graphical-session.target" ];
+        };
+      };
     };
   };
 }
