@@ -22,6 +22,12 @@ in
       };
     };
 
+    createHeadlessOutput = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Whether to create a headless Sway output at session startup.";
+    };
+
     swayOutputRules = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];

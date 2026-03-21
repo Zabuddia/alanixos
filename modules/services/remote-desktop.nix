@@ -25,6 +25,12 @@ in
       description = "TCP port for wayvnc to listen on.";
     };
 
+    output = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Specific Sway output for wayvnc to capture.";
+    };
+
     user = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -72,7 +78,8 @@ in
             PartOf = [ "graphical-session.target" ];
           };
           Service = {
-            ExecStart = "${pkgs.wayvnc}/bin/wayvnc 0.0.0.0 ${toString cfg.port}";
+            ExecStartPre = "${pkgs.bash}/bin/bash -lc 'for ((i = 0; i < 60; i++)); do if ${pkgs.sway}/bin/swaymsg -r -t get_outputs 2>/dev/null | ${pkgs.gnugrep}/bin/grep -q '\"active\": true'; then exit 0; fi; sleep 1; done; echo \"wayvnc: no active Sway outputs became available\" >&2; exit 1'";
+            ExecStart = "${pkgs.wayvnc}/bin/wayvnc ${lib.optionalString (cfg.output != null) "-o ${lib.escapeShellArg cfg.output} "}0.0.0.0 ${toString cfg.port}";
             Restart = "on-failure";
             RestartSec = "3s";
           };

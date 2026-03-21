@@ -96,6 +96,7 @@
         enable = false;
         user = null;
       };
+      createHeadlessOutput = false;
       swayOutputRules = [ ];
       idle = {
         lockSeconds = null;
@@ -251,12 +252,14 @@
       enable = false;
       autoStart = true;
       port = 5900;
+      output = null;
       user = null;
     };
 
     alanix.sunshine = {
       enable = false;
       autoStart = true;
+      openFirewall = false;
       capSysAdmin = false;
     };
   };

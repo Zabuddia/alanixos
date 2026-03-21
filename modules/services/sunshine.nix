@@ -14,6 +14,12 @@ in
       description = "Whether Sunshine should auto-start.";
     };
 
+    openFirewall = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Whether to open the firewall for Sunshine.";
+    };
+
     capSysAdmin = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -31,7 +37,7 @@ in
 
     services.sunshine = {
       enable = true;
-      inherit (cfg) autoStart capSysAdmin;
+      inherit (cfg) autoStart openFirewall capSysAdmin;
     };
   };
 }

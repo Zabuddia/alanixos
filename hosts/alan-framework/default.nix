@@ -91,8 +91,9 @@
         enable = true;
         user = "buddia";
       };
+      createHeadlessOutput = true;
       swayOutputRules = [
-        "output * resolution 1920x1080"
+        "output HEADLESS-1 resolution 1920x1080"
       ];
       idle = {
         lockSeconds = null;
@@ -367,13 +368,15 @@
       enable = true;
       autoStart = true;
       port = 5900;
+      output = "HEADLESS-1";
       user = "buddia";
     };
 
     alanix.sunshine = {
-      enable = false;
+      enable = true;
       autoStart = true;
-      capSysAdmin = false;
+      openFirewall = true;
+      capSysAdmin = true;
     };
   };
 }

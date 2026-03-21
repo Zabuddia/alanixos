@@ -8,6 +8,10 @@ lib.mkIf config.alanix.desktop.enable {
     text = lib.concatStringsSep "\n" config.alanix.desktop.swayOutputRules + "\n";
   };
 
+  environment.etc."sway/config.d/11-alanix-headless-output.conf" = lib.mkIf config.alanix.desktop.createHeadlessOutput {
+    text = "exec ${pkgs.sway}/bin/swaymsg create_output\n";
+  };
+
   services.greetd = {
     enable = true;
     settings.default_session =
