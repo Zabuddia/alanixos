@@ -14,6 +14,7 @@ in
         profiles.default.extensions = with pkgs-unstable.vscode-extensions; [
           ms-vscode-remote.remote-ssh
           jnoortheen.nix-ide
+          yzhang.markdown-all-in-one
         ];
       };
     }
