@@ -116,7 +116,7 @@
         chromium.enable = true;
         librewolf.enable = true;
         vscode.enable = true;
-        nextcloud.enable = true;
+        nextcloudClient.enable = true;
         trayscale.enable = true;
       };
     };

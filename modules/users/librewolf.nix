@@ -1,12 +1,13 @@
-{ lib, pkgs-unstable, ... }:
+{ config, lib, pkgs-unstable, ... }:
 
+let
+  cfg = config.librewolf;
+in
 {
   options.librewolf.enable = lib.mkEnableOption "LibreWolf for this user";
 
-  isEnabled = userCfg: userCfg.librewolf.enable;
-
-  homeConfig = _username: userCfg:
-    lib.mkIf userCfg.librewolf.enable {
+  config.home.modules = lib.optionals cfg.enable [
+    {
       programs.librewolf = {
         enable = true;
         package = pkgs-unstable.librewolf;
@@ -21,5 +22,6 @@
           ];
         };
       };
-    };
+    }
+  ];
 }
