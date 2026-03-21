@@ -88,8 +88,8 @@
     alanix.desktop = {
       enable = true;
       autoLogin = {
-        enable = false;
-        user = null;
+        enable = true;
+        user = "buddia";
       };
       idle = {
         lockSeconds = null;
