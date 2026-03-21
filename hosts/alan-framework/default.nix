@@ -40,7 +40,7 @@
       accounts.buddia = {
         enable = true;
         isNormalUser = true;
-        extraGroups = [ "wheel" "networkmanager" ];
+        extraGroups = [ "wheel" "networkmanager" "input" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
         home = {
@@ -376,6 +376,10 @@
       autoStart = true;
       openFirewall = true;
       capSysAdmin = true;
+      webUi = {
+        username = "buddia";
+        passwordFile = config.sops.secrets."sunshine-web-ui-passwords/alan-framework".path;
+      };
     };
   };
 }

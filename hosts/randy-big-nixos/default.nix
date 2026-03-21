@@ -260,6 +260,10 @@
       autoStart = true;
       openFirewall = false;
       capSysAdmin = false;
+      webUi = {
+        username = null;
+        passwordFile = null;
+      };
     };
   };
 }

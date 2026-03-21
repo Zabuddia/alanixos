@@ -24,6 +24,12 @@ in
         mode = "0400";
       };
 
+      "sunshine-web-ui-passwords/alan-framework" = {
+        owner = "buddia";
+        group = "users";
+        mode = "0400";
+      };
+
       "wireguard-private-keys/alan-framework" = {
         sopsFile = ../../secrets/secrets.yaml;
         owner = "root";
