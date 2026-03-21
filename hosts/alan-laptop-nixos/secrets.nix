@@ -19,6 +19,12 @@
     mode = "0400";
   };
 
+  sops.secrets."sunshine-web-ui-passwords/alan-laptop-nixos" = {
+    owner = "buddia";
+    group = "users";
+    mode = "0400";
+  };
+
   sops.templates."cloudflare-env" = {
     content = "CLOUDFLARE_API_TOKEN=${config.sops.placeholder."cloudflare/api-token"}";
     owner = "cloudflare-ddns";
