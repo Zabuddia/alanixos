@@ -15,7 +15,6 @@ in
 
     provider = lib.mkOption {
       type = lib.types.str;
-      default = "cloudflare";
       description = "DDNS provider. Supported: ${lib.concatStringsSep ", " supportedProviders}.";
     };
 

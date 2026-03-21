@@ -3,8 +3,17 @@
 let
   cfg = config.alanix.wireguard;
 
-  peers = lib.mapAttrsToList
-    (name: hostCfg:
+  peerHosts =
+    map
+      (peerName: {
+        name = peerName;
+        hostCfg = lib.attrByPath [ peerName ] null allHosts;
+      })
+      cfg.peers;
+
+  peers =
+    map
+    ({ hostCfg, ... }:
       let peer = hostCfg.config.alanix.wireguard; in {
         publicKey = peer.publicKey;
         allowedIPs = [ "${peer.vpnIP}/32" ];
@@ -12,12 +21,10 @@ let
         persistentKeepalive = 25;
         dynamicEndpointRefreshSeconds = 60;
         dynamicEndpointRefreshRestartSeconds = 5;
-      }
-    )
-    (lib.filterAttrs
-      (name: hostCfg: name != hostname && hostCfg.config.alanix.wireguard.enable)
-      allHosts
-    );
+      })
+    (lib.filter
+      ({ hostCfg, ... }: hostCfg != null && hostCfg.config.alanix.wireguard.enable)
+      peerHosts);
 in
 {
   options.alanix.wireguard = {
@@ -26,24 +33,52 @@ in
     endpoint = lib.mkOption { type = lib.types.str; };
     publicKey = lib.mkOption { type = lib.types.str; };
     privateKeyFile = lib.mkOption { type = lib.types.path; };
-    listenPort = lib.mkOption { type = lib.types.port; default = 51820; };
+    listenPort = lib.mkOption { type = lib.types.port; };
+    peers = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = "Names of alanix hosts that should be WireGuard peers of this host.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
-    assertions = [
-      {
-        assertion = cfg.vpnIP != "";
-        message = "alanix.wireguard: vpnIP must not be empty.";
-      }
-      {
-        assertion = cfg.publicKey != "";
-        message = "alanix.wireguard: publicKey must not be empty.";
-      }
-      {
-        assertion = cfg.endpoint != "";
-        message = "alanix.wireguard: endpoint must not be empty.";
-      }
-    ];
+    assertions =
+      [
+        {
+          assertion = cfg.vpnIP != "";
+          message = "alanix.wireguard: vpnIP must not be empty.";
+        }
+        {
+          assertion = cfg.publicKey != "";
+          message = "alanix.wireguard: publicKey must not be empty.";
+        }
+        {
+          assertion = cfg.endpoint != "";
+          message = "alanix.wireguard: endpoint must not be empty.";
+        }
+        {
+          assertion = lib.unique cfg.peers == cfg.peers;
+          message = "alanix.wireguard.peers must not contain duplicates.";
+        }
+      ]
+      ++ map
+        (peerHost: {
+          assertion = peerHost != hostname;
+          message = "alanix.wireguard.peers must not include the current host (${hostname}).";
+        })
+        cfg.peers
+      ++ map
+        ({ name, hostCfg }: {
+          assertion = hostCfg != null;
+          message = "alanix.wireguard.peers contains unknown host '${name}'.";
+        })
+        peerHosts
+      ++ map
+        ({ name, hostCfg }: {
+          assertion = hostCfg != null && hostCfg.config.alanix.wireguard.enable;
+          message = "alanix.wireguard.peers.${name} must reference a host with alanix.wireguard.enable = true.";
+        })
+        peerHosts;
 
     networking.firewall.allowedUDPPorts = [ cfg.listenPort ];
     networking.wireguard.interfaces.wg0 = {

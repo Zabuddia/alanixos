@@ -58,21 +58,18 @@ let
     options = {
       enable = lib.mkEnableOption "llama.cpp instance ${name}";
 
-      host = lib.mkOption {
-        type = types.str;
-        default = "127.0.0.1";
-      };
+    host = lib.mkOption {
+      type = types.str;
+    };
 
-      listenHost = lib.mkOption {
-        type = types.str;
-        default = "0.0.0.0";
-        description = "Address/interface llama-server binds to.";
-      };
+    listenHost = lib.mkOption {
+      type = types.str;
+      description = "Address/interface llama-server binds to.";
+    };
 
-      port = lib.mkOption {
-        type = types.port;
-        default = 8080;
-      };
+    port = lib.mkOption {
+      type = types.port;
+    };
 
       alias = lib.mkOption {
         type = types.nullOr types.str;
@@ -82,22 +79,18 @@ let
 
       ctxSize = lib.mkOption {
         type = types.int;
-        default = 32768;
       };
 
       batchSize = lib.mkOption {
         type = types.int;
-        default = 2048;
       };
 
       ubatchSize = lib.mkOption {
         type = types.int;
-        default = 512;
       };
 
       parallel = lib.mkOption {
         type = types.int;
-        default = 1;
       };
 
       gpuLayers = lib.mkOption {
@@ -105,12 +98,10 @@ let
           types.int
           (types.enum [ "auto" "all" ])
         ];
-        default = "all";
       };
 
       flashAttention = lib.mkOption {
         type = types.enum [ "on" "off" "auto" ];
-        default = "on";
       };
 
       threads = lib.mkOption {
@@ -127,17 +118,14 @@ let
 
       mmap = lib.mkOption {
         type = types.bool;
-        default = true;
       };
 
       mlock = lib.mkOption {
         type = types.bool;
-        default = false;
       };
 
       input = lib.mkOption {
         type = types.listOf (types.enum [ "text" "image" "audio" ]);
-        default = [ "text" ];
         description = "Capabilities advertised to OpenClaw for this model.";
       };
 
@@ -230,12 +218,10 @@ in
         "rocm"
         "vulkan"
       ];
-      default = "vulkan";
     };
 
     stateDir = lib.mkOption {
       type = types.str;
-      default = "/var/lib/llm";
     };
 
     instances = lib.mkOption {

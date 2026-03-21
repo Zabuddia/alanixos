@@ -93,6 +93,12 @@ let
       cfg.customBindHost
     else
       "127.0.0.1";
+
+  desktopUser =
+    if cfg.desktopNode.user != null then
+      lib.attrByPath [ "alanix" "users" "accounts" cfg.desktopNode.user ] null config
+    else
+      null;
 in
 {
   options.alanix.openclaw = {
@@ -106,7 +112,6 @@ in
         "loopback"
         "tailnet"
       ];
-      default = "tailnet";
     };
 
     customBindHost = lib.mkOption {
@@ -117,12 +122,10 @@ in
 
     port = lib.mkOption {
       type = types.port;
-      default = 18789;
     };
 
     tokenSecret = lib.mkOption {
       type = types.str;
-      default = "openclaw/gateway-token";
       description = "SOPS secret name used for OPENCLAW_GATEWAY_TOKEN.";
     };
 
@@ -146,28 +149,23 @@ in
 
     enableResponsesApi = lib.mkOption {
       type = types.bool;
-      default = false;
     };
 
     enableChatCompletionsApi = lib.mkOption {
       type = types.bool;
-      default = false;
     };
 
     enableTailscaleServe = lib.mkOption {
       type = types.bool;
-      default = false;
     };
 
     controlUi = {
       allowedOrigins = lib.mkOption {
         type = types.listOf types.str;
-        default = [ ];
       };
 
       dangerouslyDisableDeviceAuth = lib.mkOption {
         type = types.bool;
-        default = false;
       };
     };
 
@@ -176,27 +174,22 @@ in
 
       tokenSecret = lib.mkOption {
         type = types.str;
-        default = "telegram/bot-token";
       };
 
       allowFrom = lib.mkOption {
         type = types.listOf (types.oneOf [ types.int types.str ]);
-        default = [ ];
       };
 
       dmPolicy = lib.mkOption {
         type = types.str;
-        default = "allowlist";
       };
 
       groupPolicy = lib.mkOption {
         type = types.str;
-        default = "disabled";
       };
 
       configWrites = lib.mkOption {
         type = types.bool;
-        default = false;
       };
     };
 
@@ -205,7 +198,6 @@ in
 
       apiKeySecret = lib.mkOption {
         type = types.str;
-        default = "brave/api-key";
       };
 
       braveMode = lib.mkOption {
@@ -213,7 +205,6 @@ in
           "web"
           "llm-context"
         ];
-        default = "web";
       };
     };
 
@@ -226,13 +217,11 @@ in
 
       evaluateEnabled = lib.mkOption {
         type = types.bool;
-        default = true;
         description = "Allow browser-side evaluate helpers when browser control is enabled.";
       };
 
       headless = lib.mkOption {
         type = types.bool;
-        default = true;
         description = "Launch the managed browser headlessly by default.";
       };
 
@@ -258,7 +247,6 @@ in
 
       nodePackage = lib.mkOption {
         type = types.package;
-        default = pkgs.nodejs;
         description = "Node.js package made available to the OpenClaw service for the canvas host.";
       };
     };
@@ -299,6 +287,10 @@ in
   config = lib.mkIf cfg.enable {
     assertions = [
       {
+        assertion = cfg.bind != "custom" || cfg.customBindHost != null;
+        message = "alanix.openclaw.customBindHost must be set when bind = \"custom\".";
+      }
+      {
         assertion = cfg.primaryLlmInstance == null || primaryInstance != null;
         message = "alanix.openclaw.primaryLlmInstance must reference an enabled alanix.llm.instances entry.";
       }
@@ -313,6 +305,18 @@ in
       {
         assertion = !cfg.desktopNode.enable || cfg.desktopNode.user != null;
         message = "alanix.openclaw.desktopNode.user must be set when desktopNode.enable = true.";
+      }
+      {
+        assertion = !cfg.desktopNode.enable || (desktopUser != null && desktopUser.enable);
+        message = "alanix.openclaw.desktopNode.user must reference an enabled alanix.users.accounts entry.";
+      }
+      {
+        assertion = !cfg.desktopNode.enable || (desktopUser != null && desktopUser.enable && desktopUser.home.enable);
+        message = "alanix.openclaw.desktopNode.user must reference an alanix.users.accounts entry with home.enable = true.";
+      }
+      {
+        assertion = !cfg.browser.enable || cfg.browser.package != null || cfg.browser.executablePath != null;
+        message = "alanix.openclaw.browser: set package or executablePath when browser.enable = true.";
       }
     ];
 
@@ -457,34 +461,36 @@ in
       openclawPkgs.openclaw-tools
     ];
 
-    home-manager.users = lib.mkIf cfg.desktopNode.enable {
-      ${cfg.desktopNode.user} = {
-        systemd.user.services.openclaw-node = {
-          Unit = {
-            Description = "OpenClaw desktop node";
-            After = [ "graphical-session.target" ];
-            PartOf = [ "graphical-session.target" ];
-          };
+    alanix._internal.homeModules = lib.mkIf cfg.desktopNode.enable {
+      ${cfg.desktopNode.user} = [
+        {
+          systemd.user.services.openclaw-node = {
+            Unit = {
+              Description = "OpenClaw desktop node";
+              After = [ "graphical-session.target" ];
+              PartOf = [ "graphical-session.target" ];
+            };
 
-          Service = {
-            ExecStart =
-              let
-                displayNameArg = lib.optionalString (cfg.desktopNode.displayName != null)
-                  " --display-name ${lib.escapeShellArg cfg.desktopNode.displayName}";
-              in
-              "${openclawCli}/bin/openclaw node run --host ${lib.escapeShellArg desktopNodeGatewayHost} --port ${toString cfg.port}${displayNameArg}";
-            Environment = [
-              "OPENCLAW_CONFIG_PATH=${config.services.openclaw-gateway.configPath}"
-              "OPENCLAW_STATE_DIR=%h/.local/state/openclaw"
-            ];
-            EnvironmentFile = [ config.sops.templates."openclaw-node-env".path ];
-            Restart = "always";
-            RestartSec = 2;
-          };
+            Service = {
+              ExecStart =
+                let
+                  displayNameArg = lib.optionalString (cfg.desktopNode.displayName != null)
+                    " --display-name ${lib.escapeShellArg cfg.desktopNode.displayName}";
+                in
+                "${openclawCli}/bin/openclaw node run --host ${lib.escapeShellArg desktopNodeGatewayHost} --port ${toString cfg.port}${displayNameArg}";
+              Environment = [
+                "OPENCLAW_CONFIG_PATH=${config.services.openclaw-gateway.configPath}"
+                "OPENCLAW_STATE_DIR=%h/.local/state/openclaw"
+              ];
+              EnvironmentFile = [ config.sops.templates."openclaw-node-env".path ];
+              Restart = "always";
+              RestartSec = 2;
+            };
 
-          Install.WantedBy = [ "graphical-session.target" ];
-        };
-      };
+            Install.WantedBy = [ "graphical-session.target" ];
+          };
+        }
+      ];
     };
   };
 }
