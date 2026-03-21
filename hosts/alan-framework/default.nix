@@ -76,7 +76,7 @@
           matchBlocks = { };
         };
 
-        desktop.enable = false;
+        desktop.enable = true;
         chromium.enable = true;
         librewolf.enable = false;
         nextcloudClient.enable = false;
