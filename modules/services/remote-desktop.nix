@@ -78,7 +78,7 @@ in
             PartOf = [ "graphical-session.target" ];
           };
           Service = {
-            ExecStartPre = "${pkgs.bash}/bin/bash -lc 'for ((i = 0; i < 60; i++)); do if ${pkgs.sway}/bin/swaymsg -r -t get_outputs 2>/dev/null | ${pkgs.gnugrep}/bin/grep -q '\"active\": true'; then exit 0; fi; sleep 1; done; echo \"wayvnc: no active Sway outputs became available\" >&2; exit 1'";
+            ExecStartPre = "${pkgs.bash}/bin/bash -lc 'runtime_dir=\"$XDG_RUNTIME_DIR\"; if [ -z \"$runtime_dir\" ]; then runtime_dir=%t; fi; for ((i = 0; i < 60; i++)); do sway_sock=$(${pkgs.findutils}/bin/find \"$runtime_dir\" -maxdepth 1 -type s -name \"sway-ipc.*.sock\" | ${pkgs.coreutils}/bin/head -n1); if [ -n \"$sway_sock\" ] && SWAYSOCK=\"$sway_sock\" ${pkgs.sway}/bin/swaymsg -r -t get_outputs 2>/dev/null | ${pkgs.gnugrep}/bin/grep -q '\"active\": true'; then exit 0; fi; sleep 1; done; echo \"wayvnc: no active Sway outputs became available\" >&2; exit 1'";
             ExecStart = "${pkgs.wayvnc}/bin/wayvnc ${lib.optionalString (cfg.output != null) "-o ${lib.escapeShellArg cfg.output} "}0.0.0.0 ${toString cfg.port}";
             Restart = "on-failure";
             RestartSec = "3s";
