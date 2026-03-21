@@ -133,6 +133,7 @@
         enable = false;
         user = null;
       };
+      swayOutputRules = [ ];
       idle = {
         lockSeconds = 300;
         displayOffSeconds = 330;

@@ -22,6 +22,12 @@ in
       };
     };
 
+    swayOutputRules = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = "Additional Sway output directives written into /etc/sway/config.d.";
+    };
+
     idle = {
       lockSeconds = lib.mkOption {
         type = lib.types.nullOr lib.types.int;

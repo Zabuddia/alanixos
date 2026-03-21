@@ -4,6 +4,10 @@ lib.mkIf config.alanix.desktop.enable {
   programs.sway.enable = true;
   security.polkit.enable = true;
 
+  environment.etc."sway/config.d/10-alanix-output-rules.conf" = lib.mkIf (config.alanix.desktop.swayOutputRules != [ ]) {
+    text = lib.concatStringsSep "\n" config.alanix.desktop.swayOutputRules + "\n";
+  };
+
   services.greetd = {
     enable = true;
     settings.default_session =
