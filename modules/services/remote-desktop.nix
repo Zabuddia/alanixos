@@ -13,6 +13,12 @@ in
   options.alanix.remote-desktop = {
     enable = lib.mkEnableOption "wayvnc VNC remote desktop (WireGuard-restricted)";
 
+    autoStart = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Whether the wayvnc user service should start automatically with the graphical session.";
+    };
+
     port = lib.mkOption {
       type = lib.types.port;
       default = 5900;
@@ -70,7 +76,7 @@ in
             Restart = "on-failure";
             RestartSec = "3s";
           };
-          Install = {
+          Install = lib.mkIf cfg.autoStart {
             WantedBy = [ "graphical-session.target" ];
           };
         };

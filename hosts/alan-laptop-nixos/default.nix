@@ -133,6 +133,19 @@
         enable = false;
         user = null;
       };
+      idle = {
+        lockSeconds = 300;
+        displayOffSeconds = 330;
+        suspendSeconds = 1800;
+      };
+    };
+
+    alanix.power = {
+      enable = true;
+      enablePowerProfilesDaemon = true;
+      enableUpower = true;
+      enableThermald = true;
+      enablePowertop = true;
     };
 
     alanix.ssh = {
@@ -272,13 +285,14 @@
 
     alanix.remote-desktop = {
       enable = true;
+      autoStart = false;
       port = 5900;
       user = "buddia";
     };
 
     alanix.sunshine = {
       enable = true;
-      autoStart = true;
+      autoStart = false;
       capSysAdmin = true;
     };
   };
