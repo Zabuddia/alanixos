@@ -1,7 +1,8 @@
-{ lib, ... }:
+{ config, lib, name, ... }:
 
 let
   inherit (lib) types;
+  cfg = config.git;
 in
 {
   options = {
@@ -40,38 +41,38 @@ in
     };
   };
 
-  isEnabled = userCfg: userCfg.git.enable;
-
-  homeConfig = _username: userCfg:
-    lib.mkIf userCfg.git.enable {
-      programs.git = {
-        enable = true;
-        settings = lib.recursiveUpdate {
-          github.user = userCfg.git.github.user;
-          user.name = userCfg.git.user.name;
-          user.email = userCfg.git.user.email;
-          init.defaultBranch = userCfg.git.init.defaultBranch;
-        } userCfg.git.extraSettings;
-      };
-    };
-
-  assertions = username: userCfg:
-    lib.optionals userCfg.git.enable [
+  config = {
+    assertions = lib.optionals cfg.enable [
       {
-        assertion = userCfg.git.github.user != null;
-        message = "alanix.users.accounts.${username}.git.github.user must be set when git is enabled.";
+        assertion = cfg.github.user != null;
+        message = "alanix.users.accounts.${name}.git.github.user must be set when git is enabled.";
       }
       {
-        assertion = userCfg.git.user.name != null;
-        message = "alanix.users.accounts.${username}.git.user.name must be set when git is enabled.";
+        assertion = cfg.user.name != null;
+        message = "alanix.users.accounts.${name}.git.user.name must be set when git is enabled.";
       }
       {
-        assertion = userCfg.git.user.email != null;
-        message = "alanix.users.accounts.${username}.git.user.email must be set when git is enabled.";
+        assertion = cfg.user.email != null;
+        message = "alanix.users.accounts.${name}.git.user.email must be set when git is enabled.";
       }
       {
-        assertion = userCfg.git.init.defaultBranch != null;
-        message = "alanix.users.accounts.${username}.git.init.defaultBranch must be set when git is enabled.";
+        assertion = cfg.init.defaultBranch != null;
+        message = "alanix.users.accounts.${name}.git.init.defaultBranch must be set when git is enabled.";
       }
     ];
+
+    home.modules = lib.optionals cfg.enable [
+      {
+        programs.git = {
+          enable = true;
+          settings = lib.recursiveUpdate {
+            github.user = cfg.github.user;
+            user.name = cfg.user.name;
+            user.email = cfg.user.email;
+            init.defaultBranch = cfg.init.defaultBranch;
+          } cfg.extraSettings;
+        };
+      }
+    ];
+  };
 }

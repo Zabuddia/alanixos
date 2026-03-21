@@ -1,12 +1,13 @@
-{ lib, pkgs-unstable, ... }:
+{ config, lib, pkgs-unstable, ... }:
 
+let
+  cfg = config.chromium;
+in
 {
   options.chromium.enable = lib.mkEnableOption "Chromium for this user";
 
-  isEnabled = userCfg: userCfg.chromium.enable;
-
-  homeConfig = _username: userCfg:
-    lib.mkIf userCfg.chromium.enable {
+  config.home.modules = lib.optionals cfg.enable [
+    {
       programs.chromium = {
         enable = true;
         package = pkgs-unstable.ungoogled-chromium;
@@ -17,5 +18,6 @@
           "--no-default-browser-check"
         ];
       };
-    };
+    }
+  ];
 }

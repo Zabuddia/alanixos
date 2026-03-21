@@ -1,12 +1,13 @@
-{ lib, pkgs-unstable, ... }:
+{ config, lib, pkgs-unstable, ... }:
 
+let
+  cfg = config.vscode;
+in
 {
   options.vscode.enable = lib.mkEnableOption "VSCodium for this user";
 
-  isEnabled = userCfg: userCfg.vscode.enable;
-
-  homeConfig = _username: userCfg:
-    lib.mkIf userCfg.vscode.enable {
+  config.home.modules = lib.optionals cfg.enable [
+    {
       programs.vscode = {
         enable = true;
         package = pkgs-unstable.vscodium;
@@ -15,5 +16,6 @@
           jnoortheen.nix-ide
         ];
       };
-    };
+    }
+  ];
 }
