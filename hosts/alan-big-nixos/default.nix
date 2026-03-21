@@ -269,7 +269,6 @@
       autoStart = true;
       port = 5900;
       output = null;
-      user = null;
     };
 
     alanix.sunshine = {

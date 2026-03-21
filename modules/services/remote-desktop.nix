@@ -2,12 +2,41 @@
 
 let
   cfg = config.alanix.remote-desktop;
-  userCfg =
-    if cfg.user != null then
-      lib.attrByPath [ "alanix" "users" "accounts" cfg.user ] null config
-    else
-      null;
-  userHomeReady = userCfg != null && userCfg.enable && userCfg.home.enable;
+  wayvncLauncher = pkgs.writeShellScriptBin "alanix-wayvnc" ''
+    set -eu
+
+    runtime_dir="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+    if [ -z "''${SWAYSOCK:-}" ]; then
+      SWAYSOCK="$(${pkgs.findutils}/bin/find "$runtime_dir" -maxdepth 1 -type s -name 'sway-ipc.*.sock' | ${pkgs.coreutils}/bin/head -n1)"
+      export SWAYSOCK
+    fi
+
+    if [ -z "''${SWAYSOCK:-}" ]; then
+      echo "alanix-wayvnc: could not find SWAYSOCK" >&2
+      exit 1
+    fi
+
+    ${
+      lib.optionalString (cfg.output != null) ''
+        found_output=0
+        for _ in $(seq 1 15); do
+          if ${pkgs.sway}/bin/swaymsg -r -t get_outputs 2>/dev/null | ${pkgs.gnugrep}/bin/grep -Fq ${lib.escapeShellArg "\"name\": ${builtins.toJSON cfg.output}"}; then
+            found_output=1
+            break
+          fi
+          sleep 1
+        done
+
+        if [ "$found_output" -ne 1 ]; then
+          echo "alanix-wayvnc: output ${cfg.output} did not appear in Sway" >&2
+          exit 1
+        fi
+      ''
+    }
+
+    exec ${pkgs.wayvnc}/bin/wayvnc ${lib.optionalString (cfg.output != null) "-o ${lib.escapeShellArg cfg.output} "}0.0.0.0 ${toString cfg.port}
+  '';
 in
 {
   options.alanix.remote-desktop = {
@@ -16,7 +45,7 @@ in
     autoStart = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "Whether the wayvnc user service should start automatically with the graphical session.";
+      description = "Whether wayvnc should start automatically from the Sway session.";
     };
 
     port = lib.mkOption {
@@ -30,12 +59,6 @@ in
       default = null;
       description = "Specific Sway output for wayvnc to capture.";
     };
-
-    user = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-      description = "User whose Wayland session to serve via wayvnc.";
-    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -48,46 +71,17 @@ in
         assertion = config.alanix.desktop.enable;
         message = "alanix.remote-desktop: requires alanix.desktop.enable = true.";
       }
-      {
-        assertion = cfg.user != null;
-        message = "alanix.remote-desktop.user must be set when alanix.remote-desktop.enable = true.";
-      }
-      {
-        assertion = userCfg != null && userCfg.enable;
-        message = "alanix.remote-desktop.user must reference an enabled alanix.users.accounts entry.";
-      }
-      {
-        assertion = userCfg != null && userCfg.enable && userCfg.home.enable;
-        message = "alanix.remote-desktop.user must reference an alanix.users.accounts entry with home.enable = true.";
-      }
     ];
 
-    # Restrict VNC access to the WireGuard interface only
     networking.firewall.interfaces.wg0.allowedTCPPorts = [ cfg.port ];
 
-    environment.systemPackages = [ pkgs.wayvnc ];
+    environment.systemPackages = [
+      pkgs.wayvnc
+      wayvncLauncher
+    ];
 
-    # wayvnc attaches to the running Wayland compositor via $WAYLAND_DISPLAY.
-    # NOTE: requires the user to be logged into Sway — no pre-login access.
-    home-manager.users = lib.mkIf userHomeReady {
-      ${cfg.user} = {
-        systemd.user.services.wayvnc = {
-          Unit = {
-            Description = "wayvnc VNC server for Wayland session";
-            After = [ "graphical-session.target" ];
-            PartOf = [ "graphical-session.target" ];
-          };
-          Service = {
-            ExecStartPre = "${pkgs.bash}/bin/bash -lc 'runtime_dir=\"$XDG_RUNTIME_DIR\"; if [ -z \"$runtime_dir\" ]; then runtime_dir=%t; fi; for ((i = 0; i < 60; i++)); do sway_sock=$(${pkgs.findutils}/bin/find \"$runtime_dir\" -maxdepth 1 -type s -name \"sway-ipc.*.sock\" | ${pkgs.coreutils}/bin/head -n1); if [ -n \"$sway_sock\" ] && SWAYSOCK=\"$sway_sock\" ${pkgs.sway}/bin/swaymsg -r -t get_outputs 2>/dev/null | ${pkgs.gnugrep}/bin/grep -q '\"active\": true'; then exit 0; fi; sleep 1; done; echo \"wayvnc: no active Sway outputs became available\" >&2; exit 1'";
-            ExecStart = "${pkgs.wayvnc}/bin/wayvnc ${lib.optionalString (cfg.output != null) "-o ${lib.escapeShellArg cfg.output} "}0.0.0.0 ${toString cfg.port}";
-            Restart = "on-failure";
-            RestartSec = "3s";
-          };
-          Install = lib.mkIf cfg.autoStart {
-            WantedBy = [ "graphical-session.target" ];
-          };
-        };
-      };
+    environment.etc."sway/config.d/20-alanix-wayvnc.conf" = lib.mkIf cfg.autoStart {
+      text = "exec ${wayvncLauncher}/bin/alanix-wayvnc\n";
     };
   };
 }

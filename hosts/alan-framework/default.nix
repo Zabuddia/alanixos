@@ -369,7 +369,6 @@
       autoStart = true;
       port = 5900;
       output = "HEADLESS-1";
-      user = "buddia";
     };
 
     alanix.sunshine = {
