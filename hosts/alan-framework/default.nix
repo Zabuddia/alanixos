@@ -377,6 +377,7 @@
       openFirewall = true;
       capSysAdmin = true;
       webUi = {
+        port = 47990;
         username = "buddia";
         passwordFile = config.sops.secrets."sunshine-web-ui-passwords/alan-framework".path;
       };
