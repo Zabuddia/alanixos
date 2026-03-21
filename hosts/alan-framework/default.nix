@@ -91,6 +91,9 @@
         enable = true;
         user = "buddia";
       };
+      swayOutputRules = [
+        "output * resolution 1920x1080"
+      ];
       idle = {
         lockSeconds = null;
         displayOffSeconds = null;

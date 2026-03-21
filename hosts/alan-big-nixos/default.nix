@@ -96,6 +96,7 @@
         enable = false;
         user = null;
       };
+      swayOutputRules = [ ];
       idle = {
         lockSeconds = null;
         displayOffSeconds = null;
