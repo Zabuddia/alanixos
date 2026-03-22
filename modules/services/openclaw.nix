@@ -94,6 +94,27 @@ let
       cfg.customBindHost
     else
       "127.0.0.1";
+  desktopNodeGatewayPort =
+    if cfg.desktopNode.gatewayPort != null then
+      cfg.desktopNode.gatewayPort
+    else
+      cfg.port;
+  desktopNodeConfigPath =
+    if cfg.enable then
+      config.services.openclaw-gateway.configPath
+    else
+      "/etc/openclaw/node-host.json";
+  desktopNodeConfig = lib.recursiveUpdate
+    (lib.optionalAttrs cfg.browser.enable {
+      browser = {
+        enabled = true;
+        evaluateEnabled = cfg.browser.evaluateEnabled;
+        headless = cfg.browser.headless;
+      } // lib.optionalAttrs (cfg.browser.executablePath != null) {
+        executablePath = cfg.browser.executablePath;
+      };
+    })
+    cfg.extraConfig;
 
   desktopUser =
     if cfg.desktopNode.user != null then
@@ -301,6 +322,18 @@ in
         default = null;
         description = "Gateway host the desktop node should connect to. Defaults to 127.0.0.1.";
       };
+
+      gatewayPort = lib.mkOption {
+        type = types.nullOr types.port;
+        default = null;
+        description = "Gateway port the desktop node should connect to. Defaults to alanix.openclaw.port.";
+      };
+
+      gatewayTls = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether the desktop node should connect to the gateway over TLS.";
+      };
     };
 
     extraConfig = lib.mkOption {
@@ -310,30 +343,30 @@ in
     };
   };
 
-  config = lib.mkIf cfg.enable {
+  config = {
     assertions = [
       {
-        assertion = cfg.tokenSecret != null;
+        assertion = !cfg.enable || cfg.tokenSecret != null;
         message = "alanix.openclaw.tokenSecret must be set when alanix.openclaw.enable = true.";
       }
       {
-        assertion = cfg.bind != "custom" || cfg.customBindHost != null;
+        assertion = !cfg.enable || cfg.bind != "custom" || cfg.customBindHost != null;
         message = "alanix.openclaw.customBindHost must be set when bind = \"custom\".";
       }
       {
-        assertion = !cfg.enableTailscaleServe || config.alanix.tailscale.enable;
+        assertion = !cfg.enable || !cfg.enableTailscaleServe || config.alanix.tailscale.enable;
         message = "alanix.openclaw.enableTailscaleServe requires alanix.tailscale.enable = true.";
       }
       {
-        assertion = cfg.primaryLlmInstance == null || primaryInstance != null;
+        assertion = !cfg.enable || cfg.primaryLlmInstance == null || primaryInstance != null;
         message = "alanix.openclaw.primaryLlmInstance must reference an enabled alanix.llm.instances entry.";
       }
       {
-        assertion = cfg.imageLlmInstance == null || imageInstance != null;
+        assertion = !cfg.enable || cfg.imageLlmInstance == null || imageInstance != null;
         message = "alanix.openclaw.imageLlmInstance must reference an enabled alanix.llm.instances entry.";
       }
       {
-        assertion = cfg.embeddingLlmInstance == null || embeddingInstance != null;
+        assertion = !cfg.enable || cfg.embeddingLlmInstance == null || embeddingInstance != null;
         message = "alanix.openclaw.embeddingLlmInstance must reference an enabled alanix.llm.instances entry.";
       }
       {
@@ -353,32 +386,40 @@ in
         message = "alanix.openclaw.desktopNode.user must reference an alanix.users.accounts entry with home.enable = true.";
       }
       {
+        assertion = !cfg.desktopNode.enable || cfg.tokenSecret != null;
+        message = "alanix.openclaw.tokenSecret must be set when desktopNode.enable = true.";
+      }
+      {
+        assertion = !cfg.desktopNode.enable || cfg.enable || cfg.desktopNode.gatewayHost != null;
+        message = "alanix.openclaw.desktopNode.gatewayHost must be set when desktopNode.enable = true and alanix.openclaw.enable = false.";
+      }
+      {
         assertion = !cfg.browser.enable || cfg.browser.package != null || cfg.browser.executablePath != null;
         message = "alanix.openclaw.browser: set package or executablePath when browser.enable = true.";
       }
       {
-        assertion = !cfg.telegram.enable || cfg.telegram.tokenSecret != null;
+        assertion = !cfg.enable || !cfg.telegram.enable || cfg.telegram.tokenSecret != null;
         message = "alanix.openclaw.telegram.tokenSecret must be set when alanix.openclaw.telegram.enable = true.";
       }
       {
-        assertion = !cfg.telegram.enable || cfg.telegram.dmPolicy != null;
+        assertion = !cfg.enable || !cfg.telegram.enable || cfg.telegram.dmPolicy != null;
         message = "alanix.openclaw.telegram.dmPolicy must be set when alanix.openclaw.telegram.enable = true.";
       }
       {
-        assertion = !cfg.telegram.enable || cfg.telegram.groupPolicy != null;
+        assertion = !cfg.enable || !cfg.telegram.enable || cfg.telegram.groupPolicy != null;
         message = "alanix.openclaw.telegram.groupPolicy must be set when alanix.openclaw.telegram.enable = true.";
       }
       {
-        assertion = !cfg.webSearch.enable || cfg.webSearch.apiKeySecret != null;
+        assertion = !cfg.enable || !cfg.webSearch.enable || cfg.webSearch.apiKeySecret != null;
         message = "alanix.openclaw.webSearch.apiKeySecret must be set when alanix.openclaw.webSearch.enable = true.";
       }
       {
-        assertion = !cfg.canvas.enable || cfg.canvas.nodePackage != null;
+        assertion = !cfg.enable || !cfg.canvas.enable || cfg.canvas.nodePackage != null;
         message = "alanix.openclaw.canvas.nodePackage must be set when alanix.openclaw.canvas.enable = true.";
       }
     ];
 
-    services.openclaw-gateway = {
+    services.openclaw-gateway = lib.mkIf cfg.enable {
       enable = true;
       package = openclawGatewayPackage;
       port = cfg.port;
@@ -517,17 +558,26 @@ in
         ++ lib.optionals cfg.canvas.enable [ cfg.canvas.nodePackage ];
     };
 
-    environment.systemPackages = [
-      openclawCli
-      openclawPkgs.openclaw-tools
-    ];
+    environment.etc."openclaw/node-host.json" = lib.mkIf (cfg.desktopNode.enable && !cfg.enable) {
+      text = builtins.toJSON desktopNodeConfig;
+      mode = "0644";
+    };
+
+    environment.systemPackages =
+      lib.optionals cfg.enable [
+        openclawCli
+        openclawPkgs.openclaw-tools
+      ]
+      ++ lib.optionals (cfg.desktopNode.enable && !cfg.enable) [
+        openclawGatewayPackage
+      ];
 
     systemd.services.${config.services.openclaw-gateway.unitName} = lib.mkIf cfg.enableTailscaleServe {
       wants = [ "tailscaled.service" ];
       after = [ "tailscaled.service" ];
     };
 
-    home-manager.users = lib.mkIf desktopUserHomeReady {
+    home-manager.users = lib.mkIf (cfg.desktopNode.enable && desktopUserHomeReady) {
       ${cfg.desktopNode.user} = {
         systemd.user.services.openclaw-node = {
           Unit = {
@@ -541,10 +591,11 @@ in
               let
                 displayNameArg = lib.optionalString (cfg.desktopNode.displayName != null)
                   " --display-name ${lib.escapeShellArg cfg.desktopNode.displayName}";
+                tlsArg = lib.optionalString cfg.desktopNode.gatewayTls " --tls";
               in
-              "${openclawCli}/bin/openclaw node run --host ${lib.escapeShellArg desktopNodeGatewayHost} --port ${toString cfg.port}${displayNameArg}";
+              "${openclawGatewayPackage}/bin/openclaw node run --host ${lib.escapeShellArg desktopNodeGatewayHost} --port ${toString desktopNodeGatewayPort}${tlsArg}${displayNameArg}";
             Environment = [
-              "OPENCLAW_CONFIG_PATH=${config.services.openclaw-gateway.configPath}"
+              "OPENCLAW_CONFIG_PATH=${desktopNodeConfigPath}"
               "OPENCLAW_STATE_DIR=%h/.local/state/openclaw"
             ];
             EnvironmentFile = lib.optionals (cfg.tokenSecret != null) [ config.sops.templates."openclaw-node-env".path ];

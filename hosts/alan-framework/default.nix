@@ -289,6 +289,8 @@
       extraConfig = {
         commands.bash = true;
 
+        gateway.nodes.browser.mode = "manual";
+
         tools = {
           elevated = {
             enabled = true;
@@ -299,14 +301,9 @@
           };
 
           exec = {
-            host = "gateway";
+            host = "node";
             security = "full";
             ask = "off";
-            pathPrepend = [
-              "/run/wrappers/bin"
-              "/run/current-system/sw/bin"
-              "/nix/var/nix/profiles/default/bin"
-            ];
           };
         };
       };
