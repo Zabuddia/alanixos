@@ -181,6 +181,27 @@
       operator = "buddia";
     };
 
+    alanix.openclaw = {
+      tokenSecret = "openclaw/gateway-token";
+
+      browser = {
+        enable = true;
+        evaluateEnabled = true;
+        headless = false;
+        package = pkgs.chromium;
+        executablePath = "${pkgs.chromium}/bin/chromium";
+      };
+
+      desktopNode = {
+        enable = true;
+        user = "buddia";
+        displayName = "alan-laptop-nixos";
+        gatewayHost = "alan-framework.tailbb2802.ts.net";
+        gatewayPort = 443;
+        gatewayTls = true;
+      };
+    };
+
     alanix.remote-desktop = {
       enable = true;
       autoStart = false;
