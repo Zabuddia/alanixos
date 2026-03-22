@@ -289,6 +289,14 @@
       extraConfig = {
         commands.bash = true;
 
+        agents.defaults.elevatedDefault = "off";
+
+        channels.telegram.execApprovals = {
+          enabled = true;
+          approvers = [ 7336229793 5255330939 ];
+          target = "dm";
+        };
+
         gateway.nodes.browser.mode = "manual";
 
         tools = {
