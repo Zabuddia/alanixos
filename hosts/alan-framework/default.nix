@@ -71,17 +71,8 @@
 
         sh.enable = true;
 
-        ssh = {
-          enable = false;
-          matchBlocks = { };
-        };
-
         desktop.enable = true;
         chromium.enable = true;
-        librewolf.enable = false;
-        nextcloudClient.enable = false;
-        trayscale.enable = false;
-        vscode.enable = false;
       };
     };
 
@@ -100,14 +91,6 @@
         displayOffSeconds = null;
         suspendSeconds = null;
       };
-    };
-
-    alanix.power = {
-      enable = false;
-      enablePowerProfilesDaemon = true;
-      enableUpower = true;
-      enableThermald = true;
-      enablePowertop = true;
     };
 
     alanix.ssh = {
@@ -141,45 +124,6 @@
       enable = true;
       acceptRoutes = true;
       operator = "openclaw";
-    };
-
-    alanix.bitcoin = {
-      enable = false;
-      configVersion = null;
-      generateSecrets = false;
-      operatorName = null;
-      useDoas = false;
-      hideProcessInformation = false;
-      exposeSshOnionService = false;
-      copyRootSshKeysToOperator = false;
-      enableNodeInfo = false;
-      backupsFrequency = null;
-
-      bitcoind = {
-        listen = null;
-        dbCache = null;
-        txindex = null;
-      };
-
-      fulcrum.enable = false;
-
-      mempool = {
-        enable = false;
-        electrumServer = null;
-        frontend = {
-          address = null;
-          port = null;
-        };
-      };
-    };
-
-    alanix.filebrowser = {
-      enable = false;
-      listenAddress = null;
-      port = null;
-      root = null;
-      database = null;
-      users = { };
     };
 
     alanix.llm = {
