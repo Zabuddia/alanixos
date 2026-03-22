@@ -131,10 +131,6 @@
 
     alanix.desktop = {
       enable = true;
-      autoLogin = {
-        enable = false;
-        user = null;
-      };
       createHeadlessOutput = false;
       swayOutputRules = [ ];
       idle = {
@@ -183,108 +179,6 @@
       enable = true;
       acceptRoutes = true;
       operator = "buddia";
-    };
-
-    alanix.bitcoin = {
-      enable = false;
-      configVersion = null;
-      generateSecrets = false;
-      operatorName = null;
-      useDoas = false;
-      hideProcessInformation = false;
-      exposeSshOnionService = false;
-      copyRootSshKeysToOperator = false;
-      enableNodeInfo = false;
-      backupsFrequency = null;
-
-      bitcoind = {
-        listen = null;
-        dbCache = null;
-        txindex = null;
-      };
-
-      fulcrum.enable = false;
-
-      mempool = {
-        enable = false;
-        electrumServer = null;
-        frontend = {
-          address = null;
-          port = null;
-        };
-      };
-    };
-
-    alanix.filebrowser = {
-      enable = false;
-      listenAddress = null;
-      port = null;
-      root = null;
-      database = null;
-      users = { };
-    };
-
-    alanix.llm = {
-      enable = false;
-      backend = "cpu";
-      stateDir = "/var/lib/llm";
-      instances = { };
-    };
-
-    alanix.openclaw = {
-      enable = false;
-      bind = "loopback";
-      customBindHost = null;
-      port = 18789;
-      tokenSecret = null;
-      primaryLlmInstance = null;
-      imageLlmInstance = null;
-      embeddingLlmInstance = null;
-      enableResponsesApi = true;
-      enableChatCompletionsApi = true;
-      enableTailscaleServe = false;
-
-      controlUi = {
-        allowedOrigins = [ ];
-        dangerouslyDisableDeviceAuth = false;
-      };
-
-      telegram = {
-        enable = false;
-        tokenSecret = null;
-        allowFrom = [ ];
-        dmPolicy = null;
-        groupPolicy = null;
-        configWrites = false;
-      };
-
-      webSearch = {
-        enable = false;
-        apiKeySecret = null;
-        braveMode = "web";
-      };
-
-      browser = {
-        enable = false;
-        evaluateEnabled = false;
-        headless = true;
-        package = null;
-        executablePath = null;
-      };
-
-      canvas = {
-        enable = false;
-        nodePackage = null;
-      };
-
-      desktopNode = {
-        enable = false;
-        user = null;
-        displayName = null;
-        gatewayHost = null;
-      };
-
-      extraConfig = { };
     };
 
     alanix.remote-desktop = {
