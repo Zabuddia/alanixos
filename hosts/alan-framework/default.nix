@@ -241,6 +241,10 @@
       enableResponsesApi = true;
       enableChatCompletionsApi = true;
       enableTailscaleServe = true;
+      trustedProxies = [
+        "127.0.0.1/32"
+        "::1/128"
+      ];
 
       controlUi = {
         allowedOrigins = [ "https://alan-framework.tailbb2802.ts.net" ];

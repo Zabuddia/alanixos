@@ -160,6 +160,12 @@ in
       default = false;
     };
 
+    trustedProxies = lib.mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "Trusted proxy CIDRs forwarded by the OpenClaw gateway.";
+    };
+
     controlUi = {
       allowedOrigins = lib.mkOption {
         type = types.listOf types.str;
@@ -402,6 +408,9 @@ in
             // lib.optionalAttrs (cfg.customBindHost != null) {
               customBindHost = cfg.customBindHost;
             }
+            // lib.optionalAttrs (cfg.trustedProxies != [ ]) {
+              trustedProxies = cfg.trustedProxies;
+            }
             // lib.optionalAttrs cfg.enableTailscaleServe {
               tailscale.mode = "serve";
             };
@@ -505,6 +514,11 @@ in
       openclawCli
       openclawPkgs.openclaw-tools
     ];
+
+    systemd.services.${config.services.openclaw-gateway.unitName} = lib.mkIf cfg.enableTailscaleServe {
+      wants = [ "tailscaled.service" ];
+      after = [ "tailscaled.service" ];
+    };
 
     home-manager.users = lib.mkIf desktopUserHomeReady {
       ${cfg.desktopNode.user} = {
