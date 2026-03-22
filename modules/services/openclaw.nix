@@ -4,7 +4,14 @@ let
   cfg = config.alanix.openclaw;
   types = lib.types;
   openclawPkgs = inputs.nix-openclaw.packages.${pkgs.stdenv.hostPlatform.system};
-  openclawGatewayPackage = openclawPkgs.openclaw-gateway;
+  openclawGatewayPackage = openclawPkgs.openclaw-gateway.overrideAttrs (old: {
+    # nix-openclaw currently skips upstream runtime-postbuild, which is what
+    # writes bundled plugin manifests into dist/extensions/* for built installs.
+    buildPhase = lib.concatStringsSep "\n" [
+      old.buildPhase
+      "node scripts/runtime-postbuild.mjs"
+    ];
+  });
   openclawCli = pkgs.symlinkJoin {
     name = "openclaw-gateway-system";
     paths = [ openclawGatewayPackage ];
