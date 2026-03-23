@@ -81,7 +81,8 @@ cat > /tmp/openclaw-framework.patch.json <<EOF
         "http://127.0.0.1:18789",
         "http://localhost:18789",
         "https://alan-framework.tailbb2802.ts.net"
-      ]
+      ],
+      "dangerouslyDisableDeviceAuth": true
     },
     "trustedProxies": [
       "127.0.0.1/32",
@@ -217,6 +218,7 @@ openclaw gateway install \
 ```bash
 export OPENCLAW_GATEWAY_TOKEN="$(cat ~/.openclaw/gateway-token.txt)"
 
+systemctl --user daemon-reload
 openclaw gateway start
 openclaw gateway probe --token "$OPENCLAW_GATEWAY_TOKEN"
 openclaw dashboard --no-open
@@ -237,7 +239,6 @@ curl -fsS http://127.0.0.1:8082/v1/models | jq .
 
 ```bash
 npm install -g openclaw@latest
-systemctl --user daemon-reload
 ```
 
 ### Set The Gateway Token For First Pairing
@@ -260,6 +261,8 @@ openclaw node run \
 
 Leave that running.
 
+If the first run says `pairing required`, approve the laptop in the framework dashboard, then run the same `openclaw node run ...` command again.
+
 ## 3. Back On `alan-framework`
 
 ### Approve The Laptop Node In The Dashboard
@@ -270,17 +273,15 @@ openclaw dashboard --no-open
 
 Open the printed local dashboard URL on `alan-framework`, then approve the pending laptop node there.
 
-## 4. Back On `alan-laptop-nixos`
+## 4. Leave The Framework Dashboard Bootstrap On For Now
 
-Stop the foreground node with `Ctrl+C`, then run:
+Do not remove `gateway.controlUi.dangerouslyDisableDeviceAuth` yet.
 
-```bash
-systemctl --user restart openclaw-node
-systemctl --user status openclaw-node --no-pager
-journalctl --user -u openclaw-node -n 50 --no-pager
-```
+## 5. Stop The Laptop Node
 
-## 5. Final Checks
+When you want the laptop node off, press `Ctrl+C` in the foreground `openclaw node run ...` terminal.
+
+## 6. Final Checks
 
 ### On `alan-framework`
 
@@ -293,14 +294,64 @@ openclaw dashboard --no-open
 ### On `alan-laptop-nixos`
 
 ```bash
-systemctl --user status openclaw-node --no-pager
-journalctl --user -u openclaw-node -n 50 --no-pager
+pgrep -af 'openclaw node run'
 ```
 
-## 6. Telegram Later
+## 7. Telegram Later
 
 On `alan-framework`:
 
 ```bash
 openclaw configure --section channels
+```
+
+## 8. Nostr Later
+
+Do this on `alan-framework`.
+
+### Install The Official Nostr Plugin
+
+```bash
+nix shell nixpkgs#python3 -c openclaw plugins install @openclaw/nostr
+mv ~/.local/lib/node_modules/openclaw/extensions/nostr ~/.local/lib/node_modules/openclaw/extensions/nostr.disabled
+systemctl --user restart openclaw-gateway.service
+```
+
+### Add The Nostr Channel
+
+Use an existing Nostr private key in `nsec...` or 64-char hex format.
+
+```bash
+export NOSTR_PRIVATE_KEY='paste-your-nsec-here'
+```
+
+```bash
+openclaw channels add --channel nostr --private-key "$NOSTR_PRIVATE_KEY"
+systemctl --user restart openclaw-gateway.service
+```
+
+### Optional: Allow Only Your Own Nostr Account
+
+Replace `npub1...` with your own Nostr public key if you want immediate access without DM pairing.
+
+```bash
+openclaw config set channels.nostr.dmPolicy '"allowlist"'
+openclaw config set channels.nostr.allowFrom '["npub1..."]'
+systemctl --user restart openclaw-gateway.service
+```
+
+### If You Keep Default DM Pairing
+
+DM the bot from your Nostr client, wait for the pairing code, then approve it on `alan-framework`:
+
+```bash
+openclaw pairing list --channel nostr
+openclaw pairing approve --channel nostr <CODE>
+```
+
+### Verify
+
+```bash
+journalctl --user -u openclaw-gateway.service -n 100 --no-pager | rg -i nostr
+openclaw dashboard --no-open
 ```

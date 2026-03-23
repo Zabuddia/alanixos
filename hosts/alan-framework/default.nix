@@ -27,6 +27,7 @@
         git
         htop
         jq
+        python3
         restic
         sops
         tree
