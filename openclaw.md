@@ -54,7 +54,11 @@ printf '%s\n' "$OPENCLAW_GATEWAY_TOKEN" > ~/.openclaw/gateway-token.txt
 chmod 600 ~/.openclaw/gateway-token.txt
 ```
 
-### Patch In Local Models, Browser, Canvas, And Tailscale UI Origin
+### Patch In Local Chat, Vision, Memory Embeddings, Browser, Canvas, And Tailscale UI Origin
+
+Chat and vision are configured under `models.providers` plus `agents.defaults.model` / `agents.defaults.imageModel`.
+
+Embeddings are configured separately under `agents.defaults.memorySearch` and point directly at the local embeddings endpoint, so there is no separate embeddings entry under `models.providers`.
 
 ```bash
 cat > /tmp/openclaw-framework.patch.json <<EOF
@@ -135,24 +139,6 @@ cat > /tmp/openclaw-framework.patch.json <<EOF
             ]
           }
         ]
-      },
-      "local-llama-embeddings": {
-        "api": "openai-completions",
-        "baseUrl": "http://127.0.0.1:8082/v1",
-        "apiKey": "local-llama-embeddings",
-        "authHeader": false,
-        "injectNumCtxForOpenAICompat": true,
-        "models": [
-          {
-            "id": "qwen3-embedding-4b",
-            "name": "qwen3-embedding-4b",
-            "api": "openai-completions",
-            "contextWindow": 8192,
-            "input": [
-              "text"
-            ]
-          }
-        ]
       }
     }
   },
@@ -181,7 +167,7 @@ cat > /tmp/openclaw-framework.patch.json <<EOF
         "fallback": "none",
         "remote": {
           "baseUrl": "http://127.0.0.1:8082/v1",
-          "apiKey": "local-embeddings"
+          "apiKey": "local-llama-embeddings"
         }
       }
     }
@@ -299,27 +285,81 @@ pgrep -af 'openclaw node run'
 
 ## 7. Telegram Later
 
-On `alan-framework`:
+Do this on `alan-framework`.
+
+### Add The Bot Token And Enable Telegram
 
 ```bash
-openclaw configure --section channels
+export TELEGRAM_BOT_TOKEN='paste-your-bot-token-here'
 ```
+
+### Set A Durable Telegram Allowlist
+
+Replace the example numeric IDs with the real Telegram user IDs you want to allow.
+
+```bash
+export TELEGRAM_ALLOWLIST='["123456789", "987654321"]'
+```
+
+```bash
+jq --arg token "$TELEGRAM_BOT_TOKEN" --argjson allowlist "$TELEGRAM_ALLOWLIST" '
+  .channels.telegram = ((.channels.telegram // {}) + {
+    enabled: true,
+    botToken: $token,
+    dmPolicy: "allowlist",
+    allowFrom: $allowlist,
+    groupPolicy: "allowlist",
+    groupAllowFrom: $allowlist,
+    groups: {
+      "*": {
+        requireMention: true
+      }
+    }
+  })
+' ~/.openclaw/openclaw.json > /tmp/openclaw.json
+mv /tmp/openclaw.json ~/.openclaw/openclaw.json
+systemctl --user restart openclaw-gateway.service
+```
+
+### Verify
+
+```bash
+journalctl --user -u openclaw-gateway.service -n 100 --no-pager | grep -Ei 'telegram|grammy|bot'
+openclaw gateway probe --token "$OPENCLAW_GATEWAY_TOKEN"
+```
+
+### Optional: If You Really Want DM Pairing Instead
+
+Leave `dmPolicy: "pairing"` instead of switching to `allowlist`, DM the bot, then approve the pairing in the framework dashboard.
 
 ## 8. Nostr Later
 
 Do this on `alan-framework`.
 
-### Install The Official Nostr Plugin
+### Install The Plugin
 
 ```bash
-nix shell nixpkgs#python3 -c openclaw plugins install @openclaw/nostr
-mv ~/.local/lib/node_modules/openclaw/extensions/nostr ~/.local/lib/node_modules/openclaw/extensions/nostr.disabled
+openclaw plugins install @openclaw/nostr
+rm -rf ~/.local/lib/node_modules/openclaw/extensions/nostr
+[ -e ~/.openclaw/extensions/shared ] || ln -s ~/.local/lib/node_modules/openclaw/extensions/shared ~/.openclaw/extensions/shared
 systemctl --user restart openclaw-gateway.service
 ```
 
 ### Add The Nostr Channel
 
 Use an existing Nostr private key in `nsec...` or 64-char hex format.
+
+If you need to generate one first:
+
+```bash
+nak key generate
+```
+
+To derive the public key from that private key:
+
+```bash
+nak key public '<your-nsec-or-hex-private-key>'
+```
 
 ```bash
 export NOSTR_PRIVATE_KEY='paste-your-nsec-here'
@@ -330,19 +370,41 @@ openclaw channels add --channel nostr --private-key "$NOSTR_PRIVATE_KEY"
 systemctl --user restart openclaw-gateway.service
 ```
 
+### Optional: Set Explicit Relay URLs
+
+```bash
+openclaw channels add \
+  --channel nostr \
+  --private-key "$NOSTR_PRIVATE_KEY" \
+  --relay-urls "wss://relay.damus.io,wss://relay.primal.net"
+systemctl --user restart openclaw-gateway.service
+```
+
+### Optional: Keep The Private Key In The Environment
+
+If you want the key in the environment instead of storing it in `~/.openclaw/openclaw.json`:
+
+```bash
+openclaw channels add --channel nostr --private-key "$NOSTR_PRIVATE_KEY" --use-env
+systemctl --user restart openclaw-gateway.service
+```
+
 ### Optional: Allow Only Your Own Nostr Account
 
 Replace `npub1...` with your own Nostr public key if you want immediate access without DM pairing.
 
 ```bash
-openclaw config set channels.nostr.dmPolicy '"allowlist"'
-openclaw config set channels.nostr.allowFrom '["npub1..."]'
+jq '
+  .channels.nostr.dmPolicy = "allowlist"
+  | .channels.nostr.allowFrom = ["npub1..."]
+' ~/.openclaw/openclaw.json > /tmp/openclaw.json
+mv /tmp/openclaw.json ~/.openclaw/openclaw.json
 systemctl --user restart openclaw-gateway.service
 ```
 
 ### If You Keep Default DM Pairing
 
-DM the bot from your Nostr client, wait for the pairing code, then approve it on `alan-framework`:
+`pairing` is the default Nostr DM policy. DM the bot from your Nostr client, wait for the pairing code, then approve it on `alan-framework`:
 
 ```bash
 openclaw pairing list --channel nostr
@@ -352,6 +414,6 @@ openclaw pairing approve --channel nostr <CODE>
 ### Verify
 
 ```bash
-journalctl --user -u openclaw-gateway.service -n 100 --no-pager | rg -i nostr
-openclaw dashboard --no-open
+journalctl --user -u openclaw-gateway.service -n 100 --no-pager | grep -Ei 'nostr'
+openclaw gateway probe --token "$OPENCLAW_GATEWAY_TOKEN"
 ```
