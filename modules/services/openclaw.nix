@@ -225,7 +225,7 @@ let
 
   gatewayLauncher = pkgs.writeShellScript "alanix-openclaw-gateway" ''
     export PATH=${lib.escapeShellArg servicePath}:$PATH
-    ${pkgs.coreutils}/bin/mkdir -p "$HOME/.openclaw" "$HOME/.openclaw/logs"
+    ${pkgs.coreutils}/bin/mkdir -p "$HOME/.openclaw"
     if [ ! -e "$OPENCLAW_CONFIG_PATH" ] && [ ${lib.escapeShellArg (builtins.toJSON bootstrapConfig)} != "{}" ]; then
       ${pkgs.coreutils}/bin/install -Dm600 ${bootstrapConfigFile} "$OPENCLAW_CONFIG_PATH"
     fi
@@ -234,7 +234,7 @@ let
 
   desktopNodeLauncher = pkgs.writeShellScript "alanix-openclaw-node" ''
     export PATH=${lib.escapeShellArg servicePath}:$PATH
-    ${pkgs.coreutils}/bin/mkdir -p "$HOME/.openclaw" "$HOME/.openclaw/logs"
+    ${pkgs.coreutils}/bin/mkdir -p "$HOME/.openclaw"
     if [ ! -e "$OPENCLAW_CONFIG_PATH" ] && [ ${lib.escapeShellArg (builtins.toJSON bootstrapConfig)} != "{}" ]; then
       ${pkgs.coreutils}/bin/install -Dm600 ${bootstrapConfigFile} "$OPENCLAW_CONFIG_PATH"
     fi
@@ -532,8 +532,6 @@ in
               EnvironmentFile = lib.optionals (openclawEnvFile != null) [ "${openclawEnvFile}" ];
               Restart = "always";
               RestartSec = 2;
-              StandardOutput = "append:${openclawHomeDir}/.openclaw/logs/gateway.log";
-              StandardError = "append:${openclawHomeDir}/.openclaw/logs/gateway.log";
             };
 
             Install.WantedBy = [ "default.target" ];
@@ -558,8 +556,6 @@ in
               EnvironmentFile = lib.optionals (openclawEnvFile != null) [ "${openclawEnvFile}" ];
               Restart = "always";
               RestartSec = 2;
-              StandardOutput = "append:${openclawHomeDir}/.openclaw/logs/node.log";
-              StandardError = "append:${openclawHomeDir}/.openclaw/logs/node.log";
             };
 
             Install.WantedBy = [ "graphical-session.target" ];
