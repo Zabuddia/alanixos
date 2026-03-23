@@ -231,42 +231,8 @@
 
     alanix.openclaw = {
       user = "buddia";
-      bind = "loopback";
-      port = 18789;
-      tokenSecret = "openclaw/gateway-token";
-      primaryLlmInstance = "chat";
-      imageLlmInstance = "vision";
-      embeddingLlmInstance = "embeddings";
-      enableTailscaleServe = true;
-      trustedProxies = [
-        "127.0.0.1/32"
-        "::1/128"
-      ];
-
-      controlUi = {
-        allowedOrigins = [ "https://alan-framework.tailbb2802.ts.net" ];
-      };
-
-      browser = {
-        enable = true;
-        evaluateEnabled = true;
-        headless = false;
-        package = pkgs.chromium;
-        executablePath = "${pkgs.chromium}/bin/chromium";
-      };
-
-      canvas = {
-        enable = true;
-        nodePackage = pkgs.nodejs;
-      };
-
+      packages = [ pkgs.chromium ];
       gateway.enable = true;
-
-      desktopNode = {
-        enable = true;
-        displayName = "alan-framework-desktop";
-        gatewayHost = null;
-      };
     };
 
     alanix.remote-desktop = {
