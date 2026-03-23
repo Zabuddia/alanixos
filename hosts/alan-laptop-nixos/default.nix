@@ -182,6 +182,7 @@
     };
 
     alanix.openclaw = {
+      user = "buddia";
       tokenSecret = "openclaw/gateway-token";
 
       browser = {
@@ -194,7 +195,6 @@
 
       desktopNode = {
         enable = true;
-        user = "buddia";
         displayName = "alan-laptop-nixos";
         gatewayHost = "alan-framework.tailbb2802.ts.net";
         gatewayPort = 443;

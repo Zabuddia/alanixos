@@ -25,7 +25,6 @@ lib.nixosSystem {
     inputs.sops-nix.nixosModules.sops
     inputs.home-manager.nixosModules.home-manager
     inputs.nix-bitcoin.nixosModules.default
-    inputs.nix-openclaw.nixosModules.openclaw-gateway
     inputs.disko.nixosModules.disko
     ../modules
     host.module

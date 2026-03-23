@@ -2,7 +2,7 @@
 
 let
   openclawCfg = config.alanix.openclaw;
-  openclawNodeEnabled = openclawCfg.desktopNode.enable;
+  openclawEnabled = openclawCfg.gateway.enable || openclawCfg.desktopNode.enable;
 in
 {
   sops = {
@@ -52,9 +52,9 @@ in
         path = "/home/buddia/.ssh/id_ed25519_work";
       };
     }
-    (lib.mkIf (openclawNodeEnabled && openclawCfg.tokenSecret != null) {
+    (lib.mkIf (openclawEnabled && openclawCfg.tokenSecret != null) {
       ${openclawCfg.tokenSecret} = {
-        owner = "buddia";
+        owner = openclawCfg.user;
         group = "users";
         mode = "0400";
       };
@@ -68,10 +68,10 @@ in
         owner = "cloudflare-ddns";
       };
     }
-    (lib.mkIf (openclawNodeEnabled && openclawCfg.tokenSecret != null) {
-      "openclaw-node-env" = {
+    (lib.mkIf (openclawEnabled && openclawCfg.tokenSecret != null) {
+      "openclaw-env" = {
         content = "OPENCLAW_GATEWAY_TOKEN=${config.sops.placeholder.${openclawCfg.tokenSecret}}";
-        owner = "buddia";
+        owner = openclawCfg.user;
         group = "users";
         mode = "0400";
       };

@@ -2,6 +2,7 @@
 
 let
   openclawCfg = config.alanix.openclaw;
+  openclawEnabled = openclawCfg.gateway.enable || openclawCfg.desktopNode.enable;
 in
 {
   sops = {
@@ -44,24 +45,10 @@ in
         path = "/home/buddia/.ssh/id_ed25519";
       };
     }
-    (lib.mkIf (openclawCfg.enable && openclawCfg.tokenSecret != null) {
+    (lib.mkIf (openclawEnabled && openclawCfg.tokenSecret != null) {
       ${openclawCfg.tokenSecret} = {
-        owner = "openclaw";
-        group = "openclaw";
-        mode = "0400";
-      };
-    })
-    (lib.mkIf (openclawCfg.enable && openclawCfg.telegram.enable && openclawCfg.telegram.tokenSecret != null) {
-      ${openclawCfg.telegram.tokenSecret} = {
-        owner = "openclaw";
-        group = "openclaw";
-        mode = "0400";
-      };
-    })
-    (lib.mkIf (openclawCfg.enable && openclawCfg.webSearch.enable && openclawCfg.webSearch.apiKeySecret != null) {
-      ${openclawCfg.webSearch.apiKeySecret} = {
-        owner = "openclaw";
-        group = "openclaw";
+        owner = openclawCfg.user;
+        group = "users";
         mode = "0400";
       };
     })
@@ -74,34 +61,11 @@ in
         owner = "cloudflare-ddns";
       };
     }
-    (lib.mkIf (openclawCfg.enable && openclawCfg.tokenSecret != null) {
-      "openclaw-gateway-env" = {
+    (lib.mkIf (openclawEnabled && openclawCfg.tokenSecret != null) {
+      "openclaw-env" = {
         content = "OPENCLAW_GATEWAY_TOKEN=${config.sops.placeholder.${openclawCfg.tokenSecret}}";
-        owner = "openclaw";
-        group = "openclaw";
-        mode = "0400";
-      };
-
-      "openclaw-node-env" = {
-        content = "OPENCLAW_GATEWAY_TOKEN=${config.sops.placeholder.${openclawCfg.tokenSecret}}";
-        owner = "buddia";
+        owner = openclawCfg.user;
         group = "users";
-        mode = "0400";
-      };
-    })
-    (lib.mkIf (openclawCfg.enable && openclawCfg.telegram.enable && openclawCfg.telegram.tokenSecret != null) {
-      "openclaw-telegram-bot-token" = {
-        content = config.sops.placeholder.${openclawCfg.telegram.tokenSecret};
-        owner = "openclaw";
-        group = "openclaw";
-        mode = "0400";
-      };
-    })
-    (lib.mkIf (openclawCfg.enable && openclawCfg.webSearch.enable && openclawCfg.webSearch.apiKeySecret != null) {
-      "openclaw-brave-env" = {
-        content = "BRAVE_API_KEY=${config.sops.placeholder.${openclawCfg.webSearch.apiKeySecret}}";
-        owner = "openclaw";
-        group = "openclaw";
         mode = "0400";
       };
     })
