@@ -27,6 +27,7 @@
         git
         htop
         jq
+        nak
         python3
         restic
         sops
@@ -232,7 +233,7 @@
 
     alanix.openclaw = {
       user = "buddia";
-      packages = [ pkgs.chromium ];
+      packages = [ pkgs.chromium pkgs.nak ];
       gateway.enable = true;
     };
 
