@@ -150,6 +150,13 @@ in
         {
           home.sessionPath = [ npmBinDir ];
           home.sessionVariables.NPM_CONFIG_PREFIX = npmPrefixDir;
+
+          home.file = lib.optionalAttrs cfg.gateway.enable {
+            ".config/systemd/user/openclaw-gateway.service.d/10-alanix-path.conf".text = ''
+              [Service]
+              Environment=PATH=${npmBinDir}:${servicePath}
+            '';
+          };
         }
 
         (lib.mkIf cfg.desktopNode.enable {
