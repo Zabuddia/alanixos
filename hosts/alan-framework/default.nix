@@ -123,7 +123,7 @@
     alanix.tailscale = {
       enable = true;
       acceptRoutes = true;
-      operator = "openclaw";
+      operator = "buddia";
     };
 
     alanix.llm = {
@@ -230,16 +230,13 @@
     };
 
     alanix.openclaw = {
-      enable = true;
+      user = "buddia";
       bind = "loopback";
-      customBindHost = null;
       port = 18789;
       tokenSecret = "openclaw/gateway-token";
       primaryLlmInstance = "chat";
       imageLlmInstance = "vision";
       embeddingLlmInstance = "embeddings";
-      enableResponsesApi = true;
-      enableChatCompletionsApi = true;
       enableTailscaleServe = true;
       trustedProxies = [
         "127.0.0.1/32"
@@ -248,22 +245,6 @@
 
       controlUi = {
         allowedOrigins = [ "https://alan-framework.tailbb2802.ts.net" ];
-        dangerouslyDisableDeviceAuth = true;
-      };
-
-      telegram = {
-        enable = true;
-        tokenSecret = "telegram/bot-token";
-        allowFrom = [ 7336229793 5255330939 ];
-        dmPolicy = "allowlist";
-        groupPolicy = "disabled";
-        configWrites = false;
-      };
-
-      webSearch = {
-        enable = true;
-        apiKeySecret = "brave/api-key";
-        braveMode = "web";
       };
 
       browser = {
@@ -279,41 +260,12 @@
         nodePackage = pkgs.nodejs;
       };
 
+      gateway.enable = true;
+
       desktopNode = {
         enable = true;
-        user = "buddia";
         displayName = "alan-framework-desktop";
         gatewayHost = null;
-      };
-
-      extraConfig = {
-        commands.bash = true;
-
-        agents.defaults.elevatedDefault = "off";
-
-        channels.telegram.execApprovals = {
-          enabled = true;
-          approvers = [ 7336229793 5255330939 ];
-          target = "dm";
-        };
-
-        gateway.nodes.browser.mode = "manual";
-
-        tools = {
-          elevated = {
-            enabled = true;
-            allowFrom.telegram = [
-              "id:7336229793"
-              "id:5255330939"
-            ];
-          };
-
-          exec = {
-            host = "node";
-            security = "full";
-            ask = "off";
-          };
-        };
       };
     };
 
