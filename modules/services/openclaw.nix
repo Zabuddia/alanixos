@@ -24,6 +24,7 @@ let
       "${openclawHomeDir}/${cfg.npmPrefix}";
 
   npmBinDir = if npmPrefixDir != null then "${npmPrefixDir}/bin" else null;
+  npmNodeModulesDir = if npmPrefixDir != null then "${npmPrefixDir}/lib/node_modules" else null;
   openclawBin = if npmBinDir != null then "${npmBinDir}/openclaw" else null;
 
   desktopNodeGatewayHost =
@@ -150,11 +151,13 @@ in
         {
           home.sessionPath = [ npmBinDir ];
           home.sessionVariables.NPM_CONFIG_PREFIX = npmPrefixDir;
+          home.sessionVariables.NODE_PATH = npmNodeModulesDir;
 
           home.file = lib.optionalAttrs cfg.gateway.enable {
             ".config/systemd/user/openclaw-gateway.service.d/10-alanix-path.conf".text = ''
               [Service]
               Environment=PATH=${npmBinDir}:${servicePath}
+              Environment=NODE_PATH=${npmNodeModulesDir}
             '';
           };
         }
@@ -176,6 +179,7 @@ in
               ExecStart = "${desktopNodeLauncher}";
               Environment = [
                 "HOME=${openclawHomeDir}"
+                "NODE_PATH=${npmNodeModulesDir}"
                 "OPENCLAW_CONFIG_PATH=${openclawHomeDir}/.openclaw/openclaw.json"
                 "OPENCLAW_STATE_DIR=${openclawHomeDir}/.openclaw"
               ];

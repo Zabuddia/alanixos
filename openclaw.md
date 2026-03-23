@@ -211,6 +211,21 @@ openclaw dashboard --no-open
 tailscale serve status
 ```
 
+If you later upgrade OpenClaw itself, rewrite the user service entrypoint before updating plugins:
+
+```bash
+export OPENCLAW_GATEWAY_TOKEN="$(cat ~/.openclaw/gateway-token.txt)"
+
+openclaw doctor
+openclaw gateway install \
+  --force \
+  --runtime node \
+  --port 18789 \
+  --token "$OPENCLAW_GATEWAY_TOKEN"
+systemctl --user daemon-reload
+openclaw gateway restart
+```
+
 ### Verify Local Models
 
 ```bash
@@ -336,14 +351,22 @@ Leave `dmPolicy: "pairing"` instead of switching to `allowlist`, DM the bot, the
 
 Do this on `alan-framework`.
 
-### Install The Plugin
+### Install The Plugin And Trust Only The Installed Nostr Extension
 
 ```bash
 openclaw plugins install @openclaw/nostr
 rm -rf ~/.local/lib/node_modules/openclaw/extensions/nostr
 [ -e ~/.openclaw/extensions/shared ] || ln -s ~/.local/lib/node_modules/openclaw/extensions/shared ~/.openclaw/extensions/shared
+jq '
+  .plugins = ((.plugins // {}) + {
+    allow: (((.plugins.allow // []) + ["nostr"]) | unique)
+  })
+' ~/.openclaw/openclaw.json > /tmp/openclaw.json
+mv /tmp/openclaw.json ~/.openclaw/openclaw.json
 systemctl --user restart openclaw-gateway.service
 ```
+
+If you later install more non-bundled plugins, add their ids to `plugins.allow` too.
 
 ### Add The Nostr Channel
 
@@ -355,10 +378,24 @@ If you need to generate one first:
 nak key generate
 ```
 
-To derive the public key from that private key:
+`nak key generate` returns a 64-char hex private key.
+
+To derive the hex public key from a hex private key:
 
 ```bash
-nak key public '<your-nsec-or-hex-private-key>'
+nak key public '<your-hex-private-key>'
+```
+
+If your private key is in `nsec...` form, decode it to hex first:
+
+```bash
+nak key public "$(nak decode '<your-nsec-private-key>')"
+```
+
+If you need the `npub...` form for allowlists:
+
+```bash
+nak encode npub "$(nak key public "$(nak decode '<your-nsec-private-key>')")"
 ```
 
 ```bash
