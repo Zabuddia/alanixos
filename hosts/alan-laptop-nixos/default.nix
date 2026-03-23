@@ -183,15 +183,7 @@
 
     alanix.openclaw = {
       user = "buddia";
-      tokenSecret = "openclaw/gateway-token";
-
-      browser = {
-        enable = true;
-        evaluateEnabled = true;
-        headless = false;
-        package = pkgs.chromium;
-        executablePath = "${pkgs.chromium}/bin/chromium";
-      };
+      packages = [ pkgs.chromium ];
 
       desktopNode = {
         enable = true;

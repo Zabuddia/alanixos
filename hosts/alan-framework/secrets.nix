@@ -1,9 +1,5 @@
 { config, lib, ... }:
 
-let
-  openclawCfg = config.alanix.openclaw;
-  openclawEnabled = openclawCfg.gateway.enable || openclawCfg.desktopNode.enable;
-in
 {
   sops = {
     defaultSopsFile = ../../secrets/secrets.yaml;
@@ -45,13 +41,6 @@ in
         path = "/home/buddia/.ssh/id_ed25519";
       };
     }
-    (lib.mkIf (openclawEnabled && openclawCfg.tokenSecret != null) {
-      ${openclawCfg.tokenSecret} = {
-        owner = openclawCfg.user;
-        group = "users";
-        mode = "0400";
-      };
-    })
   ];
 
   sops.templates = lib.mkMerge [
@@ -61,13 +50,5 @@ in
         owner = "cloudflare-ddns";
       };
     }
-    (lib.mkIf (openclawEnabled && openclawCfg.tokenSecret != null) {
-      "openclaw-env" = {
-        content = "OPENCLAW_GATEWAY_TOKEN=${config.sops.placeholder.${openclawCfg.tokenSecret}}";
-        owner = openclawCfg.user;
-        group = "users";
-        mode = "0400";
-      };
-    })
   ];
 }
