@@ -51,6 +51,16 @@
           directory = "/home/buddia";
           stateVersion = "25.11";
           files = {
+            ".config/systemd/user/openclaw-gateway.service.d/10-path.conf" = {
+              text = ''
+                [Service]
+                Environment=PATH=/home/buddia/.local/bin:/run/current-system/sw/bin:/run/wrappers/bin:/usr/bin:/bin
+              '';
+              source = null;
+              force = true;
+              executable = null;
+            };
+
             ".ssh/id_ed25519.pub" = {
               text = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILb22RXxaO/RmZkheVk+Ma9WBXABHN/IrDGq5RbBIunC fife.alan@protonmail.com";
               source = null;
