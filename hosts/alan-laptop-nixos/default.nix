@@ -28,6 +28,7 @@
         htop
         jq
         nak
+        nodejs
         python3
         restic
         sops
