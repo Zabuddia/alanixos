@@ -81,10 +81,15 @@ Onboarding only sets the main chat model. Run this after onboarding so chat, ima
 ```bash
 jq '
   .gateway.trustedProxies = ["127.0.0.1/32", "::1/128"]
-  | if .tools.profile.coding.allowlist? then
+  | .gateway.controlUi.allowedOrigins = [
+      "http://127.0.0.1:18789",
+      "http://localhost:18789",
+      "https://alan-framework.tailbb2802.ts.net"
+    ]
+  | if (.tools.profile | type) == "object" and .tools.profile.coding.allowlist? then
       .tools.profile.coding.allowlist |= map(select(. != "apply_patch" and . != "image_generate"))
     else . end
-  | if .tools.profiles.coding.allowlist? then
+  | if (.tools.profiles | type) == "object" and .tools.profiles.coding.allowlist? then
       .tools.profiles.coding.allowlist |= map(select(. != "apply_patch" and . != "image_generate"))
     else . end
   | .models.providers["local-litellm"] = {
@@ -169,6 +174,7 @@ What you want to see:
 - default model: `local-litellm/qwen3.5-35b-a3b`
 - image model: `local-litellm/qwen3-vl-30b-a3b-instruct`
 - configured embeddings model: `local-litellm/qwen3-embedding-4b`
+- Control UI origins include local loopback and the Tailscale URL
 - no `Proxy headers detected from untrusted address` warning for local UI traffic
 - no `tailscale ENOENT` warning
 - no `tools.profile (coding) allowlist contains unknown entries` warning
