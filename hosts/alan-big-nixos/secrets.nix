@@ -27,6 +27,13 @@
     path = "/home/buddia/.ssh/id_ed25519";
   };
 
+  sops.secrets."ssh-host-keys/alan-big-nixos" = {
+    owner = "root";
+    group = "root";
+    mode = "0600";
+    path = "/etc/ssh/ssh_host_ed25519_key";
+  };
+
   sops.secrets."cloudflare/api-token" = {
     owner = "root";
     group = "root";

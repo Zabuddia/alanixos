@@ -81,7 +81,13 @@ let
         sshPublicKey = lib.mkOption {
           type = types.nullOr types.str;
           default = null;
-          description = "Primary SSH public key for this account. Written to ~/.ssh/id_ed25519.pub and injected into openssh.authorizedKeys.keys on all hosts that have this account enabled.";
+          description = "Primary SSH public key for this account. Written to ~/.ssh/id_ed25519.pub.";
+        };
+
+        authorizedHosts = lib.mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = "Names of alanix hosts whose sshPublicKey for this account is added to authorized_keys on this host. Mirrors the wireguard peers pattern.";
         };
 
         home = {
@@ -247,8 +253,9 @@ in
               lib.mapAttrsToList
                 (_: hostCfg: hostCfg.config.alanix.users.accounts.${username}.sshPublicKey)
                 (lib.filterAttrs
-                  (_: hostCfg:
-                    (hostCfg.config.alanix.users.accounts ? ${username})
+                  (hostName: hostCfg:
+                    builtins.elem hostName userCfg.authorizedHosts
+                    && (hostCfg.config.alanix.users.accounts ? ${username})
                     && hostCfg.config.alanix.users.accounts.${username}.enable
                     && hostCfg.config.alanix.users.accounts.${username}.sshPublicKey != null)
                   allHosts);

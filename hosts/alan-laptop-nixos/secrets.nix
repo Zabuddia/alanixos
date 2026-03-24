@@ -47,6 +47,13 @@
         mode = "0600";
         path = "/home/buddia/.ssh/id_ed25519_work";
       };
+
+      "ssh-host-keys/alan-laptop-nixos" = {
+        owner = "root";
+        group = "root";
+        mode = "0600";
+        path = "/etc/ssh/ssh_host_ed25519_key";
+      };
     }
   ];
 
