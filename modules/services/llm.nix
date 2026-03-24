@@ -3,6 +3,7 @@
 let
   cfg = config.alanix.llm;
   inherit (lib) types;
+  yamlFormat = pkgs.formats.yaml { };
 
   package =
     if cfg.backend == "cpu" then
@@ -208,6 +209,31 @@ let
 
   mkServiceName = instanceName:
     if instanceName == "default" then "llama-server" else "llama-server-${instanceName}";
+
+  litellmConfig =
+    yamlFormat.generate "alanix-litellm-config.yaml" {
+      model_list =
+        lib.mapAttrsToList
+          (_: instance: {
+            model_name = mkModelAlias instance;
+            litellm_params = {
+              model = "openai/${mkModelAlias instance}";
+              api_base = "http://${instance.host}:${toString instance.port}/v1";
+              api_key = "local-${mkModelAlias instance}";
+            };
+          })
+          enabledInstances;
+    };
+
+  litellmStartScript =
+    pkgs.writeShellScript "alanix-litellm-proxy" ''
+      set -euo pipefail
+
+      exec ${lib.getExe pkgs.litellm} \
+        --config ${litellmConfig} \
+        --host ${cfg.litellm.host} \
+        --port ${toString cfg.litellm.port}${lib.optionalString (cfg.litellm.extraArgs != [ ]) " \\\n        ${lib.escapeShellArgs cfg.litellm.extraArgs}"}
+    '';
 in
 {
   options.alanix.llm = {
@@ -232,6 +258,28 @@ in
       default = { };
       description = "Named llama.cpp server instances.";
     };
+
+    litellm = {
+      enable = lib.mkEnableOption "LiteLLM proxy in front of enabled llama.cpp instances";
+
+      host = lib.mkOption {
+        type = types.str;
+        default = "127.0.0.1";
+        description = "Address/interface LiteLLM binds to.";
+      };
+
+      port = lib.mkOption {
+        type = types.port;
+        default = 4000;
+        description = "Port LiteLLM listens on.";
+      };
+
+      extraArgs = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "Extra CLI flags passed to litellm.";
+      };
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -244,6 +292,10 @@ in
         {
           assertion = lib.length enabledPorts == lib.length (lib.unique enabledPorts);
           message = "Enabled alanix.llm instances must use unique ports.";
+        }
+        {
+          assertion = !cfg.litellm.enable || !(lib.elem cfg.litellm.port enabledPorts);
+          message = "alanix.llm.litellm.port must not conflict with an enabled llama.cpp instance port.";
         }
       ]
       ++ lib.flatten (
@@ -292,7 +344,7 @@ in
     ];
 
     systemd.services =
-      lib.mapAttrs'
+      (lib.mapAttrs'
         (instanceName: instance:
           lib.nameValuePair (mkServiceName instanceName) {
             description = "Local llama.cpp model server (${instanceName})";
@@ -316,8 +368,33 @@ in
               LogsDirectory = "llm";
             };
           })
-        enabledInstances;
+        enabledInstances)
+      // lib.optionalAttrs cfg.litellm.enable {
+        litellm-proxy = {
+          description = "LiteLLM proxy for local llama.cpp model servers";
+          after = [ "network.target" ] ++ lib.mapAttrsToList (instanceName: _: "${mkServiceName instanceName}.service") enabledInstances;
+          wants = lib.mapAttrsToList (instanceName: _: "${mkServiceName instanceName}.service") enabledInstances;
+          wantedBy = [ "multi-user.target" ];
 
-    environment.systemPackages = [ package ];
+          environment = {
+            HOME = cfg.stateDir;
+            XDG_CACHE_HOME = "${cfg.stateDir}/cache";
+            LITELLM_CONFIG_PATH = litellmConfig;
+          };
+
+          serviceConfig = {
+            User = "llm";
+            Group = "llm";
+            WorkingDirectory = cfg.stateDir;
+            ExecStart = litellmStartScript;
+            Restart = "always";
+            RestartSec = "5s";
+            StateDirectory = "llm";
+            LogsDirectory = "llm";
+          };
+        };
+      };
+
+    environment.systemPackages = [ package ] ++ lib.optionals cfg.litellm.enable [ pkgs.litellm ];
   };
 }

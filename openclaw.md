@@ -1,4 +1,4 @@
-# OpenClaw Commands
+# OpenClaw Setup
 
 This file is a plain runbook, not a shell script.
 
@@ -9,21 +9,29 @@ Assumes:
 - you already rebuilt both machines
 - you already opened a new shell after that rebuild
 
-If you want a truly clean first-time setup, run this before the first OpenClaw command on a machine:
+## 1. Clean Reset
+
+Run this on any machine you want to wipe before starting over:
 
 ```bash
-rm -rf ~/.openclaw
+systemctl --user stop openclaw-gateway.service 2>/dev/null || true
+systemctl --user stop openclaw-node.service 2>/dev/null || true
+systemctl --user disable openclaw-gateway.service 2>/dev/null || true
+systemctl --user reset-failed openclaw-gateway.service openclaw-node.service 2>/dev/null || true
+rm -f ~/.config/systemd/user/openclaw-gateway.service ~/.config/systemd/user/openclaw-gateway.service.bak
+rm -rf ~/.config/systemd/user/openclaw-gateway.service.d
+npm uninstall -g openclaw 2>/dev/null || true
+rm -rf ~/.openclaw ~/.local/bin/openclaw ~/.local/lib/node_modules/openclaw
+systemctl --user daemon-reload
 ```
 
-## 1. `alan-framework`
+## 2. `alan-framework`
 
-### Install OpenClaw
+### Install And Onboard
 
 ```bash
 npm install -g openclaw@latest
 ```
-
-### Create Gateway Config
 
 ```bash
 export OPENCLAW_GATEWAY_TOKEN="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
@@ -54,11 +62,7 @@ printf '%s\n' "$OPENCLAW_GATEWAY_TOKEN" > ~/.openclaw/gateway-token.txt
 chmod 600 ~/.openclaw/gateway-token.txt
 ```
 
-### Patch In Local Chat, Vision, Memory Embeddings, Browser, Canvas, And Tailscale UI Origin
-
-Chat and vision are configured under `models.providers` plus `agents.defaults.model` / `agents.defaults.imageModel`.
-
-Embeddings are configured separately under `agents.defaults.memorySearch` and point directly at the local embeddings endpoint, so there is no separate embeddings entry under `models.providers`.
+### Patch Config
 
 ```bash
 cat > /tmp/openclaw-framework.patch.json <<EOF
@@ -191,7 +195,9 @@ mv /tmp/openclaw-framework.json ~/.openclaw/openclaw.json
 rm /tmp/openclaw-framework.patch.json
 ```
 
-### Install And Start Gateway Service
+### Install And Start The Gateway
+
+This writes the user-level systemd service for the local OpenClaw gateway.
 
 ```bash
 openclaw gateway install \
@@ -201,32 +207,44 @@ openclaw gateway install \
   --token "$OPENCLAW_GATEWAY_TOKEN"
 ```
 
+Reload systemd so it sees the new user service definition:
+
+```bash
+systemctl --user daemon-reload
+```
+
+Start or restart the gateway service:
+
+```bash
+openclaw gateway start
+```
+
+Print the local dashboard URL. You will use this on `alan-framework` to approve devices:
+
+```bash
+openclaw dashboard --no-open
+```
+
+Reload the saved token into the shell, then approve the local CLI as an operator device. This is the one-time step that lets the CLI manage the gateway cleanly on the same machine:
+
 ```bash
 export OPENCLAW_GATEWAY_TOKEN="$(cat ~/.openclaw/gateway-token.txt)"
+openclaw devices approve --latest
+```
 
-systemctl --user daemon-reload
-openclaw gateway start
+Verify that the gateway is reachable with the shared token:
+
+```bash
 openclaw gateway probe --token "$OPENCLAW_GATEWAY_TOKEN"
-openclaw dashboard --no-open
+```
+
+Confirm Tailscale Serve is exposing the gateway path you expect:
+
+```bash
 tailscale serve status
 ```
 
-If you later upgrade OpenClaw itself, rewrite the user service entrypoint before updating plugins:
-
-```bash
-export OPENCLAW_GATEWAY_TOKEN="$(cat ~/.openclaw/gateway-token.txt)"
-
-openclaw doctor
-openclaw gateway install \
-  --force \
-  --runtime node \
-  --port 18789 \
-  --token "$OPENCLAW_GATEWAY_TOKEN"
-systemctl --user daemon-reload
-openclaw gateway restart
-```
-
-### Verify Local Models
+### Check Local Model Endpoints
 
 ```bash
 curl -fsS http://127.0.0.1:8080/v1/models | jq .
@@ -234,7 +252,7 @@ curl -fsS http://127.0.0.1:8081/v1/models | jq .
 curl -fsS http://127.0.0.1:8082/v1/models | jq .
 ```
 
-## 2. `alan-laptop-nixos`
+## 3. `alan-laptop-nixos`
 
 ### Install OpenClaw
 
@@ -242,15 +260,13 @@ curl -fsS http://127.0.0.1:8082/v1/models | jq .
 npm install -g openclaw@latest
 ```
 
-### Set The Gateway Token For First Pairing
+### Pair The Laptop Node
 
 Use the same token generated on `alan-framework`.
 
 ```bash
 export OPENCLAW_GATEWAY_TOKEN='paste-the-token-from-alan-framework-here'
 ```
-
-### Start The Laptop Node In The Foreground
 
 ```bash
 openclaw node run \
@@ -260,60 +276,25 @@ openclaw node run \
   --display-name alan-laptop-nixos
 ```
 
-Leave that running.
+Leave that terminal running.
 
-If the first run says `pairing required`, approve the laptop in the framework dashboard, then run the same `openclaw node run ...` command again.
+## 4. Back On `alan-framework`
 
-## 3. Back On `alan-framework`
-
-### Approve The Laptop Node In The Dashboard
+### Approve The Laptop Node
 
 ```bash
 openclaw dashboard --no-open
 ```
 
-Open the printed local dashboard URL on `alan-framework`, then approve the pending laptop node there.
+Open the printed dashboard URL on `alan-framework`, then approve the pending laptop node.
 
-## 4. Leave The Framework Dashboard Bootstrap On For Now
-
-Do not remove `gateway.controlUi.dangerouslyDisableDeviceAuth` yet.
-
-## 5. Stop The Laptop Node
-
-When you want the laptop node off, press `Ctrl+C` in the foreground `openclaw node run ...` terminal.
-
-## 6. Final Checks
-
-### On `alan-framework`
-
-```bash
-export OPENCLAW_GATEWAY_TOKEN="$(cat ~/.openclaw/gateway-token.txt)"
-openclaw gateway probe --token "$OPENCLAW_GATEWAY_TOKEN"
-openclaw dashboard --no-open
-```
-
-### On `alan-laptop-nixos`
-
-```bash
-pgrep -af 'openclaw node run'
-```
-
-## 7. Telegram Later
+## 5. Telegram
 
 Do this on `alan-framework`.
 
-### Add The Bot Token And Enable Telegram
-
 ```bash
 export TELEGRAM_BOT_TOKEN='paste-your-bot-token-here'
-```
-
-### Set A Durable Telegram Allowlist
-
-Replace the example numeric IDs with the real Telegram user IDs you want to allow.
-
-```bash
-export TELEGRAM_ALLOWLIST='["123456789", "987654321"]'
+export TELEGRAM_ALLOWLIST='["5255330939", "7336229793"]'
 ```
 
 ```bash
@@ -336,27 +317,25 @@ mv /tmp/openclaw.json ~/.openclaw/openclaw.json
 systemctl --user restart openclaw-gateway.service
 ```
 
-### Verify
-
-```bash
-journalctl --user -u openclaw-gateway.service -n 100 --no-pager | grep -Ei 'telegram|grammy|bot'
-openclaw gateway probe --token "$OPENCLAW_GATEWAY_TOKEN"
-```
-
-### Optional: If You Really Want DM Pairing Instead
-
-Leave `dmPolicy: "pairing"` instead of switching to `allowlist`, DM the bot, then approve the pairing in the framework dashboard.
-
-## 8. Nostr Later
+## 6. Nostr
 
 Do this on `alan-framework`.
 
-### Install The Plugin And Trust Only The Installed Nostr Extension
+Nostr is optional. It lets OpenClaw receive and reply to encrypted Nostr DMs.
+
+Defaults:
+
+- private key can be `nsec...` or 64-char hex
+- DM policy defaults to `pairing`
+- default relays are fine unless you want different ones
+
+### Install The Plugin
 
 ```bash
 openclaw plugins install @openclaw/nostr
-rm -rf ~/.local/lib/node_modules/openclaw/extensions/nostr
-[ -e ~/.openclaw/extensions/shared ] || ln -s ~/.local/lib/node_modules/openclaw/extensions/shared ~/.openclaw/extensions/shared
+```
+
+```bash
 jq '
   .plugins = ((.plugins // {}) + {
     allow: (((.plugins.allow // []) + ["nostr"]) | unique)
@@ -366,69 +345,39 @@ mv /tmp/openclaw.json ~/.openclaw/openclaw.json
 systemctl --user restart openclaw-gateway.service
 ```
 
-If you later install more non-bundled plugins, add their ids to `plugins.allow` too.
+### Add The Channel
 
-### Add The Nostr Channel
-
-Use an existing Nostr private key in `nsec...` or 64-char hex format.
-
-If you need to generate one first:
+If you need a key first, generate one:
 
 ```bash
 nak key generate
 ```
 
-`nak key generate` returns a 64-char hex private key.
-
-To derive the hex public key from a hex private key:
+Then set the private key and add the channel:
 
 ```bash
-nak key public '<your-hex-private-key>'
+export NOSTR_PRIVATE_KEY='paste-your-nsec-or-hex-private-key-here'
 ```
-
-If your private key is in `nsec...` form, decode it to hex first:
-
-```bash
-nak key public "$(nak decode '<your-nsec-private-key>')"
-```
-
-If you need the `npub...` form for allowlists:
-
-```bash
-nak encode npub "$(nak key public "$(nak decode '<your-nsec-private-key>')")"
-```
-
-```bash
-export NOSTR_PRIVATE_KEY='paste-your-nsec-here'
-```
-
-```bash
-openclaw channels add --channel nostr --private-key "$NOSTR_PRIVATE_KEY"
-systemctl --user restart openclaw-gateway.service
-```
-
-### Optional: Set Explicit Relay URLs
-
-```bash
-openclaw channels add \
-  --channel nostr \
-  --private-key "$NOSTR_PRIVATE_KEY" \
-  --relay-urls "wss://relay.damus.io,wss://relay.primal.net"
-systemctl --user restart openclaw-gateway.service
-```
-
-### Optional: Keep The Private Key In The Environment
-
-If you want the key in the environment instead of storing it in `~/.openclaw/openclaw.json`:
 
 ```bash
 openclaw channels add --channel nostr --private-key "$NOSTR_PRIVATE_KEY" --use-env
 systemctl --user restart openclaw-gateway.service
 ```
 
+### Optional: Custom Relays
+
+```bash
+openclaw channels add \
+  --channel nostr \
+  --private-key "$NOSTR_PRIVATE_KEY" \
+  --relay-urls "wss://relay.damus.io,wss://relay.primal.net" \
+  --use-env
+systemctl --user restart openclaw-gateway.service
+```
+
 ### Optional: Allow Only Your Own Nostr Account
 
-Replace `npub1...` with your own Nostr public key if you want immediate access without DM pairing.
+If you want to skip DM pairing and only allow your own account, use your `npub...` here:
 
 ```bash
 jq '
@@ -439,9 +388,15 @@ mv /tmp/openclaw.json ~/.openclaw/openclaw.json
 systemctl --user restart openclaw-gateway.service
 ```
 
-### If You Keep Default DM Pairing
+If you need your public key from an `nsec...` key:
 
-`pairing` is the default Nostr DM policy. DM the bot from your Nostr client, wait for the pairing code, then approve it on `alan-framework`:
+```bash
+nak encode npub "$(nak key public "$(nak decode "$NOSTR_PRIVATE_KEY")")"
+```
+
+### Pairing
+
+If you keep the default Nostr DM pairing flow:
 
 ```bash
 openclaw pairing list --channel nostr
@@ -451,6 +406,21 @@ openclaw pairing approve --channel nostr <CODE>
 ### Verify
 
 ```bash
-journalctl --user -u openclaw-gateway.service -n 100 --no-pager | grep -Ei 'nostr'
+journalctl --user -u openclaw-gateway.service -n 100 --no-pager | grep -Ei 'nostr|relay'
 openclaw gateway probe --token "$OPENCLAW_GATEWAY_TOKEN"
 ```
+
+
+b47290e9785230c1123c2893f51aac4c2b18129277b3c8996f9c636285f7fab1
+
+│
+◇  Telegram DM access warning ──────────────────────────────────────────────╮
+│                                                                           │
+│  Your bot is using DM policy: pairing.                                    │
+│  Any Telegram user who discovers the bot can send pairing requests.       │
+│  For private use, configure an allowlist with your Telegram user id:      │
+│    openclaw config set channels.telegram.dmPolicy "allowlist"             │
+│    openclaw config set channels.telegram.allowFrom '["YOUR_USER_ID"]'     │
+│  Docs: channels/pairing  │
+│                                                                           │
+├───────────────────────────────────────────────────────────────────────────╯

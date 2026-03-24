@@ -132,6 +132,10 @@
       enable = true;
       backend = "vulkan";
       stateDir = "/var/lib/llm";
+      litellm = {
+        enable = true;
+        port = 4000;
+      };
       instances = {
         chat = {
           enable = true;
