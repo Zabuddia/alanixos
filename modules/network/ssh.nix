@@ -53,6 +53,11 @@ in
         ];
       };
 
+      environment.etc."ssh/ssh_host_ed25519_key.pub" = lib.mkIf (cfg.hostPublicKey != null) {
+        text = cfg.hostPublicKey + "\n";
+        mode = "0644";
+      };
+
       networking.firewall.interfaces.wg0.allowedTCPPorts =
         lib.optionals cfg.openFirewallOnWireguard [ 22 ];
     })
