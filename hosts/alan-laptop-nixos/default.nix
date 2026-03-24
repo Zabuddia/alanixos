@@ -37,6 +37,7 @@
         ffmpeg
         w_scan2
         nano
+        imagemagick
       ];
       swapDevices = [
         {
@@ -80,6 +81,7 @@
             libreoffice
             remmina
             tor-browser
+            hyprpicker
           ];
           unstablePackages = with pkgs-unstable; [
             yt-dlp
