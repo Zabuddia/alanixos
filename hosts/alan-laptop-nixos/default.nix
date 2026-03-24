@@ -90,7 +90,15 @@
             firefox
             moonlight-qt
           ];
-          modules = [ ];
+          modules = [
+            {
+              home.sessionPath = [ "/home/buddia/.local/bin" ];
+              home.sessionVariables = {
+                NPM_CONFIG_PREFIX = "/home/buddia/.local";
+                NODE_PATH = "/home/buddia/.local/lib/node_modules";
+              };
+            }
+          ];
         };
 
         git = {
