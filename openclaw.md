@@ -86,6 +86,7 @@ jq '
       "http://localhost:18789",
       "https://alan-framework.tailbb2802.ts.net"
     ]
+  | .gateway.controlUi.allowInsecureAuth = true
   | .browser.enabled = true
   | .browser.defaultProfile = "openclaw"
   | .browser.headless = true
@@ -184,9 +185,15 @@ What you want to see:
 - browser default profile: `openclaw`
 - browser headless: `true`
 - Control UI origins include local loopback and the Tailscale URL
+- `gateway.controlUi.allowInsecureAuth` is `true`
 - no `Proxy headers detected from untrusted address` warning for local UI traffic
 - no `tailscale ENOENT` warning
 - no `tools.profile (coding) allowlist contains unknown entries` warning
+
+Note:
+
+- `gateway.controlUi.allowInsecureAuth = true` only helps when the dashboard is opened over plain HTTP in a non-secure browser context.
+- It does not bypass remote device pairing. If the browser reaches the gateway over Tailnet/Serve and shows `pairing required`, you still need to approve that browser with `openclaw devices list` and `openclaw devices approve <requestId>`.
 
 ### Gateway Logs
 

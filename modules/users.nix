@@ -1,4 +1,4 @@
-{ config, lib, pkgs, pkgs-unstable, ... }:
+{ config, lib, pkgs, pkgs-unstable, allHosts, ... }:
 
 let
   inherit (lib) types;
@@ -76,6 +76,12 @@ let
           type = types.nullOr types.path;
           default = null;
           description = "Path to the hashed password file for the user.";
+        };
+
+        sshPublicKey = lib.mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Primary SSH public key for this account. Written to ~/.ssh/id_ed25519.pub and injected into openssh.authorizedKeys.keys on all hosts that have this account enabled.";
         };
 
         home = {
@@ -198,7 +204,14 @@ let
     home.username = username;
     home.homeDirectory = userCfg.home.directory;
     home.stateVersion = userCfg.home.stateVersion;
-    home.file = mkHomeFiles userCfg.home.files;
+    home.file =
+      mkHomeFiles userCfg.home.files
+      // lib.optionalAttrs (userCfg.sshPublicKey != null) {
+        ".ssh/id_ed25519.pub" = {
+          text = userCfg.sshPublicKey;
+          force = true;
+        };
+      };
     home.packages = userCfg.home.packages ++ userCfg.home.unstablePackages;
     programs.home-manager.enable = true;
   };
@@ -224,11 +237,21 @@ in
 
     (lib.mkIf (enabledAccounts != { }) {
       users.users = lib.mapAttrs
-        (_: userCfg:
+        (username: userCfg:
           lib.filterAttrs (_: value: value != null) {
             isNormalUser = userCfg.isNormalUser;
             extraGroups = userCfg.extraGroups;
             hashedPasswordFile = userCfg.hashedPasswordFile;
+          } // {
+            openssh.authorizedKeys.keys =
+              lib.mapAttrsToList
+                (_: hostCfg: hostCfg.config.alanix.users.accounts.${username}.sshPublicKey)
+                (lib.filterAttrs
+                  (_: hostCfg:
+                    (hostCfg.config.alanix.users.accounts ? ${username})
+                    && hostCfg.config.alanix.users.accounts.${username}.enable
+                    && hostCfg.config.alanix.users.accounts.${username}.sshPublicKey != null)
+                  allHosts);
           })
         enabledAccounts;
     })
