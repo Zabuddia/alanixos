@@ -86,6 +86,11 @@ jq '
       "http://localhost:18789",
       "https://alan-framework.tailbb2802.ts.net"
     ]
+  | .browser.enabled = true
+  | .browser.defaultProfile = "openclaw"
+  | .browser.headless = true
+  | .browser.executablePath = "/etc/profiles/per-user/buddia/bin/chromium"
+  | .tools.profile = "full"
   | if (.tools.profile | type) == "object" and .tools.profile.coding.allowlist? then
       .tools.profile.coding.allowlist |= map(select(. != "apply_patch" and . != "image_generate"))
     else . end
@@ -158,6 +163,7 @@ jq '
 mv /tmp/openclaw.json ~/.openclaw/openclaw.json
 systemctl --user daemon-reload
 systemctl --user restart openclaw-gateway.service
+openclaw browser --browser-profile openclaw start
 ```
 
 ### Verify
@@ -166,6 +172,7 @@ systemctl --user restart openclaw-gateway.service
 openclaw gateway probe --token "$(openclaw config get gateway.auth.token)"
 openclaw models list
 openclaw models status
+openclaw browser --browser-profile openclaw status
 curl -fsS http://127.0.0.1:4000/v1/models | jq .
 ```
 
@@ -174,6 +181,8 @@ What you want to see:
 - default model: `local-litellm/qwen3.5-35b-a3b`
 - image model: `local-litellm/qwen3-vl-30b-a3b-instruct`
 - configured embeddings model: `local-litellm/qwen3-embedding-4b`
+- browser default profile: `openclaw`
+- browser headless: `true`
 - Control UI origins include local loopback and the Tailscale URL
 - no `Proxy headers detected from untrusted address` warning for local UI traffic
 - no `tailscale ENOENT` warning
