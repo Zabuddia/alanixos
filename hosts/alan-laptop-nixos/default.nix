@@ -57,18 +57,13 @@
         extraGroups = [ "wheel" "networkmanager" "input" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
+        sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKNJ7KX0IIt27KqD2c3dqMT8vbO0K/G1ibfC+a/WxijO fife.alan@protonmail.com";
+
         home = {
           enable = true;
           directory = "/home/buddia";
           stateVersion = "25.11";
           files = {
-            ".ssh/id_ed25519.pub" = {
-              text = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKNJ7KX0IIt27KqD2c3dqMT8vbO0K/G1ibfC+a/WxijO fife.alan@protonmail.com";
-              source = null;
-              force = true;
-              executable = null;
-            };
-
             ".ssh/id_ed25519_work.pub" = {
               text = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINZHjKqhqWZalx6/NsQv1OGXJP6LBMfXS0QedqwhjFzl briggsconsulting.coaching@gmail.com";
               source = null;

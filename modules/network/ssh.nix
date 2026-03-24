@@ -1,7 +1,13 @@
-{ config, lib, ... }:
+{ config, lib, allHosts, ... }:
 
 let
   cfg = config.alanix.ssh;
+
+  hostsWithHostKey = lib.filterAttrs
+    (_: hostCfg:
+      hostCfg.config.alanix.ssh.hostPublicKey != null
+      && hostCfg.config.alanix.wireguard.enable)
+    allHosts;
 in
 {
   options.alanix.ssh = {
@@ -17,6 +23,12 @@ in
       type = lib.types.bool;
       default = false;
       description = "Whether to start the SSH agent service.";
+    };
+
+    hostPublicKey = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "SSH host public key for this machine (content of /etc/ssh/ssh_host_ed25519_key.pub). When set, all other hosts add a programs.ssh.knownHosts entry using this host's WireGuard IP.";
     };
   };
 
@@ -46,6 +58,15 @@ in
 
     (lib.mkIf cfg.startAgent {
       programs.ssh.startAgent = true;
+    })
+
+    (lib.mkIf (hostsWithHostKey != { }) {
+      programs.ssh.knownHosts = lib.mapAttrs'
+        (_: hostCfg:
+          lib.nameValuePair
+            hostCfg.config.alanix.wireguard.vpnIP
+            { publicKey = hostCfg.config.alanix.ssh.hostPublicKey; })
+        hostsWithHostKey;
     })
   ];
 }

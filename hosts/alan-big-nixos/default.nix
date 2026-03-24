@@ -49,18 +49,13 @@
         extraGroups = [ "wheel" "networkmanager" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
+        sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEAJK6Bk63YjxmL9CI3F5yCjhG3MPAuuplydZ5ZmPFzW fife.alan@protonmail.com";
+
         home = {
           enable = true;
           directory = "/home/buddia";
           stateVersion = "25.11";
-          files = {
-            ".ssh/id_ed25519.pub" = {
-              text = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEAJK6Bk63YjxmL9CI3F5yCjhG3MPAuuplydZ5ZmPFzW fife.alan@protonmail.com";
-              source = null;
-              force = true;
-              executable = null;
-            };
-          };
+          files = { };
           packages = [ ];
           unstablePackages = with pkgs-unstable; [ yt-dlp ];
           modules = [ ];
