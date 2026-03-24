@@ -235,12 +235,6 @@
       };
     };
 
-    alanix.openclaw = {
-      user = "buddia";
-      packages = [ pkgs.chromium pkgs.nak ];
-      gateway.enable = true;
-    };
-
     alanix.remote-desktop = {
       enable = true;
       autoStart = true;

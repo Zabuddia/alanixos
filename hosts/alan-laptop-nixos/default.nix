@@ -140,7 +140,7 @@
       idle = {
         lockSeconds = 300;
         displayOffSeconds = 330;
-        suspendSeconds = 1800;
+        suspendSeconds = null;
       };
     };
 
@@ -183,19 +183,6 @@
       enable = true;
       acceptRoutes = true;
       operator = "buddia";
-    };
-
-    alanix.openclaw = {
-      user = "buddia";
-      packages = [ pkgs.chromium pkgs.nak ];
-
-      desktopNode = {
-        enable = true;
-        displayName = "alan-laptop-nixos";
-        gatewayHost = "alan-framework.tailbb2802.ts.net";
-        gatewayPort = 443;
-        gatewayTls = true;
-      };
     };
 
     alanix.remote-desktop = {
