@@ -50,6 +50,7 @@
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
         sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEAJK6Bk63YjxmL9CI3F5yCjhG3MPAuuplydZ5ZmPFzW fife.alan@protonmail.com";
+        authorizedHosts = [ "alan-framework" "alan-laptop-nixos" "randy-big-nixos" ];
 
         home = {
           enable = true;
@@ -92,6 +93,7 @@
       enable = true;
       openFirewallOnWireguard = true;
       startAgent = true;
+      hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEOwubCYI6sBZbrhRLFMuV8IpReT40dcZ6qLBarejXxS";
     };
 
     alanix.ddns = {

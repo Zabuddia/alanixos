@@ -40,6 +40,13 @@
         mode = "0600";
         path = "/home/buddia/.ssh/id_ed25519";
       };
+
+      "ssh-host-keys/alan-framework" = {
+        owner = "root";
+        group = "root";
+        mode = "0600";
+        path = "/etc/ssh/ssh_host_ed25519_key";
+      };
     }
   ];
 

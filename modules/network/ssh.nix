@@ -4,9 +4,7 @@ let
   cfg = config.alanix.ssh;
 
   hostsWithHostKey = lib.filterAttrs
-    (_: hostCfg:
-      hostCfg.config.alanix.ssh.hostPublicKey != null
-      && hostCfg.config.alanix.wireguard.enable)
+    (_: hostCfg: hostCfg.config.alanix.ssh.hostPublicKey != null)
     allHosts;
 in
 {
@@ -50,6 +48,9 @@ in
       services.openssh = {
         enable = true;
         openFirewall = false;
+        hostKeys = lib.mkIf (cfg.hostPublicKey != null) [
+          { type = "ed25519"; path = "/etc/ssh/ssh_host_ed25519_key"; }
+        ];
       };
 
       networking.firewall.interfaces.wg0.allowedTCPPorts =
@@ -62,10 +63,17 @@ in
 
     (lib.mkIf (hostsWithHostKey != { }) {
       programs.ssh.knownHosts = lib.mapAttrs'
-        (_: hostCfg:
+        (hostName: hostCfg:
+          let
+            wgIP = hostCfg.config.alanix.wireguard.vpnIP;
+            extraNames = lib.optional (wgIP != null) wgIP;
+          in
           lib.nameValuePair
-            hostCfg.config.alanix.wireguard.vpnIP
-            { publicKey = hostCfg.config.alanix.ssh.hostPublicKey; })
+            hostName
+            {
+              hostNames = [ hostName ] ++ extraNames;
+              publicKey = hostCfg.config.alanix.ssh.hostPublicKey;
+            })
         hostsWithHostKey;
     })
   ];
