@@ -27,6 +27,7 @@
         git
         htop
         jq
+        lsof
         nak
         nodejs
         python3
