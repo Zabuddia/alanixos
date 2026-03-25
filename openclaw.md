@@ -86,7 +86,7 @@ jq '
       "http://localhost:18789",
       "https://alan-framework.tailbb2802.ts.net"
     ]
-  | .gateway.controlUi.allowInsecureAuth = true
+  | .gateway.controlUi.dangerouslyDisableDeviceAuth = true
   | .browser.enabled = true
   | .browser.defaultProfile = "openclaw"
   | .browser.headless = true
@@ -185,15 +185,15 @@ What you want to see:
 - browser default profile: `openclaw`
 - browser headless: `true`
 - Control UI origins include local loopback and the Tailscale URL
-- `gateway.controlUi.allowInsecureAuth` is `true`
+- `gateway.controlUi.dangerouslyDisableDeviceAuth` is `true`
 - no `Proxy headers detected from untrusted address` warning for local UI traffic
 - no `tailscale ENOENT` warning
 - no `tools.profile (coding) allowlist contains unknown entries` warning
 
 Note:
 
-- `gateway.controlUi.allowInsecureAuth = true` only helps when the dashboard is opened over plain HTTP in a non-secure browser context.
-- It does not bypass remote device pairing. If the browser reaches the gateway over Tailnet/Serve and shows `pairing required`, you still need to approve that browser with `openclaw devices list` and `openclaw devices approve <requestId>`.
+- `gateway.controlUi.dangerouslyDisableDeviceAuth = true` disables Control UI device pairing checks.
+- This is a major security downgrade. Any browser that can satisfy your other gateway access controls can use the dashboard without per-device approval.
 
 ### Gateway Logs
 
@@ -217,11 +217,82 @@ journalctl --user -u openclaw-gateway.service -n 200 --no-pager
 npm install -g openclaw@latest
 ```
 
+### Configure The Laptop Node
+
+```bash
+mkdir -p ~/.openclaw
+
+jq '
+  .browser = {
+    enabled: true,
+    defaultProfile: "openclaw",
+    headless: false,
+    executablePath: "/etc/profiles/per-user/buddia/bin/chromium"
+  }
+  | .tools.exec.host = "node"
+  | .tools.exec.security = "full"
+  | .tools.exec.ask = "off"
+  | .tools.elevated = { enabled: true }
+  | .tools.allow = ["*"]
+  | .tools.deny = []
+  | .tools.profile = "full"
+  | .commands.native = "auto"
+  | .commands.nativeSkills = "auto"
+  | .commands.restart = true
+  | .commands.ownerDisplay = "raw"
+  | .gateway.auth.mode = "token"
+  | .gateway.auth.token = "PASTE_GATEWAY_TOKEN_HERE"
+  | .meta.lastTouchedVersion = "manual"
+' ~/.openclaw/openclaw.json > /tmp/openclaw.json
+
+mv /tmp/openclaw.json ~/.openclaw/openclaw.json
+```
+
+If you are starting from an empty file instead of patching an existing one:
+
+```bash
+cat > ~/.openclaw/openclaw.json <<'EOF'
+{
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true,
+    "ownerDisplay": "raw"
+  },
+  "gateway": {
+    "auth": {
+      "mode": "token",
+      "token": "PASTE_GATEWAY_TOKEN_HERE"
+    }
+  },
+  "browser": {
+    "enabled": true,
+    "defaultProfile": "openclaw",
+    "headless": false,
+    "executablePath": "/etc/profiles/per-user/buddia/bin/chromium"
+  },
+  "tools": {
+    "allow": ["*"],
+    "deny": [],
+    "profile": "full",
+    "elevated": {
+      "enabled": true
+    },
+    "exec": {
+      "host": "node",
+      "security": "full",
+      "ask": "off"
+    }
+  }
+}
+EOF
+```
+
+This enables the laptop browser proxy and sets the node-side exec defaults to the broadest built-in policy in `openclaw.json`.
+
 ### Pair The Laptop Node
 
-Run OpenClaw normally on the laptop and pair it to the framework gateway using the tokenized dashboard URL or normal node flow.
-
-If you want the old simple foreground flow:
+Run the node on the laptop in the foreground:
 
 ```bash
 openclaw node run \
@@ -231,8 +302,42 @@ openclaw node run \
   --display-name alan-laptop-nixos
 ```
 
+On `alan-framework`, approve the node:
+
+```bash
+openclaw devices list
+openclaw devices approve <requestId>
+```
+
+### Verify
+
+On the laptop:
+
+```bash
+echo "Node should stay attached here without exiting."
+```
+
+From the gateway:
+
+```bash
+openclaw devices list
+```
+
+Then in the Control UI or chat, target the laptop node and test:
+
+- `pwd`
+- `whoami`
+- `ls ~`
+- `rg --files ~/some-repo | head`
+
+If browser proxy is working, ask it to open a page on the laptop node and take a screenshot.
+
+If you still see `SYSTEM_RUN_DENIED: approval required`, that means the node host is still enforcing a local approvals file outside `openclaw.json`. In current OpenClaw docs, the dedicated per-host approvals store is `~/.openclaw/exec-approvals.json`, and that policy can be stricter than `tools.exec.*`.
+
 ## 4. Notes
 
 - `imageModel` works with the LiteLLM vision model.
 - `tools.media` pre-digest media-understanding still does not work with `local-litellm` in the current OpenClaw version.
 - If you see media-understanding errors, that is separate from normal image-model routing.
+- `tools.exec.security = "full"` and `tools.exec.ask = "off"` in `openclaw.json` are the broadest single-file exec settings.
+- OpenClaw docs still describe exec approvals as a separate local file at `~/.openclaw/exec-approvals.json`. If that file exists or is created by the node runtime/UI, it can still override or further restrict exec behavior.
