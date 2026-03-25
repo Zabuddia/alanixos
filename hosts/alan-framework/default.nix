@@ -161,8 +161,8 @@
           port = 8080;
           alias = null;
           ctxSize = 262144;
-          batchSize = 2048;
-          ubatchSize = 512;
+          batchSize = 4096;
+          ubatchSize = 1024;
           parallel = 1;
           gpuLayers = "all";
           flashAttention = "on";
