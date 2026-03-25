@@ -208,6 +208,7 @@ in
     })
 
     (lib.mkIf (cfg.enable && mainConfigReady && cfg.exposeSshOnionService) {
+      services.tor.enable = true;
       services.tor.relay.onionServices.sshd = config.nix-bitcoin.lib.mkOnionService { port = 22; };
       nix-bitcoin.onionAddresses.access.${cfg.operatorName} = [ "sshd" ];
     })
