@@ -70,7 +70,7 @@ Edit `secrets/keys.nix` and add the new machine's `age1...` public key, then reg
 ```bash
 vim secrets/keys.nix
 bash ./scripts/update-sops-config
-git add .sops.yaml
+git add secrets/keys.nix .sops.yaml
 git commit -m "Add <hostname> age recipient"
 git push
 ```
