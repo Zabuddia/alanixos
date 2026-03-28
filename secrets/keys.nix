@@ -13,7 +13,7 @@
     };
 
     alan-big-nixos = {
-      recipient = "age1ywa965cvxmzh39cjt2h7k4vsc7qmfqmv0dg6psalwe5td0s5j4ysycvrkd";
+      recipient = "age1fmjf2c6alaquxg558rgmrukswvfelxpq4jrr6tc8kvpe7xg07ulsa4tu7p";
       description = "Root-only runtime key stored at /var/lib/sops-nix/key.txt.";
     };
 
