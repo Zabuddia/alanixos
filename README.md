@@ -68,6 +68,8 @@ chmod 0600 ~/.config/sops/age/keys.txt
 Edit `secrets/keys.nix` and add the new machine's `age1...` public key, then regenerate `.sops.yaml`:
 
 ```bash
+git config user.name "zabuddia"
+git config user.email "fife.alan@protonmail.com"
 vim secrets/keys.nix
 bash ./scripts/update-sops-config
 git add secrets/keys.nix .sops.yaml
