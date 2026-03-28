@@ -19,7 +19,7 @@ Install NixOS normally, create user `buddia`, enable networking, and boot in.
 ## Step 2 — Enter a shell with required tools
 
 ```bash
-nix-shell -p git sops age
+nix-shell -p git sops age gh
 ```
 
 ---
@@ -74,6 +74,7 @@ vim secrets/keys.nix
 bash ./scripts/update-sops-config
 git add secrets/keys.nix .sops.yaml
 git commit -m "Add <hostname> age recipient"
+gh auth login
 git push
 ```
 
