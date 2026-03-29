@@ -241,6 +241,23 @@ in
 
           DB=${lib.escapeShellArg dbPath}
           DECLARED=${lib.escapeShellArg declaredUsersList}
+          ADDRESS=${lib.escapeShellArg cfg.listenAddress}
+          PORT=${lib.escapeShellArg (toString cfg.port)}
+          ROOT=${lib.escapeShellArg cfg.root}
+
+          ensure_database_initialized() {
+            if [ -f "$DB" ]; then
+              return 0
+            fi
+
+            echo "Initializing File Browser database: $DB"
+            mkdir -p "$(dirname "$DB")"
+            filebrowser config init \
+              --database "$DB" \
+              --address "$ADDRESS" \
+              --port "$PORT" \
+              --root "$ROOT"
+          }
 
           have_user() {
             filebrowser users ls --database "$DB" | awk 'NR>1 {print $2}' | grep -qx "$1"
@@ -289,6 +306,8 @@ in
           }
 
           ${passfileLines}
+
+          ensure_database_initialized
 
           ${ensureLines}
 
