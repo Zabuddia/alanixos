@@ -3,6 +3,7 @@ let
   cfg = config.alanix.filebrowser;
 
   dbPath = cfg.database;
+  torCfg = cfg.tor;
 
   declaredUsernames = builtins.attrNames cfg.users;
   declaredUsersList = lib.concatStringsSep " " declaredUsernames;
@@ -26,6 +27,17 @@ let
               builtins.hashString "sha256" userCfg.password;
         })
       cfg.users;
+  torRuntimeDirectory = "alanix-filebrowser-tor";
+  torSecretKeyRuntimePath = "/run/${torRuntimeDirectory}/hs_ed25519_secret_key";
+  torTargetAddress =
+    if torCfg.targetAddress != null then
+      torCfg.targetAddress
+    else if cfg.listenAddress == "0.0.0.0" then
+      "127.0.0.1"
+    else if cfg.listenAddress == "::" then
+      "::1"
+    else
+      cfg.listenAddress;
 in
 {
   options.alanix.filebrowser = {
@@ -87,6 +99,41 @@ in
       default = {};
       description = "Declarative File Browser users. Users get separate directories via per-user scope under root.";
     };
+
+    tor = {
+      enable = lib.mkEnableOption "expose File Browser as a Tor onion service";
+
+      onionServiceName = lib.mkOption {
+        type = lib.types.str;
+        default = "filebrowser";
+        description = "Attribute name used under services.tor.relay.onionServices.";
+      };
+
+      publicPort = lib.mkOption {
+        type = lib.types.port;
+        default = 80;
+        description = "Port exposed by the onion service.";
+      };
+
+      targetAddress = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Address Tor should forward to on this host.
+          Defaults to alanix.filebrowser.listenAddress, except 0.0.0.0/:: are normalized to loopback.
+        '';
+      };
+
+      secretKeyBase64Secret = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Name of the sops secret containing the base64-encoded Tor v3
+          hs_ed25519_secret_key file. When omitted, Tor generates and persists
+          a key in its normal state directory.
+        '';
+      };
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -123,6 +170,16 @@ in
         {
           assertion = lib.length declaredScopes == lib.length (lib.unique declaredScopes);
           message = "alanix.filebrowser.users.*.scope must be unique.";
+        }
+        {
+          assertion = !torCfg.enable || builtins.match "^[A-Za-z0-9._-]+$" torCfg.onionServiceName != null;
+          message = "alanix.filebrowser.tor.onionServiceName may contain only letters, digits, dot, underscore, and hyphen.";
+        }
+        {
+          assertion =
+            torCfg.secretKeyBase64Secret == null
+            || lib.hasAttrByPath [ "sops" "secrets" torCfg.secretKeyBase64Secret ] config;
+          message = "alanix.filebrowser.tor.secretKeyBase64Secret must reference a declared sops secret.";
         }
       ]
       ++ lib.flatten (lib.mapAttrsToList (uname: u:
@@ -189,6 +246,31 @@ in
     );
 
     environment.systemPackages = [ pkgs.filebrowser ];
+
+    systemd.services.filebrowser-tor-secret-key = lib.mkIf (baseConfigReady && torCfg.enable && torCfg.secretKeyBase64Secret != null) {
+      description = "Decode File Browser Tor onion service key";
+      before = [ "tor.service" ];
+      requiredBy = [ "tor.service" ];
+
+      after = [ "sops-nix.service" ];
+      wants = [ "sops-nix.service" ];
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        RuntimeDirectory = torRuntimeDirectory;
+        RuntimeDirectoryMode = "0700";
+      };
+
+      path = [ pkgs.coreutils ];
+
+      script = ''
+        set -euo pipefail
+
+        base64 -d ${lib.escapeShellArg config.sops.secrets.${torCfg.secretKeyBase64Secret}.path} > ${lib.escapeShellArg torSecretKeyRuntimePath}
+        chmod 0400 ${lib.escapeShellArg torSecretKeyRuntimePath}
+      '';
+    };
 
     systemd.services.filebrowser-reconcile-users = lib.mkIf (cfg.users != {} && baseConfigReady) {
       description = "Reconcile File Browser users (create declared; remove undeclared)";
@@ -329,6 +411,26 @@ in
     systemd.services.filebrowser.restartTriggers = [
       (builtins.toJSON sanitizedUsersForRestart)
     ];
+
+    services.tor = lib.mkIf (baseConfigReady && torCfg.enable) {
+      enable = true;
+      relay.onionServices.${torCfg.onionServiceName} =
+        {
+          version = 3;
+          map = [
+            {
+              port = torCfg.publicPort;
+              target = {
+                addr = torTargetAddress;
+                port = cfg.port;
+              };
+            }
+          ];
+        }
+        // lib.optionalAttrs (torCfg.secretKeyBase64Secret != null) {
+          secretKey = torSecretKeyRuntimePath;
+        };
+    };
 
   };
 }

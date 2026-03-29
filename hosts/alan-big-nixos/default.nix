@@ -159,6 +159,10 @@
       port = 8088;
       root = "/srv/filebrowser";
       database = "/var/lib/filebrowser/filebrowser.db";
+      tor = {
+        enable = true;
+        secretKeyBase64Secret = "tor/filebrowser/secret-key-base64";
+      };
       users = {
         admin = {
           admin = true;
