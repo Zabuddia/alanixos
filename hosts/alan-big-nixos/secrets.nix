@@ -67,6 +67,27 @@
     mode = "0400";
   };
 
+  sops.secrets."invidious/hmac-key" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "invidious";
+    group = "invidious";
+    mode = "0400";
+  };
+
+  sops.secrets."invidious/companion-secret-key" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."invidious-passwords/buddia" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "invidious";
+    group = "invidious";
+    mode = "0400";
+  };
+
   sops.secrets."tor/filebrowser/secret-key-base64" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
@@ -75,6 +96,13 @@
   };
 
   sops.secrets."tor/forgejo/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/invidious/secret-key-base64" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
     group = "root";

@@ -58,6 +58,12 @@ in
       default = null;
     };
 
+    pruneUndeclaredUsers = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Delete File Browser users that are not present in alanix.filebrowser.users.";
+    };
+
     users = lib.mkOption {
       type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
         options = {
@@ -209,7 +215,7 @@ in
       environment.systemPackages = [ pkgs.filebrowser ];
 
       systemd.services.filebrowser-reconcile-users = lib.mkIf (cfg.users != {} && baseConfigReady) {
-        description = "Reconcile File Browser users (create declared; remove undeclared)";
+        description = "Reconcile File Browser users (create declared; optionally prune undeclared)";
         before = [ "filebrowser.service" ];
         requiredBy = [ "filebrowser.service" ];
 
@@ -259,6 +265,7 @@ in
 
             DB=${lib.escapeShellArg dbPath}
             DECLARED=${lib.escapeShellArg declaredUsersList}
+            PRUNE=${if cfg.pruneUndeclaredUsers then "1" else "0"}
             ADDRESS=${lib.escapeShellArg cfg.listenAddress}
             PORT=${lib.escapeShellArg (toString cfg.port)}
             ROOT=${lib.escapeShellArg cfg.root}
@@ -329,18 +336,20 @@ in
 
             ${ensureLines}
 
-            filebrowser users ls --database "$DB" | awk 'NR>1 {print $2}' | while read -r u; do
-              keep=0
-              for d in $DECLARED; do
-                if [ "$u" = "$d" ]; then keep=1; fi
-              done
-              if [ "$keep" -eq 0 ]; then
-                echo "Removing undeclared user: $u"
-                if ! filebrowser users rm "$u" --database "$DB"; then
-                  echo "Could not remove undeclared user: $u (File Browser may refuse deleting the first user). Leaving it."
+            if [ "$PRUNE" = "1" ]; then
+              filebrowser users ls --database "$DB" | awk 'NR>1 {print $2}' | while read -r u; do
+                keep=0
+                for d in $DECLARED; do
+                  if [ "$u" = "$d" ]; then keep=1; fi
+                done
+                if [ "$keep" -eq 0 ]; then
+                  echo "Removing undeclared user: $u"
+                  if ! filebrowser users rm "$u" --database "$DB"; then
+                    echo "Could not remove undeclared user: $u (File Browser may refuse deleting the first user). Leaving it."
+                  fi
                 fi
-              fi
-            done
+              done
+            fi
           '';
       };
 

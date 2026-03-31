@@ -11,6 +11,7 @@
     ./network/tailscale.nix
     ./services/filebrowser.nix
     ./services/forgejo.nix
+    ./services/invidious.nix
     ./services/llm.nix
     ./services/openclaw.nix
     ./services/remote-desktop.nix
