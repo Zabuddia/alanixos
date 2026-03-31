@@ -2,9 +2,11 @@
 let
   cfg = config.alanix.invidious;
   serviceExposure = import ../../lib/mkServiceExposure.nix { inherit lib pkgs; };
+  passwordUsers = import ../../lib/mkPlaintextPasswordUsers.nix { inherit lib; };
+  serviceIdentity = import ../../lib/mkServiceIdentity.nix { inherit lib; };
 
   exposeCfg = cfg.expose;
-  hasValue = value: value != null && value != "";
+  inherit (passwordUsers) hasValue;
 
   endpoint = {
     address = cfg.listenAddress;
@@ -17,45 +19,22 @@ let
   declaredUsernames = builtins.attrNames cfg.users;
   declaredUsersList = lib.concatStringsSep " " declaredUsernames;
 
-  wireguardAddress =
-    if exposeCfg.wireguard.address != null then
-      exposeCfg.wireguard.address
-    else
-      config.alanix.wireguard.vpnIP;
+  effectiveDomain = serviceIdentity.advertisedDomain {
+    inherit config exposeCfg;
+    listenAddress = cfg.listenAddress;
+    domainOverride = cfg.domain;
+    allowWireguard = false;
+    allowListenAddressFallback = false;
+  };
 
-  wanPort =
-    if exposeCfg.wan.port != null then
-      exposeCfg.wan.port
-    else if exposeCfg.wan.tls then
-      443
-    else
-      80;
+  effectiveExternalPort = serviceIdentity.externalPort {
+    inherit exposeCfg;
+    port = cfg.port;
+  };
 
-  effectiveDomain =
-    if hasValue cfg.domain then
-      cfg.domain
-    else if exposeCfg.wan.enable && hasValue exposeCfg.wan.domain then
-      exposeCfg.wan.domain
-    else if exposeCfg.wireguard.enable && hasValue wireguardAddress then
-      wireguardAddress
-    else
-      cfg.listenAddress;
-
-  effectiveExternalPort =
-    if exposeCfg.wan.enable then
-      wanPort
-    else if exposeCfg.wireguard.enable then
-      exposeCfg.wireguard.port
-    else
-      cfg.port;
-
-  effectiveHttpsOnly =
-    if exposeCfg.wan.enable then
-      exposeCfg.wan.tls
-    else if exposeCfg.wireguard.enable then
-      exposeCfg.wireguard.tls
-    else
-      false;
+  effectiveHttpsOnly = serviceIdentity.httpsOnly {
+    inherit exposeCfg;
+  };
 
   adminUsers =
     lib.mapAttrsToList
@@ -118,22 +97,10 @@ let
     admins = adminUsers;
   };
 
-  sanitizedUsersForRestart =
-    lib.mapAttrs
-      (_: userCfg: {
-        inherit (userCfg) admin passwordSecret;
-        password =
-          if userCfg.password == null then
-            null
-          else
-            builtins.hashString "sha256" userCfg.password;
-        passwordFile =
-          if userCfg.passwordFile == null then
-            null
-          else
-            toString userCfg.passwordFile;
-      })
-      cfg.users;
+  sanitizedUsersForRestart = passwordUsers.sanitizeForRestart {
+    users = cfg.users;
+    inheritFields = [ "admin" "passwordSecret" ];
+  };
 in
 {
   disabledModules = [ "services/web-apps/invidious.nix" ];
@@ -191,28 +158,12 @@ in
 
     users = lib.mkOption {
       type = lib.types.attrsOf (lib.types.submodule ({ ... }: {
-        options = {
-          admin = lib.mkOption {
-            type = lib.types.bool;
-            default = false;
-          };
-
-          password = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
-            default = null;
-            description = "Plaintext password (simple, not recommended).";
-          };
-
-          passwordFile = lib.mkOption {
-            type = lib.types.nullOr lib.types.path;
-            default = null;
-            description = "Path to a file containing the plaintext password.";
-          };
-
-          passwordSecret = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
-            default = null;
-            description = "Name of a sops secret containing the plaintext password.";
+        options = passwordUsers.mkOptions {
+          extraOptions = {
+            admin = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+            };
           };
         };
       }));
@@ -311,29 +262,14 @@ in
           inherit config endpoint exposeCfg;
           optionPrefix = "alanix.invidious.expose";
         }
-        ++ lib.flatten (lib.mapAttrsToList (uname: u:
-          let
-            chosen = lib.filter (x: x) [
-              (u.password != null)
-              (u.passwordFile != null)
-              (u.passwordSecret != null)
-            ];
-          in
-          [
-            {
-              assertion = builtins.match "^[a-z0-9._@+-]+$" uname != null;
-              message = "alanix.invidious.users.${uname}: user IDs may contain only lowercase letters, digits, dot, underscore, at-sign, plus, and hyphen.";
-            }
-            {
-              assertion = (builtins.length chosen) == 1;
-              message = "alanix.invidious.users.${uname}: set exactly one of password, passwordFile, or passwordSecret.";
-            }
-            {
-              assertion = u.passwordSecret == null || lib.hasAttrByPath [ "sops" "secrets" u.passwordSecret ] config;
-              message = "alanix.invidious.users.${uname}.passwordSecret must reference a declared sops secret.";
-            }
-          ]
-        ) cfg.users);
+        ++ passwordUsers.mkAssertions {
+          inherit config;
+          users = cfg.users;
+          usernamePattern = "^[a-z0-9._@+-]+$";
+          usernameMessage = uname: "alanix.invidious.users.${uname}: user IDs may contain only lowercase letters, digits, dot, underscore, at-sign, plus, and hyphen.";
+          passwordSourceMessage = uname: "alanix.invidious.users.${uname}: set exactly one of password, passwordFile, or passwordSecret.";
+          passwordSecretMessage = uname: "alanix.invidious.users.${uname}.passwordSecret must reference a declared sops secret.";
+        };
 
       users.groups.invidious = { };
       users.users.invidious = {

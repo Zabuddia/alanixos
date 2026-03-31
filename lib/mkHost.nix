@@ -24,7 +24,6 @@ lib.nixosSystem {
   modules = [
     inputs.sops-nix.nixosModules.sops
     inputs.home-manager.nixosModules.home-manager
-    inputs.nix-bitcoin.nixosModules.default
     inputs.disko.nixosModules.disko
     ../modules
     host.module

@@ -2,9 +2,11 @@
 let
   cfg = config.alanix.forgejo;
   serviceExposure = import ../../lib/mkServiceExposure.nix { inherit lib pkgs; };
+  passwordUsers = import ../../lib/mkPlaintextPasswordUsers.nix { inherit lib; };
+  serviceIdentity = import ../../lib/mkServiceIdentity.nix { inherit lib; };
 
   exposeCfg = cfg.expose;
-  hasValue = value: value != null && value != "";
+  inherit (passwordUsers) hasValue;
 
   endpoint = {
     address = cfg.listenAddress;
@@ -17,47 +19,18 @@ let
   declaredUsernames = builtins.attrNames cfg.users;
   declaredUsersList = lib.concatStringsSep " " declaredUsernames;
 
-  wireguardAddress =
-    if exposeCfg.wireguard.address != null then
-      exposeCfg.wireguard.address
-    else
-      config.alanix.wireguard.vpnIP;
+  effectiveDomain = serviceIdentity.advertisedDomain {
+    inherit config exposeCfg;
+    listenAddress = cfg.listenAddress;
+    domainOverride = cfg.domain;
+  };
 
-  wanPort =
-    if exposeCfg.wan.port != null then
-      exposeCfg.wan.port
-    else if exposeCfg.wan.tls then
-      443
-    else
-      80;
-
-  effectiveDomain =
-    if hasValue cfg.domain then
-      cfg.domain
-    else if exposeCfg.wan.enable && hasValue exposeCfg.wan.domain then
-      exposeCfg.wan.domain
-    else if exposeCfg.wireguard.enable && hasValue wireguardAddress then
-      wireguardAddress
-    else
-      cfg.listenAddress;
-
-  effectiveRootUrl =
-    if hasValue cfg.rootUrl then
-      cfg.rootUrl
-    else if exposeCfg.wan.enable && hasValue exposeCfg.wan.domain then
-      let
-        scheme = if exposeCfg.wan.tls then "https" else "http";
-        defaultPort = if exposeCfg.wan.tls then 443 else 80;
-        portSuffix = if wanPort == defaultPort then "" else ":${toString wanPort}";
-      in
-      "${scheme}://${exposeCfg.wan.domain}${portSuffix}/"
-    else if exposeCfg.wireguard.enable && hasValue wireguardAddress then
-      let
-        scheme = if exposeCfg.wireguard.tls then "https" else "http";
-      in
-      "${scheme}://${wireguardAddress}:${toString exposeCfg.wireguard.port}/"
-    else
-      "http://${cfg.listenAddress}:${toString cfg.port}/";
+  effectiveRootUrl = serviceIdentity.rootUrl {
+    inherit config exposeCfg;
+    listenAddress = cfg.listenAddress;
+    port = cfg.port;
+    rootUrlOverride = cfg.rootUrl;
+  };
 
   defaultSettings = {
     DEFAULT.APP_NAME = cfg.appName;
@@ -72,22 +45,10 @@ let
 
   dbPath = config.services.forgejo.database.path;
 
-  sanitizedUsersForRestart =
-    lib.mapAttrs
-      (_: userCfg: {
-        inherit (userCfg) admin email mustChangePassword passwordSecret;
-        password =
-          if userCfg.password == null then
-            null
-          else
-            builtins.hashString "sha256" userCfg.password;
-        passwordFile =
-          if userCfg.passwordFile == null then
-            null
-          else
-            toString userCfg.passwordFile;
-      })
-      cfg.users;
+  sanitizedUsersForRestart = passwordUsers.sanitizeForRestart {
+    users = cfg.users;
+    inheritFields = [ "admin" "email" "mustChangePassword" "passwordSecret" ];
+  };
 in
 {
   options.alanix.forgejo = {
@@ -144,38 +105,22 @@ in
 
     users = lib.mkOption {
       type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
-        options = {
-          admin = lib.mkOption {
-            type = lib.types.bool;
-            default = false;
-          };
+        options = passwordUsers.mkOptions {
+          extraOptions = {
+            admin = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+            };
 
-          email = lib.mkOption {
-            type = lib.types.str;
-            description = "Email address for the Forgejo user.";
-          };
+            email = lib.mkOption {
+              type = lib.types.str;
+              description = "Email address for the Forgejo user.";
+            };
 
-          mustChangePassword = lib.mkOption {
-            type = lib.types.bool;
-            default = false;
-          };
-
-          password = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
-            default = null;
-            description = "Plaintext password (simple, not recommended).";
-          };
-
-          passwordFile = lib.mkOption {
-            type = lib.types.nullOr lib.types.path;
-            default = null;
-            description = "Path to a file containing the plaintext password.";
-          };
-
-          passwordSecret = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
-            default = null;
-            description = "Name of a sops secret containing the plaintext password.";
+            mustChangePassword = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+            };
           };
         };
       }));
@@ -219,33 +164,20 @@ in
           inherit config endpoint exposeCfg;
           optionPrefix = "alanix.forgejo.expose";
         }
-        ++ lib.flatten (lib.mapAttrsToList (uname: u:
-          let
-            chosen = lib.filter (x: x) [
-              (u.password != null)
-              (u.passwordFile != null)
-              (u.passwordSecret != null)
-            ];
-          in
-          [
-            {
-              assertion = builtins.match "^[A-Za-z0-9._-]+$" uname != null;
-              message = "alanix.forgejo.users.${uname}: usernames may contain only letters, digits, dot, underscore, and hyphen.";
-            }
+        ++ passwordUsers.mkAssertions {
+          inherit config;
+          users = cfg.users;
+          usernamePattern = "^[A-Za-z0-9._-]+$";
+          usernameMessage = uname: "alanix.forgejo.users.${uname}: usernames may contain only letters, digits, dot, underscore, and hyphen.";
+          passwordSourceMessage = uname: "alanix.forgejo.users.${uname}: set exactly one of password, passwordFile, or passwordSecret.";
+          passwordSecretMessage = uname: "alanix.forgejo.users.${uname}.passwordSecret must reference a declared sops secret.";
+          extraAssertions = uname: u: [
             {
               assertion = hasValue u.email;
               message = "alanix.forgejo.users.${uname}.email must be set.";
             }
-            {
-              assertion = (builtins.length chosen) == 1;
-              message = "alanix.forgejo.users.${uname}: set exactly one of password, passwordFile, or passwordSecret.";
-            }
-            {
-              assertion = u.passwordSecret == null || lib.hasAttrByPath [ "sops" "secrets" u.passwordSecret ] config;
-              message = "alanix.forgejo.users.${uname}.passwordSecret must reference a declared sops secret.";
-            }
-          ]
-        ) cfg.users);
+          ];
+        };
 
       services.forgejo = lib.mkIf baseConfigReady {
         enable = true;
