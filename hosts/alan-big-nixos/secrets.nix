@@ -122,4 +122,11 @@
     group = "root";
     mode = "0400";
   };
+
+  sops.secrets."tor/vaultwarden/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
 }

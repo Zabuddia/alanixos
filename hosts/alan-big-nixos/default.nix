@@ -230,6 +230,27 @@
       };
     };
 
+    alanix.vaultwarden = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 8222;
+      rootUrl = "https://ajd4rue7nevdl7rceliwqevkqpgd6tizzgxj7e7vzsd56gil5lvs7hid.onion";
+      disableRegistration = false;
+      expose.tor = {
+        enable = true;
+        publicPort = 443;
+        secretKeyBase64Secret = "tor/vaultwarden/secret-key-base64";
+        tls = true;
+        tlsName = "ajd4rue7nevdl7rceliwqevkqpgd6tizzgxj7e7vzsd56gil5lvs7hid.onion";
+      };
+      expose.wireguard = {
+        enable = true;
+        address = "10.100.0.1";
+        port = 8222;
+        tls = true;
+      };
+    };
+
     alanix.remote-desktop = {
       enable = true;
       autoStart = true;
