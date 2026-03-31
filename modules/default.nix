@@ -9,6 +9,7 @@
     ./network/wireguard.nix
     ./network/ddns.nix
     ./network/tailscale.nix
+    ./network/tor.nix
     ./services/filebrowser.nix
     ./services/forgejo.nix
     ./services/invidious.nix
