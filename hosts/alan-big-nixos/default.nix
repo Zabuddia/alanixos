@@ -197,6 +197,10 @@
         publicPort = 80;
         secretKeyBase64Secret = "tor/invidious/secret-key-base64";
       };
+      expose.tailscale = {
+        enable = true;
+        port = 13001;
+      };
       expose.wireguard = {
         enable = true;
         address = "10.100.0.1";
@@ -248,6 +252,34 @@
         address = "10.100.0.1";
         port = 8222;
         tls = true;
+      };
+    };
+
+    alanix.tvheadend = {
+      enable = true;
+      recordingsDir = "/srv/tvheadend/recordings";
+      expose.tor = {
+        enable = true;
+        publicPort = 80;
+        secretKeyBase64Secret = "tor/tvheadend/secret-key-base64";
+      };
+      expose.tailscale = {
+        enable = true;
+        port = 19981;
+      };
+      expose.wireguard = {
+        enable = true;
+        address = "10.100.0.1";
+        port = 9981;
+      };
+      htsp.expose.tailscale = {
+        enable = true;
+        port = 19982;
+      };
+      htsp.expose.wireguard = {
+        enable = true;
+        address = "10.100.0.1";
+        port = 9982;
       };
     };
 
