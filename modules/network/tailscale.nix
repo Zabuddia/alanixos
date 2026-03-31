@@ -2,6 +2,14 @@
 
 let
   cfg = config.alanix.tailscale;
+  routingMode =
+    if cfg.acceptRoutes then
+      "client"
+    else
+      "none";
+  preferenceFlags =
+    lib.optionals cfg.acceptRoutes [ "--accept-routes=true" ]
+    ++ lib.optionals (cfg.operator != null) [ "--operator=${cfg.operator}" ];
 in
 {
   options.alanix.tailscale = {
@@ -25,8 +33,8 @@ in
       services.tailscale = {
         enable = true;
         package = pkgs-unstable.tailscale;
-        extraUpFlags = lib.optionals cfg.acceptRoutes [ "--accept-routes" ];
-        extraSetFlags = lib.optionals (cfg.operator != null) [ "--operator=${cfg.operator}" ];
+        useRoutingFeatures = routingMode;
+        extraSetFlags = preferenceFlags;
       };
     }
   ]);

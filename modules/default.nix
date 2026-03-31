@@ -18,6 +18,7 @@
     ./services/openclaw.nix
     ./services/remote-desktop.nix
     ./services/sunshine.nix
+    ./services/tvheadend.nix
     ./services/vaultwarden.nix
   ];
 }
