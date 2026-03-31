@@ -17,8 +17,14 @@ in
   config = lib.mkIf cfg.enable {
     services.tor = {
       enable = true;
-      client.enable = true;
-      settings.SocksPort = cfg.socksPort;
+      client = {
+        enable = true;
+        socksListenAddress = {
+          IsolateDestAddr = true;
+          addr = "127.0.0.1";
+          port = cfg.socksPort;
+        };
+      };
     };
   };
 }
