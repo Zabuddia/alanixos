@@ -2,13 +2,14 @@
 let
   cfg = config.alanix.filebrowser;
   serviceExposure = import ../../lib/mkServiceExposure.nix { inherit lib pkgs; };
+  passwordUsers = import ../../lib/mkPlaintextPasswordUsers.nix { inherit lib; };
 
   dbPath = cfg.database;
   exposeCfg = cfg.expose;
 
   declaredUsernames = builtins.attrNames cfg.users;
   declaredUsersList = lib.concatStringsSep " " declaredUsernames;
-  hasValue = value: value != null && value != "";
+  inherit (passwordUsers) hasValue;
   endpoint = {
     address = cfg.listenAddress;
     port = cfg.port;
@@ -21,18 +22,10 @@ let
     && hasValue cfg.database;
   declaredScopes =
     lib.filter (scope: scope != null) (lib.mapAttrsToList (_: userCfg: userCfg.scope) cfg.users);
-  sanitizedUsersForRestart =
-    lib.mapAttrs
-      (_: userCfg:
-        userCfg
-        // {
-          password =
-            if userCfg.password == null then
-              null
-            else
-              builtins.hashString "sha256" userCfg.password;
-        })
-      cfg.users;
+  sanitizedUsersForRestart = passwordUsers.sanitizeForRestart {
+    users = cfg.users;
+    inheritFields = [ "admin" "scope" "passwordSecret" ];
+  };
 in
 {
   options.alanix.filebrowser = {
@@ -66,34 +59,20 @@ in
 
     users = lib.mkOption {
       type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
-        options = {
-          admin = lib.mkOption {
-            type = lib.types.bool;
-            default = false;
-          };
+        options = passwordUsers.mkOptions {
+          passwordFileDescription = "Path to a file containing the plaintext password (works with or without sops).";
+          passwordSecretDescription = "Name of sops secret containing the plaintext password (optional).";
+          extraOptions = {
+            admin = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+            };
 
-          scope = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
-            default = null;
-            description = "User scope relative to alanix.filebrowser.root (e.g. users/buddia).";
-          };
-
-          password = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
-            default = null;
-            description = "Plaintext password (simple, not recommended).";
-          };
-
-          passwordFile = lib.mkOption {
-            type = lib.types.nullOr lib.types.path;
-            default = null;
-            description = "Path to a file containing the plaintext password (works with or without sops).";
-          };
-
-          passwordSecret = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
-            default = null;
-            description = "Name of sops secret containing the plaintext password (optional).";
+            scope = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "User scope relative to alanix.filebrowser.root (e.g. users/buddia).";
+            };
           };
         };
       }));
@@ -149,22 +128,14 @@ in
           inherit config endpoint exposeCfg;
           optionPrefix = "alanix.filebrowser.expose";
         }
-        ++ lib.flatten (lib.mapAttrsToList (uname: u:
-          let
-            chosen = lib.filter (x: x) [
-              (u.password != null)
-              (u.passwordFile != null)
-              (u.passwordSecret != null)
-            ];
-          in [
-            {
-              assertion = builtins.match "^[A-Za-z0-9._-]+$" uname != null;
-              message = "alanix.filebrowser.users.${uname}: usernames may contain only letters, digits, dot, underscore, and hyphen.";
-            }
-            {
-              assertion = (builtins.length chosen) == 1;
-              message = "alanix.filebrowser.users.${uname}: set exactly one of password, passwordFile, or passwordSecret.";
-            }
+        ++ passwordUsers.mkAssertions {
+          inherit config;
+          users = cfg.users;
+          usernamePattern = "^[A-Za-z0-9._-]+$";
+          usernameMessage = uname: "alanix.filebrowser.users.${uname}: usernames may contain only letters, digits, dot, underscore, and hyphen.";
+          passwordSourceMessage = uname: "alanix.filebrowser.users.${uname}: set exactly one of password, passwordFile, or passwordSecret.";
+          passwordSecretMessage = uname: "alanix.filebrowser.users.${uname}.passwordSecret must reference a declared sops secret.";
+          extraAssertions = uname: u: [
             {
               assertion = hasValue u.scope;
               message = "alanix.filebrowser.users.${uname}.scope must be set.";
@@ -173,12 +144,8 @@ in
               assertion = u.scope == null || !lib.hasPrefix "/" u.scope;
               message = "alanix.filebrowser.users.${uname}.scope must be relative to alanix.filebrowser.root.";
             }
-            {
-              assertion = u.passwordSecret == null || lib.hasAttrByPath [ "sops" "secrets" u.passwordSecret ] config;
-              message = "alanix.filebrowser.users.${uname}.passwordSecret must reference a declared sops secret.";
-            }
-          ]
-        ) cfg.users);
+          ];
+        };
 
       services.filebrowser = lib.mkIf baseConfigReady {
         enable = true;
