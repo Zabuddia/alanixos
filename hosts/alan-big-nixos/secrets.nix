@@ -88,6 +88,13 @@
     mode = "0400";
   };
 
+  sops.secrets."immich-passwords/buddia" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "immich";
+    group = "immich";
+    mode = "0400";
+  };
+
   sops.secrets."tor/filebrowser/secret-key-base64" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
@@ -103,6 +110,13 @@
   };
 
   sops.secrets."tor/invidious/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/immich/secret-key-base64" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
     group = "root";

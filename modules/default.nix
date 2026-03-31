@@ -12,6 +12,7 @@
     ./network/tor.nix
     ./services/filebrowser.nix
     ./services/forgejo.nix
+    ./services/immich.nix
     ./services/invidious.nix
     ./services/llm.nix
     ./services/openclaw.nix
