@@ -10,6 +10,7 @@
     ./network/ddns.nix
     ./network/tailscale.nix
     ./services/filebrowser.nix
+    ./services/forgejo.nix
     ./services/llm.nix
     ./services/openclaw.nix
     ./services/remote-desktop.nix

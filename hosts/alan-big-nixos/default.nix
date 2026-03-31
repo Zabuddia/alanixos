@@ -138,17 +138,13 @@
       database = "/var/lib/filebrowser/filebrowser.db";
       expose.tor = {
         enable = true;
-        publicPort = 443;
-        tls = true;
-        tlsName = "aopakfwm2dgsp7uawi64jkqpmctptlgj2aokov5nb6lgwfv33ru26xqd.onion";
+        publicPort = 80;
         secretKeyBase64Secret = "tor/filebrowser/secret-key-base64";
       };
       expose.wireguard = {
         enable = true;
         address = "10.100.0.1";
         port = 8088;
-        tls = true;
-        tlsName = "10.100.0.1";
       };
       users = {
         admin = {
@@ -166,6 +162,27 @@
           passwordFile = null;
           passwordSecret = "filebrowser-passwords/buddia";
         };
+      };
+    };
+
+    alanix.forgejo = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 3000;
+      expose.tor = {
+        enable = true;
+        publicPort = 80;
+        secretKeyBase64Secret = "tor/forgejo/secret-key-base64";
+      };
+      expose.wireguard = {
+        enable = true;
+        address = "10.100.0.1";
+        port = 3000;
+      };
+      users.buddia = {
+        admin = true;
+        email = "fife.alan@protonmail.com";
+        passwordSecret = "forgejo-passwords/buddia";
       };
     };
 

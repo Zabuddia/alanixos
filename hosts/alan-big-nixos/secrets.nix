@@ -60,7 +60,21 @@
     mode = "0400";
   };
 
+  sops.secrets."forgejo-passwords/buddia" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "forgejo";
+    group = "forgejo";
+    mode = "0400";
+  };
+
   sops.secrets."tor/filebrowser/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/forgejo/secret-key-base64" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
     group = "root";
