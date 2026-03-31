@@ -86,6 +86,7 @@
             gimp
             firefox
             moonlight-qt
+            sparrow
           ];
           modules = [
             {
@@ -184,6 +185,11 @@
         "randy-big-nixos"
         "alan-framework"
       ];
+    };
+
+    alanix.tor = {
+      enable = true;
+      socksPort = 9050;
     };
 
     alanix.tailscale = {
