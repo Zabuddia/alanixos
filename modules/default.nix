@@ -18,5 +18,6 @@
     ./services/openclaw.nix
     ./services/remote-desktop.nix
     ./services/sunshine.nix
+    ./services/vaultwarden.nix
   ];
 }
