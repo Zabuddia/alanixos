@@ -7,6 +7,7 @@
     imports = [
       ./hardware-configuration.nix
       ./secrets.nix
+      ../../modules/services/bitcoin.nix
     ];
 
     alanix.system = {
@@ -80,8 +81,14 @@
 
     alanix.desktop = {
       enable = true;
-      createHeadlessOutput = false;
-      swayOutputRules = [ ];
+      autoLogin = {
+        enable = true;
+        user = "buddia";
+      };
+      createHeadlessOutput = true;
+      swayOutputRules = [
+        "output HEADLESS-1 resolution 1920x1080"
+      ];
       idle = {
         lockSeconds = null;
         displayOffSeconds = null;
@@ -123,45 +130,25 @@
       operator = "buddia";
     };
 
-    alanix.bitcoin = {
-      enable = true;
-      configVersion = "0.0.85";
-      generateSecrets = true;
-      operatorName = "operator";
-      useDoas = true;
-      hideProcessInformation = true;
-      exposeSshOnionService = true;
-      copyRootSshKeysToOperator = true;
-      enableNodeInfo = true;
-      backupsFrequency = "daily";
-
-      bitcoind = {
-        listen = true;
-        dbCache = 1000;
-        txindex = true;
-      };
-
-      fulcrum.enable = true;
-
-      mempool = {
-        enable = true;
-        electrumServer = "fulcrum";
-        frontend = {
-          address = "0.0.0.0";
-          port = 4080;
-        };
-      };
-    };
-
     alanix.filebrowser = {
       enable = true;
-      listenAddress = "0.0.0.0";
+      listenAddress = "127.0.0.1";
       port = 8088;
       root = "/srv/filebrowser";
       database = "/var/lib/filebrowser/filebrowser.db";
-      tor = {
+      expose.tor = {
         enable = true;
+        publicPort = 443;
+        tls = true;
+        tlsName = "aopakfwm2dgsp7uawi64jkqpmctptlgj2aokov5nb6lgwfv33ru26xqd.onion";
         secretKeyBase64Secret = "tor/filebrowser/secret-key-base64";
+      };
+      expose.wireguard = {
+        enable = true;
+        address = "10.100.0.1";
+        port = 8088;
+        tls = true;
+        tlsName = "10.100.0.1";
       };
       users = {
         admin = {
@@ -180,6 +167,13 @@
           passwordSecret = "filebrowser-passwords/buddia";
         };
       };
+    };
+
+    alanix.remote-desktop = {
+      enable = true;
+      autoStart = true;
+      port = 5900;
+      output = "HEADLESS-1";
     };
   };
 }

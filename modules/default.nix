@@ -9,7 +9,6 @@
     ./network/wireguard.nix
     ./network/ddns.nix
     ./network/tailscale.nix
-    ./services/bitcoin.nix
     ./services/filebrowser.nix
     ./services/llm.nix
     ./services/openclaw.nix
