@@ -255,7 +255,7 @@
     alanix.lichess = {
       enable = true;
       listenAddress = "127.0.0.1";
-      port = 8080;
+      port = 8095;
       dataDir = "/var/lib/lila";
     };
 
