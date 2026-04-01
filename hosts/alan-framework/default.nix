@@ -33,6 +33,7 @@
         python3
         restic
         sops
+        stockfish
         tree
         wget
       ];
