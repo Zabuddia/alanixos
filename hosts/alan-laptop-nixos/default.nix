@@ -80,6 +80,10 @@
             remmina
             tor-browser
             hyprpicker
+            en-croissant
+            (writeShellScriptBin "stockfish-alan-framework" ''
+              exec ssh -o StrictHostKeyChecking=no buddia@10.100.0.3 stockfish
+            '')
           ];
           unstablePackages = with pkgs-unstable; [
             yt-dlp
