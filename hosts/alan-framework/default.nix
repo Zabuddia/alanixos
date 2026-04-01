@@ -252,6 +252,13 @@
       };
     };
 
+    alanix.lichess = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 8080;
+      dataDir = "/var/lib/lila";
+    };
+
     alanix.remote-desktop = {
       enable = true;
       autoStart = true;
