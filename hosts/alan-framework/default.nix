@@ -67,7 +67,7 @@
             };
           };
           packages = [ ];
-          unstablePackages = with pkgs-unstable; [ yt-dlp ];
+          unstablePackages = with pkgs-unstable; [ yt-dlp en-croissant ];
           modules = [
             {
               home.sessionPath = [ "/home/buddia/.local/bin" ];
