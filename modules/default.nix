@@ -10,7 +10,6 @@
     ./network/ddns.nix
     ./network/tailscale.nix
     ./network/tor.nix
-    ./services/lichess.nix
     ./services/filebrowser.nix
     ./services/forgejo.nix
     ./services/immich.nix

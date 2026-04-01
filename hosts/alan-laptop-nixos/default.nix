@@ -87,6 +87,7 @@
             firefox
             moonlight-qt
             sparrow
+            en-croissant
           ];
           modules = [
             {
