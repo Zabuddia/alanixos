@@ -11,15 +11,18 @@ let
     protocol = "http";
   };
 
-  domain = serviceIdentity.advertisedDomain {
+  # advertisedDomain gives the host only; lila needs host:port for asset URLs
+  # when no exposure backend sets a domain, fall back to listenAddress:port
+  advertisedHost = serviceIdentity.advertisedDomain {
     inherit config exposeCfg;
     listenAddress = cfg.listenAddress;
   };
-  url = serviceIdentity.rootUrl {
-    inherit config exposeCfg;
-    listenAddress = cfg.listenAddress;
-    port = cfg.port;
-  };
+  # Only append port when it's non-standard (not 80/443)
+  domain =
+    if exposeCfg.wan.enable && exposeCfg.wan.tls then advertisedHost
+    else if exposeCfg.wan.enable then advertisedHost
+    else "${advertisedHost}:${toString cfg.port}";
+  url = "http://${domain}";
 in
 {
   options.alanix.lichess = {
