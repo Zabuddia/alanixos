@@ -80,9 +80,6 @@
             remmina
             tor-browser
             hyprpicker
-            (writeShellScriptBin "stockfish-alan-framework" ''
-              exec ssh -o StrictHostKeyChecking=no buddia@10.100.0.3 stockfish
-            '')
           ];
           unstablePackages = with pkgs-unstable; [
             yt-dlp
@@ -90,7 +87,6 @@
             firefox
             moonlight-qt
             sparrow
-            en-croissant
           ];
           modules = [
             {

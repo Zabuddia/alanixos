@@ -33,7 +33,6 @@
         python3
         restic
         sops
-        stockfish
         tree
         wget
       ];
@@ -67,7 +66,7 @@
             };
           };
           packages = [ ];
-          unstablePackages = with pkgs-unstable; [ yt-dlp en-croissant ];
+          unstablePackages = with pkgs-unstable; [ yt-dlp ];
           modules = [
             {
               home.sessionPath = [ "/home/buddia/.local/bin" ];
