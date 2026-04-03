@@ -15,6 +15,7 @@
     ./services/immich.nix
     ./services/invidious.nix
     ./services/llm.nix
+    ./services/nextcloud.nix
     ./services/openclaw.nix
     ./services/remote-desktop.nix
     ./services/sunshine.nix

@@ -95,6 +95,13 @@
     mode = "0400";
   };
 
+  sops.secrets."nextcloud-passwords/buddia" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "nextcloud";
+    group = "nextcloud";
+    mode = "0400";
+  };
+
   sops.secrets."tor/filebrowser/secret-key-base64" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
@@ -117,6 +124,20 @@
   };
 
   sops.secrets."tor/immich/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/nextcloud/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/nextcloud-collabora/secret-key-base64" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
     group = "root";
