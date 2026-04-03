@@ -64,15 +64,7 @@
           enable = true;
           directory = "/home/buddia";
           stateVersion = "25.11";
-          files = {
-            ".ssh/id_ed25519_work.pub" = {
-              # Intentionally shared with alan-laptop-nixos.
-              text = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINZHjKqhqWZalx6/NsQv1OGXJP6LBMfXS0QedqwhjFzl briggsconsulting.coaching@gmail.com";
-              source = null;
-              force = true;
-              executable = null;
-            };
-          };
+          files = { };
           packages = with pkgs; [
             featherpad
             marktext
