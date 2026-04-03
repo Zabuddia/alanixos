@@ -186,6 +186,28 @@
       };
     };
 
+    alanix.openwebui = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 3002;
+      disableRegistration = true;
+      openai = {
+        baseUrls = [ "http://10.100.0.3:4000/v1" ];
+        apiKeys = [ "" ];
+      };
+      expose.wireguard = {
+        enable = true;
+        address = "10.100.0.1";
+        port = 3002;
+      };
+      users.buddia = {
+        admin = true;
+        email = "fife.alan@protonmail.com";
+        name = "Alan Fife";
+        passwordSecret = "openwebui-passwords/buddia";
+      };
+    };
+
     alanix.invidious = {
       enable = true;
       listenAddress = "127.0.0.1";
