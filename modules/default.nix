@@ -17,6 +17,7 @@
     ./services/llm.nix
     ./services/nextcloud.nix
     ./services/openclaw.nix
+    ./services/openwebui.nix
     ./services/remote-desktop.nix
     ./services/sunshine.nix
     ./services/tvheadend.nix
