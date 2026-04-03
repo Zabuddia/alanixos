@@ -38,14 +38,12 @@
         owner = "buddia";
         group = "users";
         mode = "0600";
-        path = "/home/buddia/.ssh/id_ed25519";
       };
 
       "ssh-private-keys/alan-laptop-nixos-work" = {
         owner = "buddia";
         group = "users";
         mode = "0600";
-        path = "/home/buddia/.ssh/id_ed25519_work";
       };
 
       "ssh-host-keys/alan-laptop-nixos" = {

@@ -116,7 +116,7 @@
             "github-personal" = {
               hostname = "github.com";
               user = "git";
-              identityFile = "~/.ssh/id_ed25519";
+              identityFile = config.sops.secrets."ssh-private-keys/alan-laptop-nixos".path;
               identitiesOnly = true;
               controlPath = "none";
             };
@@ -124,7 +124,7 @@
             "github-work" = {
               hostname = "github.com";
               user = "git";
-              identityFile = "~/.ssh/id_ed25519_work";
+              identityFile = config.sops.secrets."ssh-private-keys/alan-laptop-nixos-work".path;
               identitiesOnly = true;
               controlPath = "none";
             };
