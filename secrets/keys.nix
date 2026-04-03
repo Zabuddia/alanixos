@@ -21,6 +21,12 @@
       recipient = "age14hvqw052wzn8wlxrevzlgydthcenjc7jh4t76gwqljglknj6maash22pl5";
       description = "Root-only runtime key stored at /var/lib/sops-nix/key.txt.";
     };
+
+    # Add alan-framework-laptop here after generating its age public key:
+    # alan-framework-laptop = {
+    #   recipient = "age1...";
+    #   description = "Root-only runtime key stored at /var/lib/sops-nix/key.txt.";
+    # };
   };
 
   creationRules = [

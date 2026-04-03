@@ -57,8 +57,8 @@
         extraGroups = [ "wheel" "networkmanager" "input" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
-        sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKNJ7KX0IIt27KqD2c3dqMT8vbO0K/G1ibfC+a/WxijO fife.alan@protonmail.com";
-        authorizedHosts = [ "alan-big-nixos" "alan-framework" "alan-framework-laptop" "randy-big-nixos" ];
+        sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExSf9y7yGFQySwkx42MXCgZ6EkgP2PebAJb4++5X0SB fife.alan@protonmail.com";
+        authorizedHosts = [ "alan-big-nixos" "alan-framework" "alan-laptop-nixos" "randy-big-nixos" ];
 
         home = {
           enable = true;
@@ -66,6 +66,7 @@
           stateVersion = "25.11";
           files = {
             ".ssh/id_ed25519_work.pub" = {
+              # Intentionally shared with alan-laptop-nixos.
               text = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINZHjKqhqWZalx6/NsQv1OGXJP6LBMfXS0QedqwhjFzl briggsconsulting.coaching@gmail.com";
               source = null;
               force = true;
@@ -163,28 +164,28 @@
       enable = true;
       openFirewallOnWireguard = true;
       startAgent = true;
-      hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJx7XE3EZOH49dap2q3IVLRjvf/Zb052puyJPjr+LBOM";
+      hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMjMV4eEzBRCwDXDTFNwScsfHEGlACDy7YFvVP4w0nNZ buddia@alan-big-nixos";
     };
 
     alanix.ddns = {
       enable = true;
       provider = "cloudflare";
-      domains = [ "alan-laptop-nixos-wg.fifefin.com" ];
+      domains = [ "alan-framework-laptop-wg.fifefin.com" ];
       credentialsFile = config.sops.templates."cloudflare-env".path;
     };
 
     alanix.wireguard = {
       enable = true;
-      vpnIP = "10.100.0.4";
-      endpoint = "alan-laptop-nixos-wg.fifefin.com:51820";
-      publicKey = "U96LblYX6Klccf6yFVmKDQZp4882rSPTWq2wzFmbVV4=";
+      vpnIP = "10.100.0.5";
+      endpoint = "alan-framework-laptop-wg.fifefin.com:51820";
+      publicKey = "c53UWUaifmepkb9vmZC00tEcHOJHK2jmDSDNP50F3QI=";
       privateKeyFile = config.sops.secrets."wireguard-private-keys/${hostname}".path;
       listenPort = 51820;
       peers = [
         "alan-big-nixos"
         "randy-big-nixos"
         "alan-framework"
-        "alan-framework-laptop"
+        "alan-laptop-nixos"
       ];
     };
 
@@ -214,7 +215,7 @@
       webUi = {
         port = 47990;
         username = "buddia";
-        passwordFile = config.sops.secrets."sunshine-web-ui-passwords/alan-laptop-nixos".path;
+        passwordFile = config.sops.secrets."sunshine-web-ui-passwords/alan-framework-laptop".path;
       };
     };
   };
