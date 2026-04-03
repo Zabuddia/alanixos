@@ -6,7 +6,7 @@
     };
     alan-framework-laptop = {
       recipient = "age16ca65fwnny3tjk890qvpmq5hu933auwzfjhzrupz50muynh7wc6q8z9n2c";
-      description = "Primary editor key kept on a laptop/workstation.";
+      description = "Editor key kept on a laptop/workstation.";
     };
   };
 
@@ -30,7 +30,7 @@
   creationRules = [
     {
       pathRegex = "^secrets/.*\\.ya?ml$";
-      editors = [ "alan-laptop-nixos" ];
+      editors = [ "alan-laptop-nixos" "alan-framework-laptop" ];
       hosts = [ "randy-big-nixos" "alan-big-nixos" "alan-framework" ];
     }
   ];
