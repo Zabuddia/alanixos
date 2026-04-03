@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ... }:
+{ config, lib, pkgs, pkgs-unstable, ... }:
 let
   cfg = config.alanix.openwebui;
   serviceExposure = import ../../lib/mkServiceExposure.nix { inherit lib pkgs; };
@@ -255,6 +255,7 @@ in
 
       services.open-webui = lib.mkIf baseConfigReady {
         enable = true;
+        package = pkgs-unstable.open-webui;
         host = cfg.listenAddress;
         port = cfg.port;
         stateDir = cfg.stateDir;
@@ -427,7 +428,9 @@ in
             }
 
             wait_for_server() {
-              local attempts=120
+              # First boot can spend a couple of minutes running migrations
+              # before the HTTP health endpoint comes up.
+              local attempts=300
 
               while [ "$attempts" -gt 0 ]; do
                 if curl -sS -f "$BASE_URL/health" >/dev/null 2>&1; then
