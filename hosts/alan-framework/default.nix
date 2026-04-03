@@ -48,7 +48,7 @@
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
         sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILb22RXxaO/RmZkheVk+Ma9WBXABHN/IrDGq5RbBIunC fife.alan@protonmail.com";
-        authorizedHosts = [ "alan-big-nixos" "alan-laptop-nixos" "randy-big-nixos" ];
+        authorizedHosts = [ "alan-big-nixos" "alan-framework-laptop" "alan-laptop-nixos" "randy-big-nixos" ];
 
         home = {
           enable = true;
@@ -135,6 +135,7 @@
       peers = [
         "alan-big-nixos"
         "randy-big-nixos"
+        "alan-framework-laptop"
         "alan-laptop-nixos"
       ];
     };
