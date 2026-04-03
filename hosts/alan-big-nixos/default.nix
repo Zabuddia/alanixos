@@ -192,13 +192,17 @@
       port = 3002;
       disableRegistration = true;
       openai = {
-        baseUrls = [ "http://10.100.0.3:4000/v1" ];
+        baseUrls = [ "http://alan-framework:4000/v1" ];
         apiKeys = [ "" ];
       };
       expose.wireguard = {
         enable = true;
         address = "10.100.0.1";
         port = 3002;
+      };
+      expose.tailscale = {
+        enable = true;
+        port = 13002;
       };
       users.buddia = {
         admin = true;
