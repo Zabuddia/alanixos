@@ -136,7 +136,9 @@
     alanix.desktop = {
       enable = true;
       createHeadlessOutput = false;
-      swayOutputRules = [ ];
+      swayOutputRules = [
+        "output eDP-1 scale 1"
+      ];
       idle = {
         lockSeconds = 300;
         displayOffSeconds = 330;
