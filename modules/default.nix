@@ -19,6 +19,7 @@
     ./services/openclaw.nix
     ./services/openwebui.nix
     ./services/remote-desktop.nix
+    ./services/searxng.nix
     ./services/sunshine.nix
     ./services/tvheadend.nix
     ./services/vaultwarden.nix

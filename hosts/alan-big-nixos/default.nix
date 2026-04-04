@@ -220,6 +220,21 @@
       };
     };
 
+    alanix.searxng = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 8888;
+      expose.tailscale = {
+        enable = true;
+        port = 18888;
+      };
+      expose.wireguard = {
+        enable = true;
+        address = "10.100.0.1";
+        port = 8888;
+      };
+    };
+
     alanix.invidious = {
       enable = true;
       listenAddress = "127.0.0.1";
