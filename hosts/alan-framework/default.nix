@@ -162,7 +162,7 @@
           listenHost = "0.0.0.0";
           port = 8080;
           alias = null;
-          ctxSize = 262144;
+          ctxSize = 32768;
           batchSize = 4096;
           ubatchSize = 1024;
           parallel = 1;

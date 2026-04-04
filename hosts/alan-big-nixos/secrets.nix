@@ -41,6 +41,12 @@
     mode = "0400";
   };
 
+  sops.secrets."brave/api-key" = {
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.templates."cloudflare-env" = {
     content = "CLOUDFLARE_API_TOKEN=${config.sops.placeholder."cloudflare/api-token"}";
     owner = "cloudflare-ddns";

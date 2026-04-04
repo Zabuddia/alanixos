@@ -1,11 +1,13 @@
 { config, lib, pkgs, pkgs-unstable, ... }:
 let
   cfg = config.alanix.openwebui;
+  webSearchCfg = cfg.webSearch;
   serviceExposure = import ../../lib/mkServiceExposure.nix { inherit lib pkgs; };
   passwordUsers = import ../../lib/mkPlaintextPasswordUsers.nix { inherit lib; };
 
   exposeCfg = cfg.expose;
   inherit (passwordUsers) hasValue;
+  mkOpenWebUIBool = value: if value then "True" else "False";
 
   endpoint = {
     address = cfg.listenAddress;
@@ -52,19 +54,28 @@ let
   effectiveOpenAIEnabled = cfg.openai.baseUrls != [ ];
 
   managedEnvironment = {
-    WEBUI_AUTH = "True";
-    ENABLE_PASSWORD_AUTH = "True";
-    ENABLE_LOGIN_FORM = "True";
-    ENABLE_INITIAL_ADMIN_SIGNUP = "True";
-    ENABLE_SIGNUP = if cfg.disableRegistration then "False" else "True";
+    WEBUI_AUTH = mkOpenWebUIBool true;
+    ENABLE_PASSWORD_AUTH = mkOpenWebUIBool true;
+    ENABLE_LOGIN_FORM = mkOpenWebUIBool true;
+    ENABLE_INITIAL_ADMIN_SIGNUP = mkOpenWebUIBool true;
+    ENABLE_SIGNUP = mkOpenWebUIBool (!cfg.disableRegistration);
     DEFAULT_USER_ROLE = "pending";
-    SHOW_ADMIN_DETAILS = "False";
+    SHOW_ADMIN_DETAILS = mkOpenWebUIBool false;
     WEBUI_URL = effectiveRootUrl;
-    ENABLE_OPENAI_API = if effectiveOpenAIEnabled then "True" else "False";
+    ENABLE_OPENAI_API = mkOpenWebUIBool effectiveOpenAIEnabled;
     OPENAI_API_BASE_URLS = lib.concatStringsSep ";" cfg.openai.baseUrls;
     OPENAI_API_KEYS = lib.concatStringsSep ";" effectiveOpenAIApiKeys;
-    ENABLE_OLLAMA_API = "False";
+    ENABLE_OLLAMA_API = mkOpenWebUIBool false;
     OLLAMA_BASE_URLS = "";
+    ENABLE_WEB_SEARCH = mkOpenWebUIBool webSearchCfg.enable;
+    WEB_SEARCH_ENGINE = webSearchCfg.engine;
+    WEB_SEARCH_TRUST_ENV = mkOpenWebUIBool webSearchCfg.trustEnv;
+    WEB_SEARCH_RESULT_COUNT = toString webSearchCfg.resultCount;
+    WEB_SEARCH_CONCURRENT_REQUESTS = toString webSearchCfg.concurrentRequests;
+    WEB_LOADER_CONCURRENT_REQUESTS = toString webSearchCfg.loaderConcurrentRequests;
+    WEB_SEARCH_DOMAIN_FILTER_LIST = lib.concatStringsSep "," webSearchCfg.domainFilterList;
+    BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL = mkOpenWebUIBool webSearchCfg.bypassEmbeddingAndRetrieval;
+    BYPASS_WEB_SEARCH_WEB_LOADER = mkOpenWebUIBool webSearchCfg.bypassWebLoader;
   };
 
   bcryptPython = pkgs.python3.withPackages (ps: [ ps.bcrypt ]);
@@ -134,6 +145,72 @@ in
         type = lib.types.listOf lib.types.str;
         default = [ ];
         description = "Optional OpenAI-compatible API keys matched positionally with openai.baseUrls.";
+      };
+    };
+
+    webSearch = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Whether to enable Open WebUI web search.";
+      };
+
+      engine = lib.mkOption {
+        type = lib.types.str;
+        default = "duckduckgo";
+        description = "Open WebUI web search engine identifier, for example brave, searxng, or duckduckgo.";
+      };
+
+      resultCount = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 3;
+        description = "Maximum number of search results Open WebUI should crawl.";
+      };
+
+      concurrentRequests = lib.mkOption {
+        type = lib.types.ints.unsigned;
+        default = 0;
+        description = "Maximum concurrent requests sent to the search engine provider. Brave free-tier users usually want 1.";
+      };
+
+      loaderConcurrentRequests = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 10;
+        description = "Maximum concurrent requests used to fetch result pages.";
+      };
+
+      trustEnv = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Whether Open WebUI should honor http_proxy and https_proxy for web search fetching.";
+      };
+
+      domainFilterList = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "Optional domain filter list passed to Open WebUI web search.";
+      };
+
+      bypassEmbeddingAndRetrieval = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Whether Open WebUI should skip the web-search embedding and retrieval step.";
+      };
+
+      bypassWebLoader = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Whether Open WebUI should skip fetching full page contents and only use snippets.";
+      };
+
+      braveApiKeySecret = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Optional sops secret containing the Brave Search API key. When set, the
+          module exposes it to Open WebUI through a generated environment file and
+          also reconciles it into Open WebUI's persistent web-search config.
+        '';
       };
     };
 
@@ -219,6 +296,18 @@ in
             assertion = builtins.length cfg.openai.apiKeys <= builtins.length cfg.openai.baseUrls;
             message = "alanix.openwebui.openai.apiKeys must not contain more entries than alanix.openwebui.openai.baseUrls.";
           }
+          {
+            assertion = !webSearchCfg.enable || hasValue webSearchCfg.engine;
+            message = "alanix.openwebui.webSearch.engine must be set when alanix.openwebui.webSearch.enable = true.";
+          }
+          {
+            assertion = webSearchCfg.braveApiKeySecret == null || lib.hasAttrByPath [ "sops" "secrets" webSearchCfg.braveApiKeySecret ] config;
+            message = "alanix.openwebui.webSearch.braveApiKeySecret must reference a declared sops secret.";
+          }
+          {
+            assertion = !webSearchCfg.enable || webSearchCfg.engine != "brave" || webSearchCfg.braveApiKeySecret != null || cfg.environmentFile != null;
+            message = "alanix.openwebui.webSearch.braveApiKeySecret must be set, or alanix.openwebui.environmentFile must provide BRAVE_SEARCH_API_KEY, when Brave web search is enabled.";
+          }
         ]
         ++ lib.flatten (
           lib.imap0
@@ -253,6 +342,15 @@ in
           ];
         };
 
+      sops.templates."alanix-openwebui-env" = lib.mkIf (webSearchCfg.braveApiKeySecret != null) {
+        content = ''
+          BRAVE_SEARCH_API_KEY=${config.sops.placeholder.${webSearchCfg.braveApiKeySecret}}
+        '';
+        owner = "root";
+        group = "root";
+        mode = "0400";
+      };
+
       services.open-webui = lib.mkIf baseConfigReady {
         enable = true;
         package = pkgs-unstable.open-webui;
@@ -263,6 +361,13 @@ in
         environment = managedEnvironment;
         environmentFile = cfg.environmentFile;
       };
+
+      systemd.services.open-webui.serviceConfig.EnvironmentFile = lib.mkIf baseConfigReady (
+        lib.mkForce (
+          lib.optional (cfg.environmentFile != null) cfg.environmentFile
+          ++ lib.optional (webSearchCfg.braveApiKeySecret != null) config.sops.templates."alanix-openwebui-env".path
+        )
+      );
 
       systemd.services.open-webui-reconcile = lib.mkIf (cfg.users != { } && baseConfigReady) {
         description = "Reconcile Open WebUI users and managed settings";
@@ -279,8 +384,10 @@ in
           RuntimeDirectoryMode = "0700";
           UMask = "0077";
         }
-        // lib.optionalAttrs (cfg.environmentFile != null) {
-          EnvironmentFile = [ cfg.environmentFile ];
+        // lib.optionalAttrs (cfg.environmentFile != null || webSearchCfg.braveApiKeySecret != null) {
+          EnvironmentFile =
+            lib.optional (cfg.environmentFile != null) cfg.environmentFile
+            ++ lib.optional (webSearchCfg.braveApiKeySecret != null) config.sops.templates."alanix-openwebui-env".path;
         };
 
         environment = managedEnvironment // {
@@ -367,6 +474,16 @@ in
             DESIRED_ENABLE_SIGNUP=${if cfg.disableRegistration then "false" else "true"}
             DESIRED_OPENAI_API_BASE_URLS=${lib.escapeShellArg (builtins.toJSON cfg.openai.baseUrls)}
             DESIRED_OPENAI_API_KEYS=${lib.escapeShellArg (builtins.toJSON effectiveOpenAIApiKeys)}
+            DESIRED_ENABLE_WEB_SEARCH=${lib.escapeShellArg (builtins.toJSON webSearchCfg.enable)}
+            DESIRED_WEB_SEARCH_ENGINE=${lib.escapeShellArg webSearchCfg.engine}
+            DESIRED_WEB_SEARCH_TRUST_ENV=${lib.escapeShellArg (builtins.toJSON webSearchCfg.trustEnv)}
+            DESIRED_WEB_SEARCH_RESULT_COUNT=${lib.escapeShellArg (builtins.toJSON webSearchCfg.resultCount)}
+            DESIRED_WEB_SEARCH_CONCURRENT_REQUESTS=${lib.escapeShellArg (builtins.toJSON webSearchCfg.concurrentRequests)}
+            DESIRED_WEB_LOADER_CONCURRENT_REQUESTS=${lib.escapeShellArg (builtins.toJSON webSearchCfg.loaderConcurrentRequests)}
+            DESIRED_WEB_SEARCH_DOMAIN_FILTER_LIST=${lib.escapeShellArg (builtins.toJSON webSearchCfg.domainFilterList)}
+            DESIRED_BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL=${lib.escapeShellArg (builtins.toJSON webSearchCfg.bypassEmbeddingAndRetrieval)}
+            DESIRED_BYPASS_WEB_SEARCH_WEB_LOADER=${lib.escapeShellArg (builtins.toJSON webSearchCfg.bypassWebLoader)}
+            DESIRED_BRAVE_SEARCH_API_KEY="''${BRAVE_SEARCH_API_KEY:-}"
             DEFAULT_DATABASE_URL=${lib.escapeShellArg "sqlite:///${cfg.stateDir}/data/webui.db"}
 
             ensure_runtime_passfile() {
@@ -653,6 +770,40 @@ PY
               api_post_json "/openai/config/update" "$payload" "$token" >/dev/null
             }
 
+            sync_web_search_config() {
+              local token="$1"
+              local current
+              local payload
+
+              current="$(api_get "/api/v1/retrieval/config" "$token")"
+              payload="$(
+                printf '%s' "$current" | jq \
+                  --arg web_search_engine "$DESIRED_WEB_SEARCH_ENGINE" \
+                  --arg brave_search_api_key "$DESIRED_BRAVE_SEARCH_API_KEY" \
+                  --argjson enable_web_search "$DESIRED_ENABLE_WEB_SEARCH" \
+                  --argjson web_search_trust_env "$DESIRED_WEB_SEARCH_TRUST_ENV" \
+                  --argjson web_search_result_count "$DESIRED_WEB_SEARCH_RESULT_COUNT" \
+                  --argjson web_search_concurrent_requests "$DESIRED_WEB_SEARCH_CONCURRENT_REQUESTS" \
+                  --argjson web_loader_concurrent_requests "$DESIRED_WEB_LOADER_CONCURRENT_REQUESTS" \
+                  --argjson web_search_domain_filter_list "$DESIRED_WEB_SEARCH_DOMAIN_FILTER_LIST" \
+                  --argjson bypass_web_search_embedding_and_retrieval "$DESIRED_BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL" \
+                  --argjson bypass_web_search_web_loader "$DESIRED_BYPASS_WEB_SEARCH_WEB_LOADER" \
+                  '
+                    .web.ENABLE_WEB_SEARCH = $enable_web_search
+                    | .web.WEB_SEARCH_ENGINE = $web_search_engine
+                    | .web.WEB_SEARCH_TRUST_ENV = $web_search_trust_env
+                    | .web.WEB_SEARCH_RESULT_COUNT = $web_search_result_count
+                    | .web.WEB_SEARCH_CONCURRENT_REQUESTS = $web_search_concurrent_requests
+                    | .web.WEB_LOADER_CONCURRENT_REQUESTS = $web_loader_concurrent_requests
+                    | .web.WEB_SEARCH_DOMAIN_FILTER_LIST = $web_search_domain_filter_list
+                    | .web.BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL = $bypass_web_search_embedding_and_retrieval
+                    | .web.BYPASS_WEB_SEARCH_WEB_LOADER = $bypass_web_search_web_loader
+                    | .web.BRAVE_SEARCH_API_KEY = $brave_search_api_key
+                  '
+              )"
+              api_post_json "/api/v1/retrieval/config/update" "$payload" "$token" >/dev/null
+            }
+
             fetch_users_json() {
               local token="$1"
               api_get "/api/v1/users/all" "$token" | jq -c '.users // .'
@@ -760,6 +911,7 @@ PY
 
             sync_admin_config "$ACTING_TOKEN"
             sync_openai_config "$ACTING_TOKEN"
+            sync_web_search_config "$ACTING_TOKEN"
 
             ${ensureLines}
 

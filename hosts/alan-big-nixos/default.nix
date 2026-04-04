@@ -196,6 +196,13 @@
         baseUrls = [ "http://alan-framework:4000/v1" ];
         apiKeys = [ "" ];
       };
+      webSearch = {
+        enable = true;
+        engine = "brave";
+        resultCount = 3;
+        concurrentRequests = 1;
+        braveApiKeySecret = "brave/api-key";
+      };
       expose.wireguard = {
         enable = true;
         address = "10.100.0.1";
