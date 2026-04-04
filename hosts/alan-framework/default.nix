@@ -184,7 +184,7 @@
             mmprojPath = null;
             mmprojUrl = null;
           };
-          extraArgs = [ ];
+          extraArgs = [ "--swa-full" ];
         };
 
         vision = {
