@@ -14,6 +14,7 @@
     ./services/forgejo.nix
     ./services/immich.nix
     ./services/invidious.nix
+    ./services/jellyfin.nix
     ./services/llm.nix
     ./services/nextcloud.nix
     ./services/openclaw.nix

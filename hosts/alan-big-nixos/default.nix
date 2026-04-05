@@ -235,6 +235,66 @@
       };
     };
 
+    alanix.jellyfin = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 8096;
+      users = {
+        buddia = {
+          admin = true;
+          passwordSecret = "jellyfin-passwords/buddia";
+        };
+      };
+      libraries = {
+        Movies = {
+          type = "movies";
+          folder = "movies";
+        };
+        Shows = {
+          type = "tvshows";
+          folder = "shows";
+        };
+        Recordings = {
+          type = "homevideos";
+          folder = "recordings";
+        };
+      };
+      liveTv.tvheadend = {
+        enable = true;
+        baseUrl = "http://127.0.0.1:9981";
+        playlistPath = "/playlist/channels";
+        xmltvPath = "/xmltv/channels";
+      };
+      expose.tailscale = {
+        enable = true;
+        port = 18096;
+      };
+      expose.wireguard = {
+        enable = true;
+        address = "10.100.0.1";
+        port = 8096;
+      };
+      mediaFolders = {
+        movies = {
+          path = "/srv/media/movies";
+          create = true;
+          user = "buddia";
+          group = "jellyfin";
+          mode = "0775";
+        };
+        shows = {
+          path = "/srv/media/shows";
+          create = true;
+          user = "buddia";
+          group = "jellyfin";
+          mode = "0775";
+        };
+        recordings = {
+          path = "/srv/tvheadend/recordings";
+        };
+      };
+    };
+
     alanix.invidious = {
       enable = true;
       listenAddress = "127.0.0.1";
