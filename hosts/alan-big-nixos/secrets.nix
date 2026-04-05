@@ -101,6 +101,13 @@
     mode = "0400";
   };
 
+  sops.secrets."jellyfin-passwords/buddia" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."nextcloud-passwords/buddia" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "nextcloud";
