@@ -326,6 +326,7 @@ in
       systemd.services.invidious.serviceConfig.DynamicUser = lib.mkForce false;
       systemd.services.invidious.serviceConfig.User = lib.mkForce "invidious";
       systemd.services.invidious.serviceConfig.Group = lib.mkForce "invidious";
+      systemd.services.invidious.unitConfig.StartLimitIntervalSec = 0;
       systemd.services.invidious.after = lib.mkIf cfg.companion.enable [ "invidious-companion.service" ];
       systemd.services.invidious.wants = lib.mkIf cfg.companion.enable [ "invidious-companion.service" ];
 
