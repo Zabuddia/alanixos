@@ -70,6 +70,50 @@ let
     else
       null;
 
+  effectiveTvheadendSources =
+    if cfg.liveTv.tvheadend.sources != { } then
+      lib.mapAttrs
+        (sourceName: sourceCfg: {
+          inherit (sourceCfg)
+            enable
+            playlistPath
+            xmltvPath
+            username
+            password
+            passwordFile
+            passwordSecret
+            ;
+          baseUrl =
+            if hasValue sourceCfg.baseUrl then
+              sourceCfg.baseUrl
+            else if tvheadendCfg.enable then
+              "http://${tvheadendCfg.listenAddress}:${toString tvheadendCfg.port}"
+            else
+              null;
+          friendlyName =
+            if hasValue sourceCfg.friendlyName then
+              sourceCfg.friendlyName
+            else
+              sourceName;
+        })
+        cfg.liveTv.tvheadend.sources
+    else
+      {
+        default = {
+          enable = cfg.liveTv.tvheadend.enable;
+          baseUrl = effectiveTvheadendBaseUrl;
+          friendlyName = "TVHeadend";
+          inherit (cfg.liveTv.tvheadend)
+            playlistPath
+            xmltvPath
+            username
+            password
+            passwordFile
+            passwordSecret
+            ;
+        };
+      };
+
   effectiveLiveTvRecordingPath =
     if cfg.liveTv.recordingPath != null then
       cfg.liveTv.recordingPath
@@ -78,15 +122,7 @@ let
     else
       null;
 
-  liveTvEnabled = cfg.liveTv.tvheadend.enable;
-  liveTvPasswordSourceCount =
-    builtins.length (
-      lib.filter (x: x) [
-        (cfg.liveTv.tvheadend.password != null)
-        (cfg.liveTv.tvheadend.passwordFile != null)
-        (cfg.liveTv.tvheadend.passwordSecret != null)
-      ]
-    );
+  liveTvEnabled = lib.any (sourceCfg: sourceCfg.enable) (builtins.attrValues effectiveTvheadendSources);
   reconcileEnabled = cfg.users != { } || cfg.libraries != { } || liveTvEnabled;
 
   sanitizedUsersForRestart = passwordUsers.sanitizeForRestart {
@@ -103,22 +139,31 @@ let
 
   sanitizedLiveTvForRestart = {
     enable = liveTvEnabled;
-    baseUrl = effectiveTvheadendBaseUrl;
     recordingPath = effectiveLiveTvRecordingPath;
-    playlistPath = cfg.liveTv.tvheadend.playlistPath;
-    xmltvPath = cfg.liveTv.tvheadend.xmltvPath;
-    username = cfg.liveTv.tvheadend.username;
-    passwordSecret = cfg.liveTv.tvheadend.passwordSecret;
-    password =
-      if cfg.liveTv.tvheadend.password == null then
-        null
-      else
-        builtins.hashString "sha256" cfg.liveTv.tvheadend.password;
-    passwordFile =
-      if cfg.liveTv.tvheadend.passwordFile == null then
-        null
-      else
-        toString cfg.liveTv.tvheadend.passwordFile;
+    sources =
+      lib.mapAttrs
+        (_: sourceCfg: {
+          inherit (sourceCfg)
+            enable
+            baseUrl
+            playlistPath
+            xmltvPath
+            username
+            passwordSecret
+            friendlyName
+            ;
+          password =
+            if sourceCfg.password == null then
+              null
+            else
+              builtins.hashString "sha256" sourceCfg.password;
+          passwordFile =
+            if sourceCfg.passwordFile == null then
+              null
+            else
+              toString sourceCfg.passwordFile;
+        })
+        effectiveTvheadendSources;
   };
 
   mediaTmpfilesRules =
@@ -301,6 +346,72 @@ in
           default = null;
           description = "Name of a sops secret containing the plaintext TVHeadend password.";
         };
+
+        sources = lib.mkOption {
+          type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
+            options = {
+              enable = lib.mkOption {
+                type = lib.types.bool;
+                default = true;
+                description = "Whether this named TVHeadend source should be managed.";
+              };
+
+              friendlyName = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = "Optional display name shown in Jellyfin for this source.";
+              };
+
+              baseUrl = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = "TVHeadend base URL for this source.";
+              };
+
+              playlistPath = lib.mkOption {
+                type = lib.types.str;
+                default = "/playlist/channels";
+                description = "Path appended to baseUrl for this source's M3U playlist.";
+              };
+
+              xmltvPath = lib.mkOption {
+                type = lib.types.str;
+                default = "/xmltv/channels";
+                description = "Path appended to baseUrl for this source's XMLTV guide.";
+              };
+
+              username = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = "Optional TVHeadend username for this source.";
+              };
+
+              password = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = "Plaintext TVHeadend password for this source (simple, not recommended).";
+              };
+
+              passwordFile = lib.mkOption {
+                type = lib.types.nullOr lib.types.path;
+                default = null;
+                description = "Path to a file containing the plaintext TVHeadend password for this source.";
+              };
+
+              passwordSecret = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = "Name of a sops secret containing the plaintext TVHeadend password for this source.";
+              };
+            };
+          }));
+          default = { };
+          description = ''
+            Multiple named TVHeadend sources for Jellyfin Live TV. When this is non-empty,
+            the top-level liveTv.tvheadend.* options act only as compatibility shorthands
+            for older single-source configs.
+          '';
+        };
       };
     };
 
@@ -361,8 +472,18 @@ in
           }
           {
             assertion =
-              if hasValue cfg.liveTv.tvheadend.username || liveTvPasswordSourceCount != 0 then
-                hasValue cfg.liveTv.tvheadend.username && liveTvPasswordSourceCount == 1
+              let
+                chosen =
+                  builtins.length (
+                    lib.filter (x: x) [
+                      (cfg.liveTv.tvheadend.password != null)
+                      (cfg.liveTv.tvheadend.passwordFile != null)
+                      (cfg.liveTv.tvheadend.passwordSecret != null)
+                    ]
+                  );
+              in
+              if hasValue cfg.liveTv.tvheadend.username || chosen != 0 then
+                hasValue cfg.liveTv.tvheadend.username && chosen == 1
               else
                 true;
             message = "alanix.jellyfin.liveTv.tvheadend: set username plus exactly one of password, passwordFile, or passwordSecret when TVHeadend auth is required.";
@@ -413,6 +534,60 @@ in
               }
             ])
             cfg.libraries
+        )
+        ++ lib.flatten (
+          lib.mapAttrsToList
+            (sourceName: sourceCfg:
+              let
+                sourceBaseUrl =
+                  if hasValue sourceCfg.baseUrl then
+                    sourceCfg.baseUrl
+                  else if tvheadendCfg.enable then
+                    "http://${tvheadendCfg.listenAddress}:${toString tvheadendCfg.port}"
+                  else
+                    null;
+                chosen =
+                  builtins.length (
+                    lib.filter (x: x) [
+                      (sourceCfg.password != null)
+                      (sourceCfg.passwordFile != null)
+                      (sourceCfg.passwordSecret != null)
+                    ]
+                  );
+              in
+              [
+                {
+                  assertion = !sourceCfg.enable || hasValue sourceBaseUrl;
+                  message = "alanix.jellyfin.liveTv.tvheadend.sources.${sourceName}.baseUrl must be set, or alanix.tvheadend must be enabled.";
+                }
+                {
+                  assertion = sourceBaseUrl == null || builtins.match "^https?://.+" sourceBaseUrl != null;
+                  message = "alanix.jellyfin.liveTv.tvheadend.sources.${sourceName}.baseUrl must start with http:// or https://.";
+                }
+                {
+                  assertion = lib.hasPrefix "/" sourceCfg.playlistPath;
+                  message = "alanix.jellyfin.liveTv.tvheadend.sources.${sourceName}.playlistPath must start with /.";
+                }
+                {
+                  assertion = lib.hasPrefix "/" sourceCfg.xmltvPath;
+                  message = "alanix.jellyfin.liveTv.tvheadend.sources.${sourceName}.xmltvPath must start with /.";
+                }
+                {
+                  assertion =
+                    if hasValue sourceCfg.username || chosen != 0 then
+                      hasValue sourceCfg.username && chosen == 1
+                    else
+                      true;
+                  message = "alanix.jellyfin.liveTv.tvheadend.sources.${sourceName}: set username plus exactly one of password, passwordFile, or passwordSecret when TVHeadend auth is required.";
+                }
+                {
+                  assertion =
+                    sourceCfg.passwordSecret == null
+                    || lib.hasAttrByPath [ "sops" "secrets" sourceCfg.passwordSecret ] config;
+                  message = "alanix.jellyfin.liveTv.tvheadend.sources.${sourceName}.passwordSecret must reference a declared sops secret.";
+                }
+              ])
+            cfg.liveTv.tvheadend.sources
         );
 
       services.jellyfin = lib.mkIf baseConfigReady {
@@ -560,11 +735,20 @@ in
               pkgs.writeText "alanix-jellyfin-livetv.json" (
                 builtins.toJSON {
                   enabled = liveTvEnabled;
-                  baseUrl = if effectiveTvheadendBaseUrl == null then "" else effectiveTvheadendBaseUrl;
                   recordingPath = effectiveLiveTvRecordingPath;
-                  playlistPath = cfg.liveTv.tvheadend.playlistPath;
-                  xmltvPath = cfg.liveTv.tvheadend.xmltvPath;
-                  username = if cfg.liveTv.tvheadend.username == null then "" else cfg.liveTv.tvheadend.username;
+                  sources =
+                    lib.mapAttrs
+                      (_: sourceCfg: {
+                        inherit (sourceCfg)
+                          enable
+                          playlistPath
+                          xmltvPath
+                          friendlyName
+                          ;
+                        baseUrl = if sourceCfg.baseUrl == null then "" else sourceCfg.baseUrl;
+                        username = if sourceCfg.username == null then "" else sourceCfg.username;
+                      })
+                      effectiveTvheadendSources;
                 }
               );
 
@@ -583,18 +767,38 @@ in
                     ''${var}=${lib.escapeShellArg runtimePassfile}; ensure_runtime_passfile "${"$"}${var}" ${lib.escapeShellArg userCfg.password}''
                 ) cfg.users);
 
-            tvheadendPassfileLine =
-              let
-                runtimePassfile = "$RUNTIME_DIRECTORY/tvheadend.pass";
-              in
-              if cfg.liveTv.tvheadend.passwordFile != null then
-                ''TVHEADEND_PASSFILE=${lib.escapeShellArg (toString cfg.liveTv.tvheadend.passwordFile)}''
-              else if cfg.liveTv.tvheadend.passwordSecret != null then
-                ''TVHEADEND_PASSFILE=${lib.escapeShellArg config.sops.secrets.${cfg.liveTv.tvheadend.passwordSecret}.path}''
-              else if cfg.liveTv.tvheadend.password != null then
-                ''TVHEADEND_PASSFILE=${lib.escapeShellArg runtimePassfile}; ensure_runtime_passfile "$TVHEADEND_PASSFILE" ${lib.escapeShellArg cfg.liveTv.tvheadend.password}''
-              else
-                ''TVHEADEND_PASSFILE=""'';
+            tvheadendPassfileLines =
+              lib.concatStringsSep "\n"
+                (lib.mapAttrsToList
+                  (sourceName: sourceCfg:
+                    let
+                      var = "TVHEADEND_PASSFILE_" + sanitizeUserKey sourceName;
+                      runtimePassfile = "$RUNTIME_DIRECTORY/tvheadend-${sanitizeUserKey sourceName}.pass";
+                    in
+                    if sourceCfg.passwordFile != null then
+                      ''${var}=${lib.escapeShellArg (toString sourceCfg.passwordFile)}''
+                    else if sourceCfg.passwordSecret != null then
+                      ''${var}=${lib.escapeShellArg config.sops.secrets.${sourceCfg.passwordSecret}.path}''
+                    else if sourceCfg.password != null then
+                      ''${var}=${lib.escapeShellArg runtimePassfile}; ensure_runtime_passfile "${"$"}${var}" ${lib.escapeShellArg sourceCfg.password}''
+                    else
+                      ''${var}=""'')
+                  effectiveTvheadendSources);
+
+            tvheadendPassfileLookupLines =
+              lib.concatStringsSep "\n"
+                (lib.mapAttrsToList
+                  (sourceName: _:
+                    let
+                      var = "TVHEADEND_PASSFILE_" + sanitizeUserKey sourceName;
+                    in
+                    ''
+                      if [ "$source_name" = ${lib.escapeShellArg sourceName} ]; then
+                        printf '%s\n' "${"$"}${var}"
+                        return 0
+                      fi
+                    '')
+                  effectiveTvheadendSources);
 
             passfileLookupLines =
               lib.concatStringsSep "\n"
@@ -637,8 +841,7 @@ in
             BOOTSTRAP_PASSVAR=${lib.escapeShellArg bootstrapPassVar}
             BOOTSTRAP_MARKER=${lib.escapeShellArg bootstrapMarkerPath}
             IMPLICIT_BOOTSTRAP_USER=${lib.escapeShellArg config.services.jellyfin.user}
-            TVHEADEND_SOURCE_MARKER="alanix-tvheadend"
-            TVHEADEND_LISTINGS_MARKER="alanix-tvheadend"
+            TVHEADEND_MARKER_PREFIX="alanix-tvheadend:"
             ACTING_TOKEN=""
             ACTING_USER=""
             USED_IMPLICIT_BOOTSTRAP=0
@@ -651,11 +854,18 @@ in
             }
 
             ${passfileLines}
-            ${tvheadendPassfileLine}
+            ${tvheadendPassfileLines}
 
             passfile_for_username() {
               local username="$1"
               ${passfileLookupLines}
+
+              return 1
+            }
+
+            passfile_for_tvheadend_source() {
+              local source_name="$1"
+              ${tvheadendPassfileLookupLines}
 
               return 1
             }
@@ -1023,14 +1233,14 @@ in
               local listing_ids
               local id
 
-              tuner_ids="$(printf '%s' "$LIVETV_JSON" | jq -r --arg source "$TVHEADEND_SOURCE_MARKER" '.TunerHosts[]? | select(.Source == $source) | .Id')"
+              tuner_ids="$(printf '%s' "$LIVETV_JSON" | jq -r --arg prefix "$TVHEADEND_MARKER_PREFIX" '.TunerHosts[]? | select((.Source // "") | startswith($prefix)) | .Id')"
               while IFS= read -r id; do
                 [ -n "$id" ] || continue
                 echo "Removing managed Jellyfin Live TV tuner: $id"
                 api_delete "/LiveTv/TunerHosts?id=$(uri_encode "$id")" >/dev/null
               done <<<"$tuner_ids"
 
-              listing_ids="$(printf '%s' "$LIVETV_JSON" | jq -r --arg listingsId "$TVHEADEND_LISTINGS_MARKER" '.ListingProviders[]? | select(.Type == "xmltv" and .ListingsId == $listingsId) | .Id')"
+              listing_ids="$(printf '%s' "$LIVETV_JSON" | jq -r --arg prefix "$TVHEADEND_MARKER_PREFIX" '.ListingProviders[]? | select(.Type == "xmltv" and ((.ListingsId // "") | startswith($prefix))) | .Id')"
               while IFS= read -r id; do
                 [ -n "$id" ] || continue
                 echo "Removing managed Jellyfin Live TV guide provider: $id"
@@ -1063,47 +1273,38 @@ in
               fi
             }
 
-            ensure_tvheadend_livetv() {
-              local enabled
+            ensure_tvheadend_source() {
+              local source_name="$1"
+              local source_json="$2"
               local base_url
-              local recording_path
               local playlist_path
               local xmltv_path
               local username
+              local friendly_name
               local playlist_url
               local xmltv_url
-              local tuner_id
-              local listing_id
+              local passfile
+              local source_marker
               local tuner_payload
               local listing_payload
 
-              LIVETV_JSON="$(fetch_livetv_json)"
-              enabled="$(jq -r '.enabled' "$LIVETV_FILE")"
+              base_url="$(printf '%s' "$source_json" | jq -r '.baseUrl')"
+              playlist_path="$(printf '%s' "$source_json" | jq -r '.playlistPath')"
+              xmltv_path="$(printf '%s' "$source_json" | jq -r '.xmltvPath')"
+              username="$(printf '%s' "$source_json" | jq -r '.username // ""')"
+              friendly_name="$(printf '%s' "$source_json" | jq -r '.friendlyName')"
+              passfile="$(passfile_for_tvheadend_source "$source_name" || true)"
+              source_marker="''${TVHEADEND_MARKER_PREFIX}$source_name"
 
-              if [ "$enabled" != "true" ]; then
-                remove_managed_tvheadend_livetv
-                return 0
-              fi
-
-              base_url="$(jq -r '.baseUrl' "$LIVETV_FILE")"
-              recording_path="$(jq -r '.recordingPath // ""' "$LIVETV_FILE")"
-              playlist_path="$(jq -r '.playlistPath' "$LIVETV_FILE")"
-              xmltv_path="$(jq -r '.xmltvPath' "$LIVETV_FILE")"
-              username="$(jq -r '.username // ""' "$LIVETV_FILE")"
-
-              playlist_url="$(with_basic_auth_url "$base_url" "$playlist_path" "$username" "$TVHEADEND_PASSFILE")"
-              xmltv_url="$(with_basic_auth_url "$base_url" "$xmltv_path" "$username" "$TVHEADEND_PASSFILE")"
-
-              tuner_id="$(printf '%s' "$LIVETV_JSON" | jq -r --arg source "$TVHEADEND_SOURCE_MARKER" '.TunerHosts[]? | select(.Source == $source) | .Id' | head -n1)"
-              listing_id="$(printf '%s' "$LIVETV_JSON" | jq -r --arg listingsId "$TVHEADEND_LISTINGS_MARKER" '.ListingProviders[]? | select(.Type == "xmltv" and .ListingsId == $listingsId) | .Id' | head -n1)"
+              playlist_url="$(with_basic_auth_url "$base_url" "$playlist_path" "$username" "$passfile")"
+              xmltv_url="$(with_basic_auth_url "$base_url" "$xmltv_path" "$username" "$passfile")"
 
               tuner_payload="$(
                 jq -cn \
-                  --arg id "$tuner_id" \
                   --arg type "m3u" \
                   --arg url "$playlist_url" \
-                  --arg friendlyName "TVHeadend" \
-                  --arg source "$TVHEADEND_SOURCE_MARKER" '
+                  --arg friendlyName "$friendly_name" \
+                  --arg source "$source_marker" '
                     {
                       Type: $type,
                       Url: $url,
@@ -1117,16 +1318,14 @@ in
                       AllowFmp4TranscodingContainer: false,
                       FallbackMaxStreamingBitrate: 30000000
                     }
-                    + (if $id == "" then {} else { Id: $id } end)
                   '
               )"
 
               listing_payload="$(
                 jq -cn \
-                  --arg id "$listing_id" \
                   --arg type "xmltv" \
                   --arg path "$xmltv_url" \
-                  --arg listingsId "$TVHEADEND_LISTINGS_MARKER" '
+                  --arg listingsId "$source_marker" '
                     {
                       Type: $type,
                       Path: $path,
@@ -1134,13 +1333,36 @@ in
                       EnableAllTuners: true,
                       ChannelMappings: []
                     }
-                    + (if $id == "" then {} else { Id: $id } end)
                   '
               )"
 
-              echo "Reconciling Jellyfin Live TV from TVHeadend"
+              echo "Reconciling Jellyfin Live TV source: $friendly_name"
               api_post_json "/LiveTv/TunerHosts" "$tuner_payload" >/dev/null
               api_post_json "/LiveTv/ListingProviders" "$listing_payload" >/dev/null
+            }
+
+            ensure_tvheadend_livetv() {
+              local enabled
+              local recording_path
+              local source_name
+              local source_json
+
+              LIVETV_JSON="$(fetch_livetv_json)"
+              enabled="$(jq -r '.enabled' "$LIVETV_FILE")"
+
+              if [ "$enabled" != "true" ]; then
+                remove_managed_tvheadend_livetv
+                return 0
+              fi
+
+              recording_path="$(jq -r '.recordingPath // ""' "$LIVETV_FILE")"
+              remove_managed_tvheadend_livetv
+
+              while IFS=$'\t' read -r source_name source_json; do
+                ensure_tvheadend_source "$source_name" "$source_json"
+              done < <(
+                jq -r '(.sources // {}) | to_entries[] | select(.value.enable) | [.key, (.value | tojson)] | @tsv' "$LIVETV_FILE"
+              )
 
               LIVETV_JSON="$(fetch_livetv_json)"
               sync_livetv_recording_paths "$recording_path"
