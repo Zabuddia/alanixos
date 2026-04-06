@@ -47,7 +47,7 @@
       accounts.buddia = {
         enable = true;
         isNormalUser = true;
-        extraGroups = [ "wheel" "networkmanager" ];
+        extraGroups = [ "wheel" "networkmanager" "input" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
         sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEAJK6Bk63YjxmL9CI3F5yCjhG3MPAuuplydZ5ZmPFzW fife.alan@protonmail.com";
@@ -129,6 +129,18 @@
       enable = true;
       acceptRoutes = true;
       operator = "buddia";
+    };
+
+    alanix.syncthing = {
+      enable = true;
+      transport = "wireguard";
+      deviceId = "5CVWFSK-CV4SWJP-Z7S4TTV-UAX263E-AEEWI6K-Z22GRUZ-F2JFFQY-LOZWLAS";
+      listenPort = 22000;
+      peers = [
+        "alan-framework"
+        "alan-framework-laptop"
+      ];
+      folderSets = [ "emulation" ];
     };
 
     alanix.filebrowser = {
@@ -446,6 +458,18 @@
       autoStart = true;
       port = 5900;
       output = "HEADLESS-1";
+    };
+
+    alanix.sunshine = {
+      enable = true;
+      autoStart = true;
+      openFirewall = true;
+      capSysAdmin = true;
+      webUi = {
+        port = 47990;
+        username = "buddia";
+        passwordFile = config.sops.secrets."sunshine-web-ui-passwords/alan-big-nixos".path;
+      };
     };
   };
 }

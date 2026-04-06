@@ -44,4 +44,16 @@
     mode = "0600";
     path = "/etc/ssh/ssh_host_ed25519_key";
   };
+
+  sops.secrets."syncthing-certs/randy-big-nixos" = {
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."syncthing-keys/randy-big-nixos" = {
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
 }

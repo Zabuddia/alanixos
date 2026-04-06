@@ -47,6 +47,18 @@
         mode = "0600";
         path = "/etc/ssh/ssh_host_ed25519_key";
       };
+
+      "syncthing-certs/alan-framework" = {
+        owner = "root";
+        group = "root";
+        mode = "0400";
+      };
+
+      "syncthing-keys/alan-framework" = {
+        owner = "root";
+        group = "root";
+        mode = "0400";
+      };
     }
   ];
 

@@ -146,6 +146,18 @@
       operator = "buddia";
     };
 
+    alanix.syncthing = {
+      enable = true;
+      transport = "wireguard";
+      deviceId = "EKNKF5K-6DW57FP-M2LGDA4-NTASEPT-EWD5GCI-KCSIOXJ-LO3PZFC-A6CWOAH";
+      listenPort = 22000;
+      peers = [
+        "alan-big-nixos"
+        "alan-framework-laptop"
+      ];
+      folderSets = [ "emulation" ];
+    };
+
     alanix.llm = {
       enable = true;
       backend = "vulkan";
