@@ -8,6 +8,7 @@ in
   imports = [
     ./sway.nix
     ./audio.nix
+    ./bluetooth.nix
   ];
 
   options.alanix.desktop = {
@@ -26,6 +27,16 @@ in
       type = lib.types.bool;
       default = false;
       description = "Whether to create a headless Sway output at session startup.";
+    };
+
+    bluetooth = {
+      enable = lib.mkEnableOption "Bluetooth support for desktop hosts";
+
+      powerOnBoot = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Whether to power on the Bluetooth controller during boot.";
+      };
     };
 
     swayOutputRules = lib.mkOption {
