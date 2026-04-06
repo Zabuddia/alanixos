@@ -22,6 +22,7 @@
     ./services/remote-desktop.nix
     ./services/searxng.nix
     ./services/sunshine.nix
+    ./services/syncthing.nix
     ./services/tvheadend.nix
     ./services/vaultwarden.nix
   ];

@@ -15,6 +15,12 @@ in
   options.alanix.tailscale = {
     enable = lib.mkEnableOption "Tailscale";
 
+    address = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Declarative Tailscale address or MagicDNS name used by other repo modules for peer-to-peer connectivity.";
+    };
+
     acceptRoutes = lib.mkOption {
       type = lib.types.bool;
       default = false;

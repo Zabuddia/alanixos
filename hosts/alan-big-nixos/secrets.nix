@@ -35,9 +35,27 @@
     path = "/etc/ssh/ssh_host_ed25519_key";
   };
 
+  sops.secrets."syncthing-certs/alan-big-nixos" = {
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."syncthing-keys/alan-big-nixos" = {
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."cloudflare/api-token" = {
     owner = "root";
     group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."sunshine-web-ui-passwords/alan-big-nixos" = {
+    owner = "buddia";
+    group = "users";
     mode = "0400";
   };
 
