@@ -259,8 +259,9 @@
           folder = "recordings";
         };
       };
-      liveTv.tvheadend = {
+      liveTv.tvheadend.sources.local = {
         enable = true;
+        friendlyName = "Local TVHeadend";
         baseUrl = "http://127.0.0.1:9981";
         playlistPath = "/playlist/channels";
         xmltvPath = "/xmltv/channels";
