@@ -3,6 +3,24 @@
 let
   cfg = config.desktop;
   idleCfg = nixosConfig.alanix.desktop.idle;
+  volumeFeedbackWav = pkgs.runCommand "alanix-volume-feedback.wav" { } ''
+    ${pkgs.ffmpeg}/bin/ffmpeg -loglevel error \
+      -f lavfi -i "sine=frequency=1046.5:duration=0.05" \
+      -filter:a "volume=0.15" \
+      -ac 1 -ar 48000 -c:a pcm_s16le \
+      -y "$out"
+  '';
+  volumeRaiseCommand = pkgs.writeShellScript "alanix-volume-raise" ''
+    ${pkgs.swayosd}/bin/swayosd-client --output-volume raise
+    ${pkgs.pulseaudio}/bin/paplay ${volumeFeedbackWav} >/dev/null 2>&1 &
+  '';
+  volumeLowerCommand = pkgs.writeShellScript "alanix-volume-lower" ''
+    ${pkgs.swayosd}/bin/swayosd-client --output-volume lower
+    ${pkgs.pulseaudio}/bin/paplay ${volumeFeedbackWav} >/dev/null 2>&1 &
+  '';
+  volumeMuteToggleCommand = pkgs.writeShellScript "alanix-volume-mute-toggle" ''
+    exec ${pkgs.swayosd}/bin/swayosd-client --output-volume mute-toggle
+  '';
 in
 {
   options.desktop.enable = lib.mkEnableOption "desktop essentials for this user";
@@ -24,6 +42,7 @@ in
             adwaita-icon-theme
             pulseaudio
             swaylock
+            swayosd
             brightnessctl
             grim
             hicolor-icon-theme
@@ -31,7 +50,6 @@ in
             xfce.thunar
             nnn
             imv
-            mpv
             wl-clipboard
           ])
           ++ (with pkgs-unstable; [ wofi ]);
@@ -47,6 +65,11 @@ in
         programs.foot = {
           enable = true;
           package = pkgs-unstable.foot;
+        };
+
+        services.mako = {
+          enable = true;
+          settings.default-timeout = 5000;
         };
 
         programs.wlogout = {
@@ -128,9 +151,9 @@ in
             "pulseaudio" = {
               format = "VOL {volume}%";
               format-muted = "MUTED";
-              on-scroll-up = "pactl set-sink-volume @DEFAULT_SINK@ +1%";
-              on-scroll-down = "pactl set-sink-volume @DEFAULT_SINK@ -1%";
-              on-click = "pactl set-sink-mute @DEFAULT_SINK@ toggle";
+              on-scroll-up = "${volumeRaiseCommand}";
+              on-scroll-down = "${volumeLowerCommand}";
+              on-click = "${volumeMuteToggleCommand}";
             };
 
             "battery" = {
@@ -223,12 +246,14 @@ in
             bars = [ ];
             startup = [
               { command = "waybar"; }
+              { command = "blueman-applet"; }
+              { command = "swayosd-server"; }
               { command = "sleep 2 && swaymsg workspace number 1"; always = false; }
             ];
             keybindings = lib.mkOptionDefault {
-              "XF86AudioRaiseVolume" = "exec pactl set-sink-volume @DEFAULT_SINK@ +5%";
-              "XF86AudioLowerVolume" = "exec pactl set-sink-volume @DEFAULT_SINK@ -5%";
-              "XF86AudioMute" = "exec pactl set-sink-mute @DEFAULT_SINK@ toggle";
+              "XF86AudioRaiseVolume" = "exec ${volumeRaiseCommand}";
+              "XF86AudioLowerVolume" = "exec ${volumeLowerCommand}";
+              "XF86AudioMute" = "exec ${volumeMuteToggleCommand}";
               "XF86MonBrightnessUp" = "exec brightnessctl set +5%";
               "XF86MonBrightnessDown" = "exec brightnessctl set 5%-";
               "Mod4+Shift+e" = "exec wlogout";

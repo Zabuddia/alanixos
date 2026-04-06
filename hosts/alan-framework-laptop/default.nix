@@ -135,6 +135,7 @@
 
     alanix.desktop = {
       enable = true;
+      bluetooth.enable = true;
       createHeadlessOutput = false;
       swayOutputRules = [
         "output eDP-1 scale 1"
