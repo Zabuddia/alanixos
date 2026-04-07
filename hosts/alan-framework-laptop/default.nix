@@ -197,7 +197,7 @@
 
     alanix.syncthing = {
       enable = true;
-      transport = "wireguard";
+      transport = "tailscale";
       deviceId = "C5U3HBI-EGMCLVU-CZ7EFQX-2SAASIT-ABPMTWV-N2M6TU5-NX4SHIJ-L6IL6AX";
       listenPort = 22000;
       peers = [
