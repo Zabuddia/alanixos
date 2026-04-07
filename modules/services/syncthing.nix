@@ -401,7 +401,6 @@ in
           lib.mapAttrs
             (_: linkCfg: {
               source = config.lib.file.mkOutOfStoreSymlink "${cfg.syncRoot}/${linkCfg.relativePath}";
-              recursive = true;
               force = true;
             })
             selectedLinkAttrs;
