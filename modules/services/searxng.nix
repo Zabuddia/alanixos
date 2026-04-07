@@ -142,25 +142,31 @@ in
 
         serviceConfig = {
           Type = "oneshot";
-          User = "searx";
-          Group = "searx";
+          User = "root";
+          Group = "root";
           UMask = "0077";
         };
 
         path = [ pkgs.coreutils pkgs.openssl ];
 
         script = ''
+          set -euo pipefail
+
           if [ ! -s ${lib.escapeShellArg secretKeyFilePath} ]; then
-            openssl rand -hex 32 > ${lib.escapeShellArg secretKeyFilePath}
+            tmp_secret="$(mktemp ${lib.escapeShellArg "${cfg.stateDir}/secret_key.XXXXXX"})"
+            openssl rand -hex 32 > "$tmp_secret"
+            install -m 0400 "$tmp_secret" ${lib.escapeShellArg secretKeyFilePath}
+            rm -f "$tmp_secret"
           fi
 
           secret_key="$(tr -d '\n' < ${lib.escapeShellArg secretKeyFilePath})"
 
-          cat > ${lib.escapeShellArg environmentFilePath} <<EOF
+          tmp_environment="$(mktemp ${lib.escapeShellArg "${cfg.stateDir}/environment.XXXXXX"})"
+          cat > "$tmp_environment" <<EOF
           SEARX_SECRET_KEY=$secret_key
           EOF
-
-          chmod 0400 ${lib.escapeShellArg secretKeyFilePath} ${lib.escapeShellArg environmentFilePath}
+          install -m 0400 "$tmp_environment" ${lib.escapeShellArg environmentFilePath}
+          rm -f "$tmp_environment"
         '';
       };
 
