@@ -40,6 +40,7 @@
         w_scan2
         nano
         imagemagick
+        unzip
       ];
       swapDevices = [
         {

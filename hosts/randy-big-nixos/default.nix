@@ -31,6 +31,7 @@
         restic
         sops
         tree
+        unzip
         wget
       ];
       swapDevices = [
