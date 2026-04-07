@@ -14,6 +14,11 @@ let
       userAccount.home.directory
     else
       "/home/${cfg.user}";
+  userHomeReady =
+    userAccount != null
+    && userAccount.enable
+    && userAccount.home.enable
+    && hasValue userAccount.home.directory;
   configDir = "${userHomeDir}/.config/syncthing";
 
   peerHosts =
@@ -53,13 +58,17 @@ let
       label = "games/azahar-emu";
       relativePath = "games/azahar-emu";
     };
-    "games-dolphin-emu" = {
-      label = "games/dolphin-emu";
-      relativePath = "games/dolphin-emu";
+    "games-dolphin-emu-gc" = {
+      label = "games/dolphin-emu/GC";
+      relativePath = "games/dolphin-emu/GC";
     };
-    "games-melonds" = {
-      label = "games/melonDS";
-      relativePath = "games/melonDS";
+    "games-dolphin-emu-wii-title" = {
+      label = "games/dolphin-emu/Wii/title";
+      relativePath = "games/dolphin-emu/Wii/title";
+    };
+    "games-melonds-saves" = {
+      label = "games/melonDS/saves";
+      relativePath = "games/melonDS/saves";
     };
     "games-ryujinx" = {
       label = "games/Ryujinx";
@@ -69,6 +78,28 @@ let
 
   folderCatalog = {
     emulation = emulationFolders;
+  };
+
+  emulationLinks = {
+    ".local/share/azahar-emu" = {
+      relativePath = "games/azahar-emu";
+    };
+    ".local/share/dolphin-emu/GC" = {
+      relativePath = "games/dolphin-emu/GC";
+    };
+    ".local/share/dolphin-emu/Wii/title" = {
+      relativePath = "games/dolphin-emu/Wii/title";
+    };
+    ".local/share/melonDS/saves" = {
+      relativePath = "games/melonDS/saves";
+    };
+    ".config/Ryujinx/bis/user/save" = {
+      relativePath = "games/Ryujinx";
+    };
+  };
+
+  linkCatalog = {
+    emulation = emulationLinks;
   };
 
   folderSetMembers =
@@ -110,6 +141,18 @@ let
     lib.mapAttrsToList
       (_: folderCfg: "d ${cfg.syncRoot}/${folderCfg.relativePath} 0750 ${cfg.user} users - -")
       emulationFolders;
+
+  selectedLinkAttrs =
+    if cfg.linkFolderSets == [ ] then
+      { }
+    else
+      builtins.foldl' (acc: folderSet: acc // linkCatalog.${folderSet}) { } cfg.linkFolderSets;
+
+  selectedLinkTargets =
+    lib.unique (map (linkCfg: "${cfg.syncRoot}/${linkCfg.relativePath}") (lib.attrValues selectedLinkAttrs));
+
+  linkTargetInitScript =
+    lib.concatMapStringsSep "\n" (target: ''mkdir -p "${target}"'') selectedLinkTargets;
 
   folderMembershipAssertions =
     lib.flatten (
@@ -169,6 +212,12 @@ in
       default = [ ];
       description = "Named folder sets enabled on this host.";
     };
+
+    linkFolderSets = lib.mkOption {
+      type = lib.types.listOf (lib.types.enum [ "emulation" ]);
+      default = [ ];
+      description = "Named folder sets whose synced directories should be linked into local application paths for the Syncthing user.";
+    };
   };
 
   config = lib.mkIf cfg.enable (lib.mkMerge [
@@ -214,6 +263,18 @@ in
         {
           assertion = lib.unique cfg.folderSets == cfg.folderSets;
           message = "alanix.syncthing.folderSets must not contain duplicates.";
+        }
+        {
+          assertion = lib.unique cfg.linkFolderSets == cfg.linkFolderSets;
+          message = "alanix.syncthing.linkFolderSets must not contain duplicates.";
+        }
+        {
+          assertion = lib.all (folderSet: builtins.elem folderSet cfg.folderSets) cfg.linkFolderSets;
+          message = "alanix.syncthing.linkFolderSets must be a subset of alanix.syncthing.folderSets.";
+        }
+        {
+          assertion = cfg.linkFolderSets == [ ] || userHomeReady;
+          message = "alanix.syncthing.linkFolderSets requires alanix.syncthing.user to reference an enabled alanix.users.accounts entry with home.enable = true and home.directory set.";
         }
         {
           assertion = lib.hasAttrByPath [ "sops" "secrets" certSecretName ] config;
@@ -328,6 +389,22 @@ in
             urAccepted = -1;
           };
         };
+      };
+    })
+
+    (lib.mkIf (cfg.linkFolderSets != [ ] && userHomeReady) {
+      home-manager.users.${cfg.user} = { config, lib, ... }: {
+        home.activation.alanixSyncthingLinkTargets =
+          lib.hm.dag.entryAfter [ "writeBoundary" ] linkTargetInitScript;
+
+        home.file =
+          lib.mapAttrs
+            (_: linkCfg: {
+              source = config.lib.file.mkOutOfStoreSymlink "${cfg.syncRoot}/${linkCfg.relativePath}";
+              recursive = true;
+              force = true;
+            })
+            selectedLinkAttrs;
       };
     })
   ]);
