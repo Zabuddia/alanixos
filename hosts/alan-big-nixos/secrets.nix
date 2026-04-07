@@ -59,12 +59,6 @@
     mode = "0400";
   };
 
-  sops.secrets."brave/api-key" = {
-    owner = "root";
-    group = "root";
-    mode = "0400";
-  };
-
   sops.templates."cloudflare-env" = {
     content = "CLOUDFLARE_API_TOKEN=${config.sops.placeholder."cloudflare/api-token"}";
     owner = "cloudflare-ddns";
@@ -154,6 +148,13 @@
     mode = "0400";
   };
 
+  sops.secrets."tor/jellyfin/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."tor/invidious/secret-key-base64" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
@@ -176,6 +177,20 @@
   };
 
   sops.secrets."tor/nextcloud-collabora/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/openwebui/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/searxng/secret-key-base64" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
     group = "root";

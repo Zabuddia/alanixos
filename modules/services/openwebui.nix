@@ -8,6 +8,14 @@ let
   exposeCfg = cfg.expose;
   inherit (passwordUsers) hasValue;
   mkOpenWebUIBool = value: if value then "True" else "False";
+  normalizeLoopbackAddress =
+    address:
+    if address == "0.0.0.0" then
+      "127.0.0.1"
+    else if address == "::" then
+      "::1"
+    else
+      address;
 
   endpoint = {
     address = cfg.listenAddress;
@@ -40,6 +48,18 @@ let
       ""
     else
       lib.removeSuffix "/" cfg.rootUrl;
+
+  derivedSearxngQueryUrl =
+    if config.alanix.searxng.enable && config.alanix.searxng.listenAddress != null && config.alanix.searxng.port != null then
+      "http://${normalizeLoopbackAddress config.alanix.searxng.listenAddress}:${toString config.alanix.searxng.port}/search?q=<query>&format=json"
+    else
+      null;
+
+  effectiveSearxngQueryUrl =
+    if webSearchCfg.searxngQueryUrl != null then
+      webSearchCfg.searxngQueryUrl
+    else
+      derivedSearxngQueryUrl;
 
   padStrings = size: values:
     let
@@ -76,6 +96,7 @@ let
     WEB_SEARCH_DOMAIN_FILTER_LIST = lib.concatStringsSep "," webSearchCfg.domainFilterList;
     BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL = mkOpenWebUIBool webSearchCfg.bypassEmbeddingAndRetrieval;
     BYPASS_WEB_SEARCH_WEB_LOADER = mkOpenWebUIBool webSearchCfg.bypassWebLoader;
+    SEARXNG_QUERY_URL = if effectiveSearxngQueryUrl == null then "" else effectiveSearxngQueryUrl;
   };
 
   bcryptPython = pkgs.python3.withPackages (ps: [ ps.bcrypt ]);
@@ -212,6 +233,17 @@ in
           also reconciles it into Open WebUI's persistent web-search config.
         '';
       };
+
+      searxngQueryUrl = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Optional SearXNG query URL for Open WebUI, for example
+          http://127.0.0.1:8888/search?q=<query>&format=json. When omitted and
+          alanix.searxng is enabled locally, the module derives a loopback URL
+          automatically.
+        '';
+      };
     };
 
     users = lib.mkOption {
@@ -301,12 +333,26 @@ in
             message = "alanix.openwebui.webSearch.engine must be set when alanix.openwebui.webSearch.enable = true.";
           }
           {
+            assertion =
+              !webSearchCfg.enable
+              || webSearchCfg.engine != "searxng"
+              || effectiveSearxngQueryUrl != null;
+            message = "alanix.openwebui.webSearch.searxngQueryUrl must be set, or alanix.searxng must be enabled locally, when SearXNG web search is enabled.";
+          }
+          {
             assertion = webSearchCfg.braveApiKeySecret == null || lib.hasAttrByPath [ "sops" "secrets" webSearchCfg.braveApiKeySecret ] config;
             message = "alanix.openwebui.webSearch.braveApiKeySecret must reference a declared sops secret.";
           }
           {
             assertion = !webSearchCfg.enable || webSearchCfg.engine != "brave" || webSearchCfg.braveApiKeySecret != null || cfg.environmentFile != null;
             message = "alanix.openwebui.webSearch.braveApiKeySecret must be set, or alanix.openwebui.environmentFile must provide BRAVE_SEARCH_API_KEY, when Brave web search is enabled.";
+          }
+          {
+            assertion =
+              webSearchCfg.searxngQueryUrl == null
+              || (builtins.match "^https?://.+" webSearchCfg.searxngQueryUrl != null
+                && lib.hasInfix "<query>" webSearchCfg.searxngQueryUrl);
+            message = "alanix.openwebui.webSearch.searxngQueryUrl must include http:// or https:// and contain the <query> placeholder.";
           }
         ]
         ++ lib.flatten (
@@ -484,6 +530,7 @@ in
             DESIRED_BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL=${lib.escapeShellArg (builtins.toJSON webSearchCfg.bypassEmbeddingAndRetrieval)}
             DESIRED_BYPASS_WEB_SEARCH_WEB_LOADER=${lib.escapeShellArg (builtins.toJSON webSearchCfg.bypassWebLoader)}
             DESIRED_BRAVE_SEARCH_API_KEY="''${BRAVE_SEARCH_API_KEY:-}"
+            DESIRED_SEARXNG_QUERY_URL=${lib.escapeShellArg (if effectiveSearxngQueryUrl == null then "" else effectiveSearxngQueryUrl)}
             DEFAULT_DATABASE_URL=${lib.escapeShellArg "sqlite:///${cfg.stateDir}/data/webui.db"}
 
             ensure_runtime_passfile() {
@@ -780,6 +827,7 @@ PY
                 printf '%s' "$current" | jq \
                   --arg web_search_engine "$DESIRED_WEB_SEARCH_ENGINE" \
                   --arg brave_search_api_key "$DESIRED_BRAVE_SEARCH_API_KEY" \
+                  --arg searxng_query_url "$DESIRED_SEARXNG_QUERY_URL" \
                   --argjson enable_web_search "$DESIRED_ENABLE_WEB_SEARCH" \
                   --argjson web_search_trust_env "$DESIRED_WEB_SEARCH_TRUST_ENV" \
                   --argjson web_search_result_count "$DESIRED_WEB_SEARCH_RESULT_COUNT" \
@@ -799,6 +847,7 @@ PY
                     | .web.BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL = $bypass_web_search_embedding_and_retrieval
                     | .web.BYPASS_WEB_SEARCH_WEB_LOADER = $bypass_web_search_web_loader
                     | .web.BRAVE_SEARCH_API_KEY = $brave_search_api_key
+                    | .web.SEARXNG_QUERY_URL = $searxng_query_url
                   '
               )"
               api_post_json "/api/v1/retrieval/config/update" "$payload" "$token" >/dev/null

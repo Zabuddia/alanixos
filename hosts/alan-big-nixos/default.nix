@@ -210,10 +210,14 @@
       };
       webSearch = {
         enable = true;
-        engine = "brave";
+        engine = "searxng";
         resultCount = 3;
         concurrentRequests = 1;
-        braveApiKeySecret = "brave/api-key";
+      };
+      expose.tor = {
+        enable = true;
+        publicPort = 80;
+        secretKeyBase64Secret = "tor/openwebui/secret-key-base64";
       };
       expose.wireguard = {
         enable = true;
@@ -236,6 +240,15 @@
       enable = true;
       listenAddress = "127.0.0.1";
       port = 8888;
+      settings.search.formats = [
+        "html"
+        "json"
+      ];
+      expose.tor = {
+        enable = true;
+        publicPort = 80;
+        secretKeyBase64Secret = "tor/searxng/secret-key-base64";
+      };
       expose.tailscale = {
         enable = true;
         port = 18888;
@@ -277,6 +290,11 @@
         baseUrl = "http://127.0.0.1:9981";
         playlistPath = "/playlist/channels";
         xmltvPath = "/xmltv/channels";
+      };
+      expose.tor = {
+        enable = true;
+        publicPort = 80;
+        secretKeyBase64Secret = "tor/jellyfin/secret-key-base64";
       };
       expose.tailscale = {
         enable = true;
