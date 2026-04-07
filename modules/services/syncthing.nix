@@ -35,16 +35,18 @@ let
         peerReady = hostCfg: hostCfg.config.alanix.wireguard.enable && hasValue hostCfg.config.alanix.wireguard.vpnIP;
         peerMessage = peerName: "alanix.syncthing.peers.${peerName} must reference a host with alanix.wireguard.enable = true and alanix.wireguard.vpnIP set when transport = \"wireguard\".";
       }
-    else
+    else if cfg.transport == "tailscale" then
       {
         localAddress = "0.0.0.0";
         localFirewallInterface = config.services.tailscale.interfaceName;
-        requireLocal = config.alanix.tailscale.enable;
-        requireLocalMessage = "alanix.syncthing.transport = \"tailscale\" requires alanix.tailscale.enable = true.";
+        requireLocal = config.alanix.tailscale.enable && hasValue config.alanix.tailscale.address;
+        requireLocalMessage = "alanix.syncthing.transport = \"tailscale\" requires alanix.tailscale.enable = true and alanix.tailscale.address to be set.";
         peerAddress = hostCfg: hostCfg.config.alanix.tailscale.address;
         peerReady = hostCfg: hostCfg.config.alanix.tailscale.enable && hasValue hostCfg.config.alanix.tailscale.address;
         peerMessage = peerName: "alanix.syncthing.peers.${peerName} must reference a host with alanix.tailscale.enable = true and alanix.tailscale.address set when transport = \"tailscale\".";
-      };
+      }
+    else
+      null;
 
   emulationFolders = {
     "games-azahar-emu" = {
@@ -169,13 +171,10 @@ in
     };
   };
 
-  config = lib.mkIf cfg.enable {
-    assertions =
-      [
-        {
-          assertion = transportConfig.requireLocal;
-          message = transportConfig.requireLocalMessage;
-        }
+  config = lib.mkIf cfg.enable (lib.mkMerge [
+    {
+      assertions =
+        [
         {
           assertion = userAccount != null && userAccount.enable;
           message = "alanix.syncthing.user must reference an enabled alanix.users.accounts entry.";
@@ -187,6 +186,18 @@ in
         {
           assertion = cfg.transport != null;
           message = "alanix.syncthing.transport must be set to either \"wireguard\" or \"tailscale\" when alanix.syncthing.enable = true.";
+        }
+        {
+          assertion = transportConfig != null;
+          message = "alanix.syncthing.transport must be one of: wireguard, tailscale.";
+        }
+        {
+          assertion = transportConfig == null || transportConfig.requireLocal;
+          message =
+            if transportConfig == null then
+              "alanix.syncthing.transport must be set to either \"wireguard\" or \"tailscale\" when alanix.syncthing.enable = true."
+            else
+              transportConfig.requireLocalMessage;
         }
         {
           assertion = cfg.listenPort != null;
@@ -240,8 +251,18 @@ in
         peerHosts
       ++ map
         ({ name, hostCfg }: {
-          assertion = hostCfg != null && transportConfig.peerReady hostCfg;
-          message = transportConfig.peerMessage name;
+          assertion = hostCfg != null && hostCfg.config.alanix.syncthing.transport == cfg.transport;
+          message = "alanix.syncthing.peers.${name} must use the same alanix.syncthing.transport as '${hostname}'.";
+        })
+        peerHosts
+      ++ map
+        ({ name, hostCfg }: {
+          assertion = transportConfig != null && hostCfg != null && transportConfig.peerReady hostCfg;
+          message =
+            if transportConfig == null then
+              "alanix.syncthing.transport must be one of: wireguard, tailscale."
+            else
+              transportConfig.peerMessage name;
         })
         peerHosts
       ++ map
@@ -250,52 +271,64 @@ in
           message = "alanix.syncthing.peers.${name} must also list '${hostname}' as a peer.";
         })
         peerHosts;
+    }
 
-    networking.firewall.interfaces.${transportConfig.localFirewallInterface}.allowedTCPPorts = [ cfg.listenPort ];
+    (lib.mkIf (transportConfig != null) {
+      networking.firewall.interfaces.${transportConfig.localFirewallInterface}.allowedTCPPorts = [ cfg.listenPort ];
 
-    systemd.tmpfiles.rules =
-      [ "d ${cfg.syncRoot} 0750 ${cfg.user} users - -" ]
-      ++ lib.optionals (builtins.elem "emulation" cfg.folderSets) (
-        [ "d ${cfg.syncRoot}/games 0750 ${cfg.user} users - -" ]
-        ++ emulationTmpfiles
-      );
-
-    services.syncthing = {
-      enable = true;
-      user = cfg.user;
-      group = "users";
-      dataDir = userHomeDir;
-      inherit configDir;
-      cert = config.sops.secrets.${certSecretName}.path;
-      key = config.sops.secrets.${keySecretName}.path;
-      guiAddress = "127.0.0.1:8384";
-      openDefaultPorts = false;
-      overrideDevices = true;
-      overrideFolders = true;
-
-      settings = {
-        devices = builtins.listToAttrs (
-          map
-            ({ name, hostCfg }:
-              lib.nameValuePair name {
-                inherit name;
-                id = hostCfg.config.alanix.syncthing.deviceId;
-                addresses = [ "tcp://${transportConfig.peerAddress hostCfg}:${toString hostCfg.config.alanix.syncthing.listenPort}" ];
-              })
-            peerHosts
+      systemd.tmpfiles.rules =
+        [ "d ${cfg.syncRoot} 0750 ${cfg.user} users - -" ]
+        ++ lib.optionals (builtins.elem "emulation" cfg.folderSets) (
+          [ "d ${cfg.syncRoot}/games 0750 ${cfg.user} users - -" ]
+          ++ emulationTmpfiles
         );
 
-        folders = selectedFolderAttrs;
+      services.syncthing = {
+        enable = true;
+        user = cfg.user;
+        group = "users";
+        dataDir = userHomeDir;
+        inherit configDir;
+        cert = config.sops.secrets.${certSecretName}.path;
+        key = config.sops.secrets.${keySecretName}.path;
+        guiAddress = "127.0.0.1:8384";
+        openDefaultPorts = false;
+        overrideDevices = true;
+        overrideFolders = true;
 
-        options = {
-          listenAddresses = [ "tcp://${transportConfig.localAddress}:${toString cfg.listenPort}" ];
-          localAnnounceEnabled = false;
-          globalAnnounceEnabled = false;
-          relaysEnabled = false;
-          natEnabled = false;
-          urAccepted = -1;
+        settings = {
+          devices = builtins.listToAttrs (
+            map
+              ({ name, hostCfg }:
+                let
+                  peerAddress = transportConfig.peerAddress hostCfg;
+                  peerPort = hostCfg.config.alanix.syncthing.listenPort;
+                in
+                if !hasValue peerAddress then
+                  throw "alanix.syncthing.peers.${name} is missing a usable ${cfg.transport} address."
+                else if peerPort == null then
+                  throw "alanix.syncthing.peers.${name} is missing alanix.syncthing.listenPort."
+                else
+                  lib.nameValuePair name {
+                    inherit name;
+                    id = hostCfg.config.alanix.syncthing.deviceId;
+                    addresses = [ "tcp://${peerAddress}:${toString peerPort}" ];
+                  })
+              peerHosts
+          );
+
+          folders = selectedFolderAttrs;
+
+          options = {
+            listenAddresses = [ "tcp://${transportConfig.localAddress}:${toString cfg.listenPort}" ];
+            localAnnounceEnabled = false;
+            globalAnnounceEnabled = false;
+            relaysEnabled = false;
+            natEnabled = false;
+            urAccepted = -1;
+          };
         };
       };
-    };
-  };
+    })
+  ]);
 }

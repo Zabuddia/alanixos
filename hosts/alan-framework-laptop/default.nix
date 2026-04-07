@@ -191,6 +191,7 @@
 
     alanix.tailscale = {
       enable = true;
+      address = "alan-framework-laptop";
       acceptRoutes = true;
       operator = "buddia";
     };
