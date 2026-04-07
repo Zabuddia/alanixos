@@ -154,6 +154,27 @@ let
   linkTargetInitScript =
     lib.concatMapStringsSep "\n" (target: ''mkdir -p "${target}"'') selectedLinkTargets;
 
+  staleManagedLinkParents =
+    lib.optionals
+      (
+        (selectedLinkAttrs ? ".local/share/dolphin-emu/GC")
+        || (selectedLinkAttrs ? ".local/share/dolphin-emu/Wii/title")
+      )
+      [ ".local/share/dolphin-emu" ]
+    ++ lib.optionals
+      (selectedLinkAttrs ? ".local/share/melonDS/saves")
+      [ ".local/share/melonDS" ];
+
+  staleManagedLinkCleanupScript =
+    lib.concatMapStringsSep "\n"
+      (relativePath: ''
+        targetPath="$HOME/${relativePath}"
+        if [[ -L "$targetPath" && "$(readlink "$targetPath")" == ${builtins.storeDir}/*-home-manager-files/* ]]; then
+          rm "$targetPath"
+        fi
+      '')
+      staleManagedLinkParents;
+
   folderMembershipAssertions =
     lib.flatten (
       map
@@ -394,6 +415,11 @@ in
 
     (lib.mkIf (cfg.linkFolderSets != [ ] && userHomeReady) {
       home-manager.users.${cfg.user} = { config, lib, ... }: {
+        home.activation.alanixSyncthingCleanupLegacyLinks =
+          lib.hm.dag.entryBetween [ "writeBoundary" ] [ "checkFilesChanged" ] ''
+            ${staleManagedLinkCleanupScript}
+          '';
+
         home.activation.alanixSyncthingLinkTargets =
           lib.hm.dag.entryAfter [ "writeBoundary" ] linkTargetInitScript;
 
