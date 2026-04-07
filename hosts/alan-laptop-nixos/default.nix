@@ -132,9 +132,13 @@
         };
 
         desktop.enable = true;
+        azahar.enable = true;
         chromium.enable = true;
+        dolphin.enable = true;
         librewolf.enable = true;
+        melonds.enable = true;
         nextcloudClient.enable = true;
+        ryubing.enable = true;
         trayscale.enable = true;
         vscode.enable = true;
       };

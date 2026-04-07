@@ -6,11 +6,15 @@ let
   cfg = config.alanix.users;
 
   featureModules = [
+    ./users/azahar.nix
     ./users/chromium.nix
     ./users/desktop.nix
+    ./users/dolphin.nix
     ./users/git.nix
     ./users/librewolf.nix
+    ./users/melonds.nix
     ./users/nextcloud-client.nix
+    ./users/ryubing.nix
     ./users/sh.nix
     ./users/ssh.nix
     ./users/trayscale.nix
