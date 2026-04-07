@@ -127,6 +127,7 @@
 
     alanix.tailscale = {
       enable = true;
+      address = "alan-big-nixos";
       acceptRoutes = true;
       operator = "buddia";
     };

@@ -142,6 +142,7 @@
 
     alanix.tailscale = {
       enable = true;
+      address = "alan-framework";
       acceptRoutes = true;
       operator = "buddia";
     };
