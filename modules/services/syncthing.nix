@@ -153,16 +153,37 @@ let
         })
       folderCatalog.${folderSet};
 
-  selectedFolderAttrs =
-    if cfg.folderSets == [ ] then
-      { }
-    else
-      lib.mkMerge (map folderSetAttrs cfg.folderSets);
+  selectedFolderCatalog =
+    builtins.foldl' (acc: folderSet: acc // folderCatalog.${folderSet}) { } cfg.folderSets;
 
-  emulationTmpfiles =
-    lib.mapAttrsToList
-      (_: folderCfg: "d ${cfg.syncRoot}/${folderCfg.relativePath} 0750 ${cfg.user} users - -")
-      emulationFolders;
+  selectedFolderAttrs =
+    builtins.foldl' (acc: folderSet: acc // folderSetAttrs folderSet) { } cfg.folderSets;
+
+  folderRelativePathPrefixes =
+    relativePath:
+    let
+      parts = lib.splitString "/" relativePath;
+    in
+      builtins.genList
+        (idx: lib.concatStringsSep "/" (lib.take (idx + 1) parts))
+        (builtins.length parts);
+
+  selectedFolderRelativePaths = map (folderCfg: folderCfg.relativePath) (lib.attrValues selectedFolderCatalog);
+
+  managedSyncRootRelativePaths =
+    lib.unique (lib.flatten (map folderRelativePathPrefixes selectedFolderRelativePaths));
+
+  managedSyncRootTmpfiles =
+    map
+      (relativePath: "d ${cfg.syncRoot}/${relativePath} 0750 ${cfg.user} users - -")
+      managedSyncRootRelativePaths;
+
+  managedSyncRootDirsScript =
+    lib.concatMapStringsSep "\n"
+      (relativePath: ''
+        install -d -m 0750 -o ${cfg.user} -g users "${cfg.syncRoot}/${relativePath}"
+      '')
+      managedSyncRootRelativePaths;
 
   selectedLinkAttrs =
     if cfg.linkFolderSets == [ ] then
@@ -387,12 +408,14 @@ in
     (lib.mkIf (transportConfig != null) {
       networking.firewall.interfaces.${transportConfig.localFirewallInterface}.allowedTCPPorts = [ cfg.listenPort ];
 
+      system.activationScripts.alanixSyncthingPrepareManagedDirs = lib.stringAfter [ "users" ] ''
+        install -d -m 0750 -o ${cfg.user} -g users "${cfg.syncRoot}"
+        ${managedSyncRootDirsScript}
+      '';
+
       systemd.tmpfiles.rules =
         [ "d ${cfg.syncRoot} 0750 ${cfg.user} users - -" ]
-        ++ lib.optionals (builtins.elem "emulation" cfg.folderSets) (
-          [ "d ${cfg.syncRoot}/games 0750 ${cfg.user} users - -" ]
-          ++ emulationTmpfiles
-        );
+        ++ managedSyncRootTmpfiles;
 
       services.syncthing = {
         enable = true;
