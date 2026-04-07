@@ -53,10 +53,26 @@ let
     else
       null;
 
+  azaharSystemId = "00000000000000000000000000000000";
+  azaharSdCardId = "00000000000000000000000000000000";
+  azaharSdmcRelativeBase = "games/azahar-emu/sdmc/Nintendo 3DS/${azaharSystemId}/${azaharSdCardId}";
+  azaharNandRelativeBase = "games/azahar-emu/nand/data/${azaharSystemId}";
+  azaharLocalSdmcBase =
+    ".local/share/azahar-emu/sdmc/Nintendo 3DS/${azaharSystemId}/${azaharSdCardId}";
+  azaharLocalNandBase = ".local/share/azahar-emu/nand/data/${azaharSystemId}";
+
   emulationFolders = {
-    "games-azahar-emu" = {
-      label = "games/azahar-emu";
-      relativePath = "games/azahar-emu";
+    "games-azahar-emu-sdmc-title" = {
+      label = "${azaharSdmcRelativeBase}/title";
+      relativePath = "${azaharSdmcRelativeBase}/title";
+    };
+    "games-azahar-emu-sdmc-extdata" = {
+      label = "${azaharSdmcRelativeBase}/extdata";
+      relativePath = "${azaharSdmcRelativeBase}/extdata";
+    };
+    "games-azahar-emu-nand-extdata" = {
+      label = "${azaharNandRelativeBase}/extdata";
+      relativePath = "${azaharNandRelativeBase}/extdata";
     };
     "games-dolphin-emu-gc" = {
       label = "games/dolphin-emu/GC";
@@ -81,8 +97,14 @@ let
   };
 
   emulationLinks = {
-    ".local/share/azahar-emu" = {
-      relativePath = "games/azahar-emu";
+    "${azaharLocalSdmcBase}/title" = {
+      relativePath = "${azaharSdmcRelativeBase}/title";
+    };
+    "${azaharLocalSdmcBase}/extdata" = {
+      relativePath = "${azaharSdmcRelativeBase}/extdata";
+    };
+    "${azaharLocalNandBase}/extdata" = {
+      relativePath = "${azaharNandRelativeBase}/extdata";
     };
     ".local/share/dolphin-emu/GC" = {
       relativePath = "games/dolphin-emu/GC";
@@ -156,6 +178,13 @@ let
 
   staleManagedLinkParents =
     lib.optionals
+      (
+        (selectedLinkAttrs ? "${azaharLocalSdmcBase}/title")
+        || (selectedLinkAttrs ? "${azaharLocalSdmcBase}/extdata")
+        || (selectedLinkAttrs ? "${azaharLocalNandBase}/extdata")
+      )
+      [ ".local/share/azahar-emu" ]
+    ++ lib.optionals
       (
         (selectedLinkAttrs ? ".local/share/dolphin-emu/GC")
         || (selectedLinkAttrs ? ".local/share/dolphin-emu/Wii/title")
