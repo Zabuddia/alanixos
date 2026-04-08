@@ -74,6 +74,7 @@
             remmina
             tor-browser
             hyprpicker
+            zoom-us
           ];
           unstablePackages = with pkgs-unstable; [
             yt-dlp
