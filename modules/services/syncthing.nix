@@ -178,12 +178,24 @@ let
       (relativePath: "d ${cfg.syncRoot}/${relativePath} 0750 ${cfg.user} users - -")
       managedSyncRootRelativePaths;
 
+  managedFolderMarkerTmpfiles =
+    map
+      (relativePath: "d ${cfg.syncRoot}/${relativePath}/.stfolder 0755 ${cfg.user} users - -")
+      selectedFolderRelativePaths;
+
   managedSyncRootDirsScript =
     lib.concatMapStringsSep "\n"
       (relativePath: ''
         install -d -m 0750 -o ${cfg.user} -g users "${cfg.syncRoot}/${relativePath}"
       '')
       managedSyncRootRelativePaths;
+
+  managedFolderMarkerScript =
+    lib.concatMapStringsSep "\n"
+      (relativePath: ''
+        install -d -m 0755 -o ${cfg.user} -g users "${cfg.syncRoot}/${relativePath}/.stfolder"
+      '')
+      selectedFolderRelativePaths;
 
   selectedLinkAttrs =
     if cfg.linkFolderSets == [ ] then
@@ -411,11 +423,13 @@ in
       system.activationScripts.alanixSyncthingPrepareManagedDirs = lib.stringAfter [ "users" ] ''
         install -d -m 0750 -o ${cfg.user} -g users "${cfg.syncRoot}"
         ${managedSyncRootDirsScript}
+        ${managedFolderMarkerScript}
       '';
 
       systemd.tmpfiles.rules =
         [ "d ${cfg.syncRoot} 0750 ${cfg.user} users - -" ]
-        ++ managedSyncRootTmpfiles;
+        ++ managedSyncRootTmpfiles
+        ++ managedFolderMarkerTmpfiles;
 
       services.syncthing = {
         enable = true;
