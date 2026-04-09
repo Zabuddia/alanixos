@@ -3,6 +3,7 @@
 let
   cfg = config.desktop;
   idleCfg = nixosConfig.alanix.desktop.idle;
+  terminalEmulator = lib.getExe pkgs-unstable.foot;
   powerProfileMenuFile = "${config.home.directory}/.config/waybar/power-profile-menu.xml";
   volumeFeedbackWav = pkgs.runCommand "alanix-volume-feedback.wav" { } ''
     ${pkgs.ffmpeg}/bin/ffmpeg -loglevel error \
@@ -137,7 +138,7 @@ in
         home.file."Pictures/.keep".text = "";
 
         xdg.configFile."xfce4/helpers.rc".text = ''
-          TerminalEmulator=foot
+          TerminalEmulator=${terminalEmulator}
         '';
 
         xdg.configFile."waybar/power-profile-menu.xml".text = ''
@@ -394,7 +395,7 @@ in
           '';
           config = {
             modifier = "Mod4";
-            terminal = "${pkgs-unstable.foot}/bin/foot";
+            terminal = terminalEmulator;
             bars = [ ];
             startup = [
               { command = "waybar"; }
