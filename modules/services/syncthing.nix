@@ -82,6 +82,10 @@ let
       label = "games/dolphin-emu/Wii/title";
       relativePath = "games/dolphin-emu/Wii/title";
     };
+    "games-dolphin-emu-load-riivolution" = {
+      label = "games/dolphin-emu/Load/Riivolution";
+      relativePath = "games/dolphin-emu/Load/Riivolution";
+    };
     "games-melonds-saves" = {
       label = "games/melonDS/saves";
       relativePath = "games/melonDS/saves";
@@ -111,6 +115,9 @@ let
     };
     ".local/share/dolphin-emu/Wii/title" = {
       relativePath = "games/dolphin-emu/Wii/title";
+    };
+    ".local/share/dolphin-emu/Load/Riivolution" = {
+      relativePath = "games/dolphin-emu/Load/Riivolution";
     };
     ".local/share/melonDS/saves" = {
       relativePath = "games/melonDS/saves";
@@ -221,6 +228,7 @@ let
       (
         (selectedLinkAttrs ? ".local/share/dolphin-emu/GC")
         || (selectedLinkAttrs ? ".local/share/dolphin-emu/Wii/title")
+        || (selectedLinkAttrs ? ".local/share/dolphin-emu/Load/Riivolution")
       )
       [ ".local/share/dolphin-emu" ]
     ++ lib.optionals
