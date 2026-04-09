@@ -17,6 +17,7 @@ let
     ./users/ryubing.nix
     ./users/sh.nix
     ./users/ssh.nix
+    ./users/syncthing-tray.nix
     ./users/trayscale.nix
     ./users/vscode.nix
   ];

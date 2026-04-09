@@ -136,6 +136,7 @@
         melonds.enable = true;
         nextcloudClient.enable = true;
         ryubing.enable = true;
+        syncthingTray.enable = true;
         trayscale.enable = true;
         vscode.enable = true;
       };
