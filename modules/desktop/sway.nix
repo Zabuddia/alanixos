@@ -3,7 +3,7 @@
 lib.mkIf config.alanix.desktop.enable {
   programs.sway.enable = true;
   security.polkit.enable = true;
-  services.gnome.gnome-keyring.enable = true;
+  services.gnome.gnome-keyring.enable = config.alanix.desktop.loginKeyring.enable;
 
   environment.etc."sway/config.d/10-alanix-output-rules.conf" = lib.mkIf (config.alanix.desktop.swayOutputRules != [ ]) {
     text = lib.concatStringsSep "\n" config.alanix.desktop.swayOutputRules + "\n";

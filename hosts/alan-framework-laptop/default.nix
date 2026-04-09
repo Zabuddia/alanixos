@@ -41,6 +41,7 @@
         nano
         imagemagick
         unzip
+        gparted
       ];
       swapDevices = [
         {
@@ -141,6 +142,7 @@
 
     alanix.desktop = {
       enable = true;
+      loginKeyring.enable = true;
       bluetooth.enable = true;
       createHeadlessOutput = false;
       swayOutputRules = [

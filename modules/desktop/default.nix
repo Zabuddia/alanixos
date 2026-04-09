@@ -7,6 +7,7 @@ in
 {
   imports = [
     ./sway.nix
+    ./storage.nix
     ./audio.nix
     ./bluetooth.nix
   ];
@@ -22,6 +23,8 @@ in
         description = "User to auto-login as.";
       };
     };
+
+    loginKeyring.enable = lib.mkEnableOption "GNOME login keyring integration";
 
     createHeadlessOutput = lib.mkOption {
       type = lib.types.bool;
