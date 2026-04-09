@@ -42,6 +42,7 @@
         imagemagick
         unzip
         p7zip
+        unar
         gparted
       ];
       swapDevices = [
