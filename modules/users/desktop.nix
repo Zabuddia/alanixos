@@ -37,6 +37,10 @@ in
       {
         home.file."Pictures/.keep".text = "";
 
+        xdg.configFile."xfce4/helpers.rc".text = ''
+          TerminalEmulator=foot
+        '';
+
         home.packages =
           (with pkgs; [
             adwaita-icon-theme
