@@ -41,6 +41,7 @@
         nano
         imagemagick
         unzip
+        p7zip
       ];
       swapDevices = [
         {

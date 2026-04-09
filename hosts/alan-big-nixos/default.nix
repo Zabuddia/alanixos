@@ -33,6 +33,7 @@
         sops
         tree
         unzip
+        p7zip
         wget
       ];
       swapDevices = [
