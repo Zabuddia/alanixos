@@ -216,6 +216,22 @@ let
   linkTargetInitScript =
     lib.concatMapStringsSep "\n" (target: ''mkdir -p "${target}"'') selectedLinkTargets;
 
+  managedLinkResetScript =
+    lib.concatStringsSep "\n"
+      (
+        lib.mapAttrsToList
+          (relativePath: linkCfg: ''
+            localPath="$HOME/${relativePath}"
+
+            if [[ -L "$localPath" ]]; then
+              :
+            elif [[ -e "$localPath" ]]; then
+              run rm -rf $VERBOSE_ARG -- "$localPath"
+            fi
+          '')
+          selectedLinkAttrs
+      );
+
   staleManagedLinkParents =
     lib.optionals
       (
@@ -496,6 +512,11 @@ in
 
         home.activation.alanixSyncthingLinkTargets =
           lib.hm.dag.entryAfter [ "writeBoundary" ] linkTargetInitScript;
+
+        home.activation.alanixSyncthingResetManagedLinks =
+          lib.hm.dag.entryBetween [ "alanixSyncthingLinkTargets" ] [ "linkGeneration" ] ''
+            ${managedLinkResetScript}
+          '';
 
         home.file =
           lib.mapAttrs
