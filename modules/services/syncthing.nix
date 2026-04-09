@@ -514,7 +514,7 @@ in
           lib.hm.dag.entryAfter [ "writeBoundary" ] linkTargetInitScript;
 
         home.activation.alanixSyncthingResetManagedLinks =
-          lib.hm.dag.entryBetween [ "alanixSyncthingLinkTargets" ] [ "linkGeneration" ] ''
+          lib.hm.dag.entryBetween [ "linkGeneration" ] [ "alanixSyncthingLinkTargets" ] ''
             ${managedLinkResetScript}
           '';
 
