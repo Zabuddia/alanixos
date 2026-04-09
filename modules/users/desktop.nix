@@ -3,6 +3,7 @@
 let
   cfg = config.desktop;
   idleCfg = nixosConfig.alanix.desktop.idle;
+  powerProfileMenuFile = "${config.home.directory}/.config/waybar/power-profile-menu.xml";
   volumeFeedbackWav = pkgs.runCommand "alanix-volume-feedback.wav" { } ''
     ${pkgs.ffmpeg}/bin/ffmpeg -loglevel error \
       -f lavfi -i "sine=frequency=1046.5:duration=0.05" \
@@ -20,6 +21,104 @@ let
   '';
   volumeMuteToggleCommand = pkgs.writeShellScript "alanix-volume-mute-toggle" ''
     exec ${pkgs.swayosd}/bin/swayosd-client --output-volume mute-toggle
+  '';
+  brightnessRaiseCommand = pkgs.writeShellScript "alanix-brightness-raise" ''
+    exec ${pkgs.swayosd}/bin/swayosd-client --brightness +5
+  '';
+  brightnessLowerCommand = pkgs.writeShellScript "alanix-brightness-lower" ''
+    exec ${pkgs.swayosd}/bin/swayosd-client --brightness -5
+  '';
+  setPowerProfileCommand =
+    profile:
+    "${pkgs.power-profiles-daemon}/bin/powerprofilesctl set ${lib.escapeShellArg profile} && ${pkgs.procps}/bin/pkill -SIGUSR2 -x waybar";
+  batteryModuleCommand = pkgs.writeShellScript "alanix-waybar-battery" ''
+    set -eu
+
+    batteryInfo="$(${pkgs.upower}/bin/upower -i /org/freedesktop/UPower/devices/DisplayDevice 2>/dev/null || true)"
+
+    percentage="$(
+      printf '%s\n' "$batteryInfo" \
+        | ${pkgs.gnused}/bin/sed -n 's/^ *percentage: *\([0-9]\+\)%$/\1/p' \
+        | ${pkgs.coreutils}/bin/head -n1
+    )"
+    state="$(
+      printf '%s\n' "$batteryInfo" \
+        | ${pkgs.gnused}/bin/sed -n 's/^ *state: *//p' \
+        | ${pkgs.coreutils}/bin/head -n1
+    )"
+    timeLine="$(
+      printf '%s\n' "$batteryInfo" \
+        | ${pkgs.gnused}/bin/sed -n 's/^ *\(time to [^:]*\): *\(.*\)$/\1: \2/p' \
+        | ${pkgs.coreutils}/bin/head -n1
+    )"
+    powerProfile="$(${pkgs.power-profiles-daemon}/bin/powerprofilesctl get 2>/dev/null || true)"
+
+    if [ -z "$percentage" ]; then
+      percentage=0
+    fi
+
+    case "$powerProfile" in
+      power-saver) powerProfileLabel="Power saver" ;;
+      balanced) powerProfileLabel="Normal" ;;
+      performance) powerProfileLabel="Performance" ;;
+      *) powerProfileLabel="Unknown" ;;
+    esac
+
+    if [ -z "$timeLine" ]; then
+      case "$state" in
+        fully-charged) timeLine="Fully charged" ;;
+        charging | pending-charge) timeLine="Charging" ;;
+        discharging | pending-discharge) timeLine="Calculating remaining time" ;;
+        *) timeLine="State: ''${state:-unknown}" ;;
+      esac
+    fi
+
+    icons=(▁ ▂ ▃ ▄ ▅ ▆ ▇ █)
+    iconIndex=$(( percentage * ''${#icons[@]} / 100 ))
+    if [ "$iconIndex" -ge "''${#icons[@]}" ]; then
+      iconIndex=$(( ''${#icons[@]} - 1 ))
+    fi
+    icon="''${icons[$iconIndex]}"
+
+    case "$state" in
+      charging | pending-charge)
+        text="$percentage% ↑"
+        statusClass="charging"
+        ;;
+      fully-charged)
+        text="$percentage% ⚡"
+        statusClass="charging"
+        ;;
+      *)
+        text="$percentage% $icon"
+        statusClass="discharging"
+        ;;
+    esac
+
+    if [ "$percentage" -le 15 ]; then
+      batteryClass="critical"
+    elif [ "$percentage" -le 30 ]; then
+      batteryClass="warning"
+    else
+      batteryClass="normal"
+    fi
+
+    tooltip="Battery: $percentage%
+$timeLine
+Power profile: $powerProfileLabel"
+
+    ${pkgs.jq}/bin/jq -cn \
+      --arg text "$text" \
+      --arg tooltip "$tooltip" \
+      --arg percentage "$percentage" \
+      --arg batteryClass "$batteryClass" \
+      --arg statusClass "$statusClass" \
+      '{
+        text: $text,
+        tooltip: $tooltip,
+        percentage: ($percentage | tonumber),
+        class: [$batteryClass, $statusClass]
+      }'
   '';
 in
 {
@@ -39,6 +138,29 @@ in
 
         xdg.configFile."xfce4/helpers.rc".text = ''
           TerminalEmulator=foot
+        '';
+
+        xdg.configFile."waybar/power-profile-menu.xml".text = ''
+          <?xml version="1.0" encoding="UTF-8"?>
+          <interface>
+            <object class="GtkMenu" id="menu">
+              <child>
+                <object class="GtkMenuItem" id="power_saver">
+                  <property name="label">Power saver</property>
+                </object>
+              </child>
+              <child>
+                <object class="GtkMenuItem" id="normal">
+                  <property name="label">Normal</property>
+                </object>
+              </child>
+              <child>
+                <object class="GtkMenuItem" id="performance">
+                  <property name="label">Performance</property>
+                </object>
+              </child>
+            </object>
+          </interface>
         '';
 
         home.packages =
@@ -140,7 +262,7 @@ in
             height = 32;
             modules-left = [ "sway/workspaces" "sway/mode" ];
             modules-center = [ "clock" ];
-            modules-right = [ "cpu" "memory" "network" "pulseaudio" "battery" "tray" "custom/logout" ];
+            modules-right = [ "cpu" "memory" "network" "pulseaudio" "backlight" "custom/battery" "tray" "custom/logout" ];
 
             "sway/workspaces".all-outputs = false;
 
@@ -176,16 +298,25 @@ in
               on-click = "${volumeMuteToggleCommand}";
             };
 
-            "battery" = {
-              format = "{capacity}% {icon}";
-              format-charging = "{capacity}% ↑";
-              format-plugged = "{capacity}% ⚡";
-              format-icons = [ "▁" "▂" "▃" "▄" "▅" "▆" "▇" "█" ];
-              states = {
-                warning = 30;
-                critical = 15;
+            "backlight" = {
+              device = "amdgpu_bl1";
+              format = "BRT {percent}%";
+              on-scroll-up = "${brightnessRaiseCommand}";
+              on-scroll-down = "${brightnessLowerCommand}";
+            };
+
+            "custom/battery" = {
+              format = "{text}";
+              return-type = "json";
+              interval = 5;
+              exec = "${batteryModuleCommand}";
+              menu = "on-click";
+              menu-file = powerProfileMenuFile;
+              menu-actions = {
+                power_saver = setPowerProfileCommand "power-saver";
+                normal = setPowerProfileCommand "balanced";
+                performance = setPowerProfileCommand "performance";
               };
-              tooltip-format = "{timeTo}";
             };
 
             "tray" = {
@@ -233,7 +364,8 @@ in
             #memory,
             #network,
             #pulseaudio,
-            #battery,
+            #backlight,
+            #custom-battery,
             #tray,
             #custom-logout {
               padding: 0 12px;
@@ -241,11 +373,11 @@ in
               background: transparent;
             }
 
-            #battery.warning {
+            #custom-battery.warning {
               color: #fab387;
             }
 
-            #battery.critical:not(.charging) {
+            #custom-battery.critical:not(.charging) {
               color: #f38ba8;
             }
 
@@ -274,8 +406,8 @@ in
               "XF86AudioRaiseVolume" = "exec ${volumeRaiseCommand}";
               "XF86AudioLowerVolume" = "exec ${volumeLowerCommand}";
               "XF86AudioMute" = "exec ${volumeMuteToggleCommand}";
-              "XF86MonBrightnessUp" = "exec brightnessctl set +5%";
-              "XF86MonBrightnessDown" = "exec brightnessctl set 5%-";
+              "XF86MonBrightnessUp" = "exec ${brightnessRaiseCommand}";
+              "XF86MonBrightnessDown" = "exec ${brightnessLowerCommand}";
               "Mod4+Shift+e" = "exec wlogout";
               "Print" = "exec sh -c 'grim - | tee ~/Pictures/screenshot-$(date +%Y%m%d-%H%M%S).png | wl-copy'";
               "Shift+Print" = "exec sh -c 'grim -g \"$(slurp)\" - | tee ~/Pictures/screenshot-$(date +%Y%m%d-%H%M%S).png | wl-copy'";
