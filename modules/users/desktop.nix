@@ -47,7 +47,6 @@ in
             grim
             hicolor-icon-theme
             slurp
-            xfce.thunar
             nnn
             imv
             wl-clipboard
@@ -62,6 +61,14 @@ in
           };
         };
 
+        xsession.preferStatusNotifierItems = true;
+
+        xfconf.settings = {
+          xfce4-session = {
+            "compat/LaunchGNOME" = true;
+          };
+        };
+
         programs.foot = {
           enable = true;
           package = pkgs-unstable.foot;
@@ -70,6 +77,15 @@ in
         services.mako = {
           enable = true;
           settings.default-timeout = 5000;
+        };
+
+        services.lxqt-policykit-agent.enable = true;
+
+        services.udiskie = {
+          enable = true;
+          automount = true;
+          notify = true;
+          tray = "auto";
         };
 
         programs.wlogout = {
