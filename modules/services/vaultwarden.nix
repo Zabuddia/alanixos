@@ -1,6 +1,7 @@
 { config, lib, pkgs, ... }:
 let
   cfg = config.alanix.vaultwarden;
+  clusterCfg = cfg.cluster;
   serviceExposure = import ../../lib/mkServiceExposure.nix { inherit lib pkgs; };
   serviceIdentity = import ../../lib/mkServiceIdentity.nix { inherit lib; };
 
@@ -70,6 +71,25 @@ in
       description = "Optional Vaultwarden sqlite backup directory passed through to services.vaultwarden.backupDir.";
     };
 
+    cluster = {
+      enable = lib.mkEnableOption "cluster-manage Vaultwarden through alanix.cluster";
+
+      backupInterval = lib.mkOption {
+        type = lib.types.str;
+        default = "5m";
+      };
+
+      maxBackupAge = lib.mkOption {
+        type = lib.types.str;
+        default = "15m";
+      };
+
+      sameTorAddress = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+      };
+    };
+
     adminTokenSecret = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -116,6 +136,18 @@ in
             assertion = cfg.adminTokenSecret == null || lib.hasAttrByPath [ "sops" "secrets" cfg.adminTokenSecret ] config;
             message = "alanix.vaultwarden.adminTokenSecret must reference a declared sops secret.";
           }
+          {
+            assertion = !clusterCfg.enable || cfg.backupDir != null;
+            message = "alanix.vaultwarden.cluster.enable requires alanix.vaultwarden.backupDir to be set.";
+          }
+          {
+            assertion = !clusterCfg.sameTorAddress || cfg.expose.tor.enable;
+            message = "alanix.vaultwarden.cluster.sameTorAddress requires alanix.vaultwarden.expose.tor.enable = true.";
+          }
+          {
+            assertion = !clusterCfg.sameTorAddress || cfg.expose.tor.secretKeyBase64Secret != null;
+            message = "alanix.vaultwarden.cluster.sameTorAddress requires alanix.vaultwarden.expose.tor.secretKeyBase64Secret to be set.";
+          }
         ]
         ++ serviceExposure.mkAssertions {
           inherit config endpoint exposeCfg;
@@ -139,12 +171,13 @@ in
       };
     }
 
-    (lib.mkIf baseConfigReady (
+    (lib.mkIf (baseConfigReady && !clusterCfg.enable) (
       serviceExposure.mkConfig {
         inherit config endpoint exposeCfg;
         serviceName = "vaultwarden";
         serviceDescription = "Vaultwarden";
       }
     ))
+
   ]);
 }

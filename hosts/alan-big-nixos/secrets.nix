@@ -53,6 +53,13 @@
     mode = "0400";
   };
 
+  sops.secrets."cluster/restic-password" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "buddia";
+    group = "users";
+    mode = "0400";
+  };
+
   sops.secrets."sunshine-web-ui-passwords/alan-big-nixos" = {
     owner = "buddia";
     group = "users";

@@ -7,6 +7,7 @@
     imports = [
       ./hardware-configuration.nix
       ./secrets.nix
+      ../../clusters/home.nix
       ../../modules/services/bitcoin.nix
     ];
 
@@ -53,7 +54,7 @@
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
         sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEAJK6Bk63YjxmL9CI3F5yCjhG3MPAuuplydZ5ZmPFzW fife.alan@protonmail.com";
-        authorizedHosts = [ "alan-framework" "alan-framework-laptop" "alan-laptop-nixos" "randy-big-nixos" ];
+        authorizedHosts = [ "alan-framework" "alan-framework-laptop" "alan-laptop-nixos" "alan-node" "randy-big-nixos" ];
 
         home = {
           enable = true;
@@ -128,6 +129,7 @@
         "alan-framework"
         "alan-framework-laptop"
         "alan-laptop-nixos"
+        "alan-node"
       ];
     };
 
@@ -427,27 +429,6 @@
           address = "10.100.0.1";
           port = 9980;
         };
-      };
-    };
-
-    alanix.vaultwarden = {
-      enable = true;
-      listenAddress = "127.0.0.1";
-      port = 8222;
-      rootUrl = "https://ajd4rue7nevdl7rceliwqevkqpgd6tizzgxj7e7vzsd56gil5lvs7hid.onion";
-      disableRegistration = false;
-      expose.tor = {
-        enable = true;
-        publicPort = 443;
-        secretKeyBase64Secret = "tor/vaultwarden/secret-key-base64";
-        tls = true;
-        tlsName = "ajd4rue7nevdl7rceliwqevkqpgd6tizzgxj7e7vzsd56gil5lvs7hid.onion";
-      };
-      expose.wireguard = {
-        enable = true;
-        address = "10.100.0.1";
-        port = 8222;
-        tls = true;
       };
     };
 

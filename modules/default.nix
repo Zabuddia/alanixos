@@ -1,5 +1,6 @@
 {
   imports = [
+    ./cluster
     ./pkgs.nix
     ./system.nix
     ./power.nix

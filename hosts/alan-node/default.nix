@@ -36,12 +36,7 @@
         p7zip
         wget
       ];
-      swapDevices = [
-        {
-          device = "/swapfile";
-          size = 8192;
-        }
-      ];
+      swapDevices = [ ];
     };
 
     alanix.users = {
@@ -52,8 +47,8 @@
         extraGroups = [ "wheel" "networkmanager" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
-        sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKpHeGMaMDqWna8I5fu0K2kaZ1GdOFIGw+8NsgH3aXE3 fife.alan@protonmail.com";
-        authorizedHosts = [ "alan-big-nixos" "alan-framework" "alan-framework-laptop" "alan-laptop-nixos" "alan-node" ];
+        sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJk+OzqKPCgTpz+BEu9wRCiGc3tSEKsLx54X9/2q/LtZ fife.alan@protonmail.com";
+        authorizedHosts = [ "alan-big-nixos" "alan-framework" "alan-framework-laptop" "alan-laptop-nixos" "randy-big-nixos" ];
 
         home = {
           enable = true;
@@ -75,20 +70,6 @@
         };
 
         sh.enable = true;
-
-        desktop.enable = true;
-        chromium.enable = true;
-      };
-    };
-
-    alanix.desktop = {
-      enable = true;
-      createHeadlessOutput = false;
-      swayOutputRules = [ ];
-      idle = {
-        lockSeconds = null;
-        displayOffSeconds = null;
-        suspendSeconds = null;
       };
     };
 
@@ -96,39 +77,37 @@
       enable = true;
       openFirewallOnWireguard = true;
       startAgent = true;
-      hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOO5Qr4R/wUzLevox3Bl415pV20gkIL+fzfExjbkwzFy";
+      hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJX5K81WaYaK8FGECBTn86Mr4I15szIBZ7geyXTrJA8q";
     };
 
     alanix.ddns = {
       enable = true;
       provider = "cloudflare";
-      domains = [ "randy-big-nixos-wg.fifefin.com" ];
+      domains = [ "alan-node-wg.fifefin.com" ];
       credentialsFile = config.sops.templates."cloudflare-env".path;
     };
 
     alanix.wireguard = {
       enable = true;
-      vpnIP = "10.100.0.2";
-      endpoint = "randy-big-nixos-wg.fifefin.com:51820";
-      publicKey = "YD/m4D7uTGFnWBEACTkc7MnY7yG0yvRVAEJKqOQ91UE=";
+      vpnIP = "10.100.0.6";
+      endpoint = "alan-node-wg.fifefin.com:51820";
+      publicKey = "9mLznvK1ChQTXMeJP5iCPHPNvVgtYYm0nu3KJRKZ/EE=";
       privateKeyFile = config.sops.secrets."wireguard-private-keys/${hostname}".path;
       listenPort = 51820;
       peers = [
         "alan-big-nixos"
+        "randy-big-nixos"
         "alan-framework"
         "alan-framework-laptop"
         "alan-laptop-nixos"
-        "alan-node"
       ];
     };
 
     alanix.tailscale = {
       enable = true;
-      address = "randy-big-nixos";
+      address = "alan-node";
       acceptRoutes = true;
       operator = "buddia";
     };
-
-    alanix.syncthing.deviceId = "WOQMMD4-ZYSB3YY-F4WFRQJ-O7T4X2A-UV54S74-Z26UPI2-DCNKC2I-ALDOWAN";
   };
 }
