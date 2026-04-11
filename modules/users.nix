@@ -294,9 +294,11 @@ in
             in
             ''
               install -d -m 0700 -o ${username} -g users ${lib.escapeShellArg sshDir}
-              printf '%s\n' ${lib.escapeShellArg userCfg.sshPublicKey} > ${lib.escapeShellArg pubKeyPath}
-              chown ${lib.escapeShellArg "${username}:"} ${lib.escapeShellArg pubKeyPath}
-              chmod 0644 ${lib.escapeShellArg pubKeyPath}
+              tmp_pub="$(mktemp ${lib.escapeShellArg "${sshDir}/.alanix-id_ed25519.pub.XXXXXX"})"
+              printf '%s\n' ${lib.escapeShellArg userCfg.sshPublicKey} > "$tmp_pub"
+              chown ${lib.escapeShellArg "${username}:users"} "$tmp_pub"
+              chmod 0644 "$tmp_pub"
+              mv -f "$tmp_pub" ${lib.escapeShellArg pubKeyPath}
             '')
           sshPublicKeyAccounts
       );
