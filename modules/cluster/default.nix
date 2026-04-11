@@ -449,10 +449,8 @@ in
         services.etcd = {
           enable = true;
           name = hostname;
-          listenClientUrls = [
-            "http://127.0.0.1:2379"
-            "http://0.0.0.0:2379"
-          ];
+          # Bind once on all interfaces; localhost access still works via 127.0.0.1.
+          listenClientUrls = [ "http://0.0.0.0:2379" ];
           advertiseClientUrls = [ "http://${localTransportAddress}:2379" ];
           listenPeerUrls = [ "http://0.0.0.0:2380" ];
           initialAdvertisePeerUrls = [ "http://${localTransportAddress}:2380" ];
@@ -464,6 +462,12 @@ in
             ELECTION_TIMEOUT = toString (parseDurationMs cfg.etcd.electionTimeout);
           };
         };
+
+        systemd.services.etcd.serviceConfig.UnsetEnvironment = [
+          "ETCD_CLIENT_CERT_AUTH"
+          "ETCD_DISCOVERY"
+          "ETCD_PEER_CLIENT_CERT_AUTH"
+        ];
 
       })
 
