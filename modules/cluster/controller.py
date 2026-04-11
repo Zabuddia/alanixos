@@ -56,6 +56,13 @@ def lease_id_arg(value: int) -> str:
     return format(value, "x")
 
 
+def summarize_error(message: str, *, limit: int = 400) -> str:
+    flattened = " ".join(message.split())
+    if len(flattened) <= limit:
+        return flattened
+    return flattened[: limit - 3] + "..."
+
+
 class Controller:
     def __init__(self, config_path: str) -> None:
         with open(config_path, "r", encoding="utf-8") as handle:
@@ -265,33 +272,53 @@ class Controller:
         if service.get("preBackupCommand"):
             self.run(service["preBackupCommand"])
 
+        successful_targets = []
+        failed_targets = []
+
         for target in service["remoteTargets"]:
-            repo_path = target["repoPath"]
-            remote_uri = f"sftp:{self.repo_user}@{target['address']}:{repo_path}"
-            remote_dir = os.path.dirname(repo_path)
-            manifest_path = target["manifestPath"]
-            manifest_dir = os.path.dirname(manifest_path)
+            try:
+                repo_path = target["repoPath"]
+                remote_uri = f"sftp:{self.repo_user}@{target['address']}:{repo_path}"
+                remote_dir = os.path.dirname(repo_path)
+                manifest_path = target["manifestPath"]
+                manifest_dir = os.path.dirname(manifest_path)
 
-            self.run_as_backup_user(["ssh", target["address"], f"mkdir -p {shlex.quote(remote_dir)} {shlex.quote(manifest_dir)}"])
-            self.ensure_restic_repo(remote_uri)
-            self.run_as_backup_user(["restic", "-r", remote_uri, "backup"] + service["backupPaths"])
+                self.run_as_backup_user(
+                    ["ssh", target["address"], f"mkdir -p {shlex.quote(remote_dir)} {shlex.quote(manifest_dir)}"]
+                )
+                self.ensure_restic_repo(remote_uri)
+                self.run_as_backup_user(["restic", "-r", remote_uri, "backup"] + service["backupPaths"])
 
-            snapshot_id = self.latest_snapshot_id(remote_uri)
-            if snapshot_id is None:
-                raise RuntimeError(f"no snapshot found after backing up {service_name} to {target['host']}")
+                snapshot_id = self.latest_snapshot_id(remote_uri)
+                if snapshot_id is None:
+                    raise RuntimeError(f"no snapshot found after backing up {service_name} to {target['host']}")
 
-            manifest = {
-                "service": service_name,
-                "sourceHost": self.hostname,
-                "leaderRevision": self.leader_revision,
-                "completedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-                "snapshotId": snapshot_id,
-                "repoPath": repo_path,
-            }
-            self.run_as_backup_user(
-                ["ssh", target["address"], f"cat > {shlex.quote(manifest_path)}"],
-                input_text=json.dumps(manifest, indent=2) + "\n",
-            )
+                manifest = {
+                    "service": service_name,
+                    "sourceHost": self.hostname,
+                    "leaderRevision": self.leader_revision,
+                    "completedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+                    "snapshotId": snapshot_id,
+                    "repoPath": repo_path,
+                }
+                self.run_as_backup_user(
+                    ["ssh", target["address"], f"cat > {shlex.quote(manifest_path)}"],
+                    input_text=json.dumps(manifest, indent=2) + "\n",
+                )
+                successful_targets.append(target["host"])
+            except Exception as exc:
+                failed_targets.append(
+                    {
+                        "host": target["host"],
+                        "error": summarize_error(str(exc)),
+                    }
+                )
+
+        return {
+            "successfulTargets": successful_targets,
+            "failedTargets": failed_targets,
+            "totalTargets": len(service["remoteTargets"]),
+        }
 
     def restore_service(self, service_name, manifest):
         service = self.services[service_name]
@@ -372,9 +399,36 @@ class Controller:
         now = time.monotonic()
         for service_name, service in self.services.items():
             if now >= self.next_backup_at[service_name]:
-                self.backup_service(service_name)
+                try:
+                    result = self.backup_service(service_name)
+                except Exception as exc:
+                    self.next_backup_at[service_name] = now + parse_duration_seconds(service["backupInterval"])
+                    log(
+                        f"backup for {service_name} failed; keeping leader active while replication is degraded: "
+                        f"{summarize_error(str(exc))}"
+                    )
+                    continue
                 self.next_backup_at[service_name] = now + parse_duration_seconds(service["backupInterval"])
-                log(f"completed backup for {service_name}")
+                failed_targets = result["failedTargets"]
+                if not failed_targets:
+                    log(f"completed backup for {service_name}")
+                    continue
+
+                successful_target_count = len(result["successfulTargets"])
+                failure_summary = "; ".join(
+                    f"{item['host']}: {item['error']}" for item in failed_targets
+                )
+                if successful_target_count > 0:
+                    log(
+                        f"completed degraded backup for {service_name}: replicated to "
+                        f"{successful_target_count}/{result['totalTargets']} targets; "
+                        f"failed targets: {failure_summary}"
+                    )
+                else:
+                    log(
+                        f"backup for {service_name} failed on all {result['totalTargets']} targets; "
+                        f"keeping leader active while replication is degraded: {failure_summary}"
+                    )
 
     def tick_passive(self):
         leader = self.get_leader()
