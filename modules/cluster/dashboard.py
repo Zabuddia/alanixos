@@ -10,7 +10,47 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from controller import decode_etcd_string, parse_duration_seconds, parse_lease_id, summarize_error
+
+def parse_duration_seconds(value: str) -> float:
+    if value.endswith("ms"):
+        return int(value[:-2]) / 1000.0
+    if value.endswith("s"):
+        return float(value[:-1])
+    if value.endswith("m"):
+        return float(value[:-1]) * 60.0
+    raise ValueError(f"unsupported duration: {value}")
+
+
+def decode_etcd_string(value: str) -> str:
+    import base64
+
+    try:
+        decoded = base64.b64decode(value, validate=True).decode("utf-8")
+        if decoded and all(ch.isprintable() or ch.isspace() for ch in decoded):
+            return decoded
+    except Exception:
+        pass
+    return value
+
+
+def parse_lease_id(value) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value, 10)
+        except ValueError:
+            return int(value, 16)
+    raise ValueError(f"unsupported lease id type: {type(value)!r}")
+
+
+def summarize_error(message: str, *, limit: int = 400) -> str:
+    flattened = " ".join(message.split())
+    if len(flattened) <= limit:
+        return flattened
+    return flattened[: limit - 3] + "..."
 
 
 def now_utc() -> datetime:
