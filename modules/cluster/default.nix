@@ -214,6 +214,9 @@ in
             name = "vaultwarden";
             backupInterval = vaultwardenCfg.cluster.backupInterval;
             maxBackupAge = vaultwardenCfg.cluster.maxBackupAge;
+            activeUnits =
+              [ "vaultwarden.service" ]
+              ++ lib.optionals (anyTlsExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
             backupPaths = [ vaultwardenCfg.backupDir ];
             preBackupCommand = [ "systemctl" "start" "backup-vaultwarden.service" ];
             postRestoreCommand = [ vaultwardenRestoreScript ];
