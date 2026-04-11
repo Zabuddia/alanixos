@@ -103,7 +103,7 @@ class Controller:
 
     def etcdctl(self, args, *, check=True, input_text=None):
         cmd = ["etcdctl", f"--endpoints={','.join(self.endpoints)}", "--write-out=json"] + args
-        return self.run(cmd, check=check, input_text=input_text, env={"ETCDCTL_API": "3"})
+        return self.run(cmd, check=check, input_text=input_text)
 
     def run_as_backup_user(self, args, *, check=True, input_text=None):
         cmd = ["runuser", "-u", self.repo_user, "--"] + args
@@ -137,15 +137,11 @@ class Controller:
 
     def acquire_lease(self):
         lease_id = self.grant_lease()
-        txn = f"""compares:
-version("{self.leader_key}") = "0"
-
-success requests (get, put, delete):
-put {self.leader_key} {self.hostname} --lease={lease_id_arg(lease_id)}
-
-failure requests (get, put, delete):
-get {self.leader_key}
-"""
+        txn = (
+            f'version("{self.leader_key}") = "0"\n\n'
+            f"put {self.leader_key} {self.hostname} --lease={lease_id_arg(lease_id)}\n\n"
+            f"get {self.leader_key}\n\n"
+        )
         txn_proc = self.etcdctl(["txn", "-i"], check=False, input_text=txn)
         if txn_proc.returncode != 0:
             log(f"failed lease acquisition transaction: {txn_proc.stderr.strip() or txn_proc.stdout.strip()}")
@@ -165,7 +161,6 @@ get {self.leader_key}
             lease_id_arg(lease_id),
         ]
         env = os.environ.copy()
-        env["ETCDCTL_API"] = "3"
         self.keepalive_proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
