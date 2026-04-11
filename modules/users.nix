@@ -210,6 +210,14 @@ let
 
   enabledAccounts = lib.filterAttrs (_: userCfg: userCfg.enable) cfg.accounts;
   homeEnabledAccounts = lib.filterAttrs (_: userCfg: userCfg.enable && userCfg.home.enable) cfg.accounts;
+  sshPublicKeyAccounts =
+    lib.filterAttrs
+      (_: userCfg:
+        userCfg.enable
+        && userCfg.home.enable
+        && userCfg.home.directory != null
+        && userCfg.sshPublicKey != null)
+      cfg.accounts;
   mkHomeConfig = username: userCfg: {
     imports = userCfg.home.modules;
     home.username = username;
@@ -273,6 +281,24 @@ in
       home-manager.useUserPackages = true;
       home-manager.extraSpecialArgs = { inherit pkgs-unstable; };
       home-manager.users = lib.mapAttrs mkHomeConfig homeEnabledAccounts;
+    })
+
+    (lib.mkIf (sshPublicKeyAccounts != { }) {
+      system.activationScripts.alanixUserSshPublicKeys.text = lib.concatStringsSep "\n" (
+        lib.mapAttrsToList
+          (username: userCfg:
+            let
+              sshDir = "${userCfg.home.directory}/.ssh";
+              pubKeyPath = "${sshDir}/id_ed25519.pub";
+            in
+            ''
+              install -d -m 0700 -o ${username} -g users ${lib.escapeShellArg sshDir}
+              printf '%s\n' ${lib.escapeShellArg userCfg.sshPublicKey} > ${lib.escapeShellArg pubKeyPath}
+              chown ${lib.escapeShellArg "${username}:"} ${lib.escapeShellArg pubKeyPath}
+              chmod 0644 ${lib.escapeShellArg pubKeyPath}
+            '')
+          sshPublicKeyAccounts
+      );
     })
 
     {
