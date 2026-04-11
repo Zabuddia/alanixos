@@ -252,7 +252,9 @@ class Controller:
         self.run_as_backup_user(["restic", "-r", remote_uri, "init"])
 
     def latest_snapshot_id(self, remote_uri):
-        payload = json.loads(self.run_as_backup_user(["restic", "-r", remote_uri, "snapshots"]).stdout or "[]")
+        payload = json.loads(
+            self.run_as_backup_user(["restic", "-r", remote_uri, "snapshots", "--json"]).stdout or "[]"
+        )
         if not payload:
             return None
         payload.sort(key=lambda item: item.get("time", ""))
@@ -297,7 +299,10 @@ class Controller:
         snapshot_id = manifest["snapshotId"]
         restore_root = tempfile.mkdtemp(prefix=f"alanix-cluster-{service_name}-", dir="/var/tmp")
         try:
-            self.run(["restic", "-r", repo_path, "restore", snapshot_id, "--target", restore_root])
+            self.run(
+                ["restic", "-r", repo_path, "restore", snapshot_id, "--target", restore_root],
+                env={"RESTIC_PASSWORD_FILE": self.password_file},
+            )
             for backup_path in service["backupPaths"]:
                 source_path = os.path.join(restore_root, backup_path.lstrip("/"))
                 if not os.path.exists(source_path):
