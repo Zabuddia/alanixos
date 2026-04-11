@@ -2,6 +2,7 @@
 let
   cfg = config.alanix.cluster;
   types = lib.types;
+  serviceExposure = import ../../lib/mkServiceExposure.nix { inherit lib pkgs; };
 
   parseDurationMs =
     value:
@@ -112,6 +113,34 @@ in
         default = "cluster/restic-password";
       };
     };
+
+    dashboard = {
+      enable = lib.mkEnableOption "Alanix cluster dashboard";
+
+      listenAddress = lib.mkOption {
+        type = types.str;
+        default = "127.0.0.1";
+        description = "Local bind address for the cluster dashboard.";
+      };
+
+      port = lib.mkOption {
+        type = types.port;
+        default = 9842;
+        description = "Local HTTP port for the cluster dashboard.";
+      };
+
+      recentEvents = lib.mkOption {
+        type = types.int;
+        default = 40;
+        description = "Number of recent controller events to show in the dashboard.";
+      };
+
+      expose = serviceExposure.mkOptions {
+        serviceName = "cluster-dashboard";
+        serviceDescription = "Cluster Dashboard";
+        defaultPublicPort = 80;
+      };
+    };
   };
 
   config = lib.mkIf cfg.enable (
@@ -122,6 +151,12 @@ in
 
       vaultwardenCfg = config.alanix.vaultwarden;
       vaultwardenCluster = vaultwardenCfg.enable && vaultwardenCfg.cluster.enable;
+      dashboardCfg = cfg.dashboard;
+      dashboardEndpoint = {
+        address = dashboardCfg.listenAddress;
+        port = dashboardCfg.port;
+        protocol = "http";
+      };
 
       vaultwardenRestoreScript =
         if vaultwardenCluster then
@@ -236,6 +271,11 @@ in
                 else
                   "http://${hostTransportAddress peer}:2379")
               cfg.voters;
+        };
+        dashboard = {
+          listenAddress = dashboardCfg.listenAddress;
+          port = dashboardCfg.port;
+          recentEvents = dashboardCfg.recentEvents;
         };
         services = lib.optionalAttrs vaultwardenCluster {
           vaultwarden = {
@@ -443,7 +483,13 @@ in
               assertion = config.systemd.services ? backup-vaultwarden;
               message = "Vaultwarden cluster mode requires backup-vaultwarden.service to exist.";
             }
-          ];
+          ]
+          ++ serviceExposure.mkAssertions {
+            inherit config;
+            optionPrefix = "alanix.cluster.dashboard.expose";
+            endpoint = dashboardEndpoint;
+            exposeCfg = dashboardCfg.expose;
+          };
 
         systemd.targets."alanix-cluster-active" = {
           description = "Alanix cluster active target";
@@ -486,6 +532,32 @@ in
             Restart = "always";
             RestartSec = "5s";
             ExecStart = "${pkgs.python3}/bin/python3 ${./controller.py} ${controllerConfigFile}";
+          };
+          environment = {
+            PYTHONUNBUFFERED = "1";
+          };
+        };
+
+        systemd.services."alanix-cluster-dashboard" = lib.mkIf dashboardCfg.enable {
+          description = "Alanix cluster dashboard";
+          wantedBy = [ "multi-user.target" ];
+          after =
+            [ "network-online.target" "sops-nix.service" ]
+            ++ lib.optional (cfg.transport == "tailscale") "tailscaled.service";
+          wants =
+            [ "network-online.target" "sops-nix.service" ]
+            ++ lib.optional (cfg.transport == "tailscale") "tailscaled.service";
+          path = with pkgs; [
+            coreutils
+            etcd
+            python3
+            systemd
+          ];
+          serviceConfig = {
+            Type = "simple";
+            Restart = "always";
+            RestartSec = "5s";
+            ExecStart = "${pkgs.python3}/bin/python3 ${./dashboard.py} ${controllerConfigFile}";
           };
           environment = {
             PYTHONUNBUFFERED = "1";
@@ -570,6 +642,16 @@ in
           2380
         ];
       })
+
+      (lib.mkIf dashboardCfg.enable (
+        serviceExposure.mkConfig {
+          serviceName = "cluster-dashboard";
+          serviceDescription = "Cluster Dashboard";
+          inherit config;
+          endpoint = dashboardEndpoint;
+          exposeCfg = dashboardCfg.expose;
+        }
+      ))
 
       (lib.mkIf anyTlsExposure {
         services.caddy.enable = true;

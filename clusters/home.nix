@@ -37,6 +37,30 @@ in
         repoBaseDir = "/var/lib/alanix-backups";
         passwordSecret = "cluster/restic-password";
       };
+
+      dashboard = {
+        enable = true;
+        listenAddress = "127.0.0.1";
+        port = 9842;
+        recentEvents = 40;
+
+        expose = {
+          tailscale = {
+            enable = true;
+            port = 19842;
+          };
+
+          wireguard = {
+            enable = true;
+            port = 9842;
+          };
+
+          tor = {
+            enable = true;
+            publicPort = 80;
+          };
+        };
+      };
     };
 
     alanix.vaultwarden = {
