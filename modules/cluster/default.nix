@@ -609,6 +609,7 @@ in
           partOf = [ "alanix-cluster-active.target" ];
         };
 
+        systemd.services.backup-vaultwarden.wantedBy = lib.mkForce [ ];
         systemd.timers.backup-vaultwarden.wantedBy = lib.mkForce [ ];
       })
     ]
