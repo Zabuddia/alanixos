@@ -132,9 +132,9 @@ in
             data_dir=/var/lib/vaultwarden
 
             rm -rf "$data_dir"
-            mkdir -p "$(dirname "$data_dir")"
-            cp -a "$backup_dir" "$data_dir"
-            chown -R vaultwarden:vaultwarden "$data_dir"
+            mkdir -p "$data_dir"
+            cp -a "$backup_dir"/. "$data_dir"/
+            chown -R vaultwarden:vaultwarden "$backup_dir" "$data_dir"
           ''
         else
           null;
@@ -152,6 +152,10 @@ in
 
             backup_dir=${lib.escapeShellArg vaultwardenCfg.backupDir}
             backup_group=${lib.escapeShellArg backupRepoUserGroup}
+
+            mkdir -p "$backup_dir"
+            chown -R vaultwarden:vaultwarden "$backup_dir"
+            chmod -R u=rwX,go= "$backup_dir"
 
             systemctl start backup-vaultwarden.service
 
