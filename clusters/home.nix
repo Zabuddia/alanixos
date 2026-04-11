@@ -24,7 +24,7 @@ in
       };
 
       etcd = {
-        bootstrapGeneration = 1;
+        bootstrapGeneration = 2;
         heartbeatInterval = "500ms";
         electionTimeout = "5s";
         leaseTtl = "30s";
