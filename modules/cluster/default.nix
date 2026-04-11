@@ -139,6 +139,30 @@ in
         else
           null;
 
+      backupRepoUserGroup =
+        if lib.hasAttrByPath [ "users" "users" cfg.backup.repoUser ] config then
+          config.users.users.${cfg.backup.repoUser}.group
+        else
+          null;
+
+      vaultwardenBackupPrepScript =
+        if vaultwardenCluster then
+          pkgs.writeShellScript "alanix-vaultwarden-cluster-backup-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg vaultwardenCfg.backupDir}
+            backup_group=${lib.escapeShellArg backupRepoUserGroup}
+
+            systemctl start backup-vaultwarden.service
+
+            if [[ -d "$backup_dir" ]]; then
+              chgrp -R "$backup_group" "$backup_dir"
+              chmod -R u=rwX,g=rX,o= "$backup_dir"
+            fi
+          ''
+        else
+          null;
+
       vaultwardenWireguardAddress =
         if vaultwardenCfg.expose.wireguard.address != null then
           vaultwardenCfg.expose.wireguard.address
@@ -218,7 +242,7 @@ in
               [ "vaultwarden.service" ]
               ++ lib.optionals (anyTlsExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
             backupPaths = [ vaultwardenCfg.backupDir ];
-            preBackupCommand = [ "systemctl" "start" "backup-vaultwarden.service" ];
+            preBackupCommand = [ vaultwardenBackupPrepScript ];
             postRestoreCommand = [ vaultwardenRestoreScript ];
             remoteTargets =
               map
@@ -394,6 +418,10 @@ in
             {
               assertion = lib.hasAttrByPath [ "sops" "secrets" cfg.backup.passwordSecret ] config;
               message = "alanix.cluster.backup.passwordSecret must reference a declared sops secret.";
+            }
+            {
+              assertion = lib.hasAttrByPath [ "users" "users" cfg.backup.repoUser ] config;
+              message = "alanix.cluster.backup.repoUser must reference a declared local user.";
             }
           ]
           ++ map
