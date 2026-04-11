@@ -7,7 +7,6 @@
     imports = [
       ./hardware-configuration.nix
       ./secrets.nix
-      ../../clusters/home.nix
     ];
 
     alanix.system = {
@@ -53,7 +52,7 @@
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
         sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKpHeGMaMDqWna8I5fu0K2kaZ1GdOFIGw+8NsgH3aXE3 fife.alan@protonmail.com";
-        authorizedHosts = [ "alan-big-nixos" "alan-framework" "alan-framework-laptop" "alan-laptop-nixos" "alan-node" ];
+        authorizedHosts = [ "alan-big-nixos" "alan-framework" "alan-framework-laptop" "alan-laptop-nixos" "alan-node" "alan-optiplex" ];
 
         home = {
           enable = true;
@@ -119,6 +118,7 @@
         "alan-framework-laptop"
         "alan-laptop-nixos"
         "alan-node"
+        "alan-optiplex"
       ];
     };
 

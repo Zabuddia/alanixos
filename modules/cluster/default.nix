@@ -231,9 +231,10 @@ in
         action="''${1:-start}"
         runtime_dir=/run/alanix-cluster
         caddy_file="$runtime_dir/caddy/cluster.caddy"
-        tor_file="$runtime_dir/tor/cluster.conf"
+        tor_state_dir=/var/lib/tor/alanix-cluster
+        tor_file="$tor_state_dir/cluster.conf"
 
-        mkdir -p "$runtime_dir/caddy" "$runtime_dir/tor"
+        mkdir -p "$runtime_dir/caddy" "$tor_state_dir"
 
         if [[ "$action" == "start" ]]; then
           : > "$caddy_file"
@@ -281,21 +282,21 @@ in
           ''}
 
           ${lib.optionalString (vaultwardenCluster && vaultwardenCfg.expose.tor.enable) ''
-            rm -rf /run/alanix-cluster/tor/vaultwarden
-            mkdir -p /run/alanix-cluster/tor/vaultwarden
-            chown tor:tor /run/alanix-cluster/tor/vaultwarden
-            chmod 0700 /run/alanix-cluster/tor/vaultwarden
+            rm -rf "$tor_state_dir/vaultwarden"
+            mkdir -p "$tor_state_dir/vaultwarden"
+            chown tor:tor "$tor_state_dir/vaultwarden"
+            chmod 0700 "$tor_state_dir/vaultwarden"
           ''}
 
           ${lib.optionalString (vaultwardenCluster && vaultwardenCfg.expose.tor.enable && vaultwardenTorSecretPath != null) ''
-            base64 --decode ${lib.escapeShellArg vaultwardenTorSecretPath} > /run/alanix-cluster/tor/vaultwarden/hs_ed25519_secret_key
-            chown tor:tor /run/alanix-cluster/tor/vaultwarden/hs_ed25519_secret_key
-            chmod 0600 /run/alanix-cluster/tor/vaultwarden/hs_ed25519_secret_key
+            base64 --decode ${lib.escapeShellArg vaultwardenTorSecretPath} > "$tor_state_dir/vaultwarden/hs_ed25519_secret_key"
+            chown tor:tor "$tor_state_dir/vaultwarden/hs_ed25519_secret_key"
+            chmod 0600 "$tor_state_dir/vaultwarden/hs_ed25519_secret_key"
           ''}
 
           ${lib.optionalString (vaultwardenCluster && vaultwardenCfg.expose.tor.enable) ''
             cat >> "$tor_file" <<EOF
-            HiddenServiceDir /run/alanix-cluster/tor/vaultwarden
+            HiddenServiceDir $tor_state_dir/vaultwarden
             HiddenServiceVersion 3
             HiddenServicePort ${toString vaultwardenCfg.expose.tor.publicPort} ${vaultwardenTorTargetAddress}:${toString vaultwardenTorTargetPort}
 
@@ -314,7 +315,7 @@ in
         else
           : > "$caddy_file"
           : > "$tor_file"
-          rm -rf /run/alanix-cluster/tor/vaultwarden
+          rm -rf "$tor_state_dir/vaultwarden"
 
           ${lib.optionalString anyTlsExposure ''
             systemctl reload caddy.service || true
@@ -436,12 +437,14 @@ in
           [
             "d ${cfg.backup.repoBaseDir} 0700 ${cfg.backup.repoUser} users - -"
           ]
-          ++ lib.optionals (anyTlsExposure || anyTorExposure) [
+          ++ lib.optionals anyTlsExposure [
             "d /run/alanix-cluster 0755 root root - -"
             "d /run/alanix-cluster/caddy 0755 root root - -"
-            "d /run/alanix-cluster/tor 0755 root root - -"
             "f /run/alanix-cluster/caddy/cluster.caddy 0644 root root - -"
-            "f /run/alanix-cluster/tor/cluster.conf 0644 root root - -"
+          ]
+          ++ lib.optionals anyTorExposure [
+            "d /var/lib/tor/alanix-cluster 0750 root tor - -"
+            "f /var/lib/tor/alanix-cluster/cluster.conf 0640 root tor - -"
           ];
       }
 
@@ -469,6 +472,14 @@ in
           "ETCD_PEER_CLIENT_CERT_AUTH"
         ];
 
+        systemd.services.etcd.after =
+          [ "network-online.target" ]
+          ++ lib.optional (cfg.transport == "tailscale") "tailscaled.service";
+
+        systemd.services.etcd.wants =
+          [ "network-online.target" ]
+          ++ lib.optional (cfg.transport == "tailscale") "tailscaled.service";
+
       })
 
       (lib.mkIf (isVoter && cfg.transport == "wireguard") {
@@ -487,7 +498,7 @@ in
 
       (lib.mkIf anyTorExposure {
         services.tor.enable = true;
-        services.tor.settings."%include" = "/run/alanix-cluster/tor/cluster.conf";
+        services.tor.settings."%include" = "/var/lib/tor/alanix-cluster/cluster.conf";
       })
 
       (lib.mkIf (anyTlsExposure || anyTorExposure) {
