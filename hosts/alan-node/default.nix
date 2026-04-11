@@ -134,5 +134,24 @@
       acceptRoutes = true;
       operator = "buddia";
     };
+
+    alanix.remote-desktop = {
+      enable = true;
+      autoStart = true;
+      port = 5900;
+      output = "HEADLESS-1";
+    };
+
+    alanix.sunshine = {
+      enable = true;
+      autoStart = true;
+      openFirewall = true;
+      capSysAdmin = true;
+      webUi = {
+        port = 47990;
+        username = "buddia";
+        passwordFile = config.sops.secrets."sunshine-web-ui-passwords/alan-node".path;
+      };
+    };
   };
 }
