@@ -517,6 +517,8 @@ in
           "ETCD_PEER_CLIENT_CERT_AUTH"
         ];
 
+        systemd.services.etcd.serviceConfig.PermissionsStartOnly = true;
+
         systemd.services.etcd.after =
           [ "network-online.target" ]
           ++ lib.optional (cfg.transport == "tailscale") "tailscaled.service";
