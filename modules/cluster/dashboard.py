@@ -213,8 +213,24 @@ class Dashboard:
                 seen.add(unit)
         return ordered
 
-    def any_managed_active(self, unit_statuses: dict[str, dict]) -> bool:
-        return any(unit_statuses[unit].get("ActiveState") == "active" for unit in self.managed_units() if unit in unit_statuses)
+    def workload_units(self) -> list[str]:
+        units = [self.target]
+        for service in self.services.values():
+            units.extend(service.get("activeUnits", []))
+        seen = set()
+        ordered = []
+        for unit in units:
+            if unit not in seen:
+                ordered.append(unit)
+                seen.add(unit)
+        return ordered
+
+    def any_workload_active(self, unit_statuses: dict[str, dict]) -> bool:
+        return any(
+            unit_statuses[unit].get("ActiveState") == "active"
+            for unit in self.workload_units()
+            if unit in unit_statuses
+        )
 
     def manifest_state(self, service_name: str, service: dict) -> dict:
         manifests = []
@@ -310,7 +326,7 @@ class Dashboard:
         timestamp = now_utc().replace(microsecond=0).isoformat().replace("+00:00", "Z")
         leader = self.get_leader()
         unit_statuses = {unit: self.unit_status(unit) for unit in self.managed_units()}
-        any_active = self.any_managed_active(unit_statuses)
+        any_active = self.any_workload_active(unit_statuses)
         target_active = unit_statuses.get(self.target, {}).get("ActiveState") == "active"
 
         if leader.get("error"):
