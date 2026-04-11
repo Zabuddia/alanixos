@@ -32,7 +32,7 @@
     };
 
     alan-optiplex = {
-      recipient = "age1c39ghy9vgh2l0hkjv26r7jwgkw9s80yc5w8pa400cvp7ugdy5yfqv5z4vj";
+      recipient = "age15dpyxhmqtehzkhatfg65yh7nwslhtdmnyz4yrrtkj2y9mdzrjdfqj9kuq5";
       description = "Root-only runtime key stored at /var/lib/sops-nix/key.txt.";
     };
   };
