@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import base64
 import glob
 import json
 import os
@@ -94,7 +95,7 @@ class Controller:
             return None
         kv = kvs[0]
         return {
-            "host": kv["value"],
+            "host": base64.b64decode(kv["value"]).decode("utf-8"),
             "lease_id": str(kv.get("lease")),
             "create_revision": int(kv["create_revision"]),
             "mod_revision": int(kv["mod_revision"]),
@@ -334,7 +335,14 @@ get {self.leader_key}
             self.last_leader_absent_at = None
             if leader["host"] == self.hostname:
                 self.adopt_existing_leader(leader)
+            elif self.target_is_active():
+                log(f"stopping active target because {leader['host']} holds the cluster lease")
+                self.stop_target()
             return
+
+        if self.target_is_active():
+            log("stopping active target because no cluster lease is present")
+            self.stop_target()
 
         now = time.monotonic()
         if self.last_leader_absent_at is None:
