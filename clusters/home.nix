@@ -2,7 +2,7 @@
 let
   members = [
     "alan-big-nixos"
-    "randy-big-nixos"
+    "alan-optiplex"
     "alan-node"
   ];
 
@@ -19,7 +19,7 @@ in
       priority = members;
       addresses = {
         alan-big-nixos = "alan-big-nixos";
-        randy-big-nixos = "randy-big-nixos";
+        alan-optiplex = "alan-optiplex";
         alan-node = "alan-node";
       };
 
