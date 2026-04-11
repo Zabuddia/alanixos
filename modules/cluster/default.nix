@@ -61,6 +61,15 @@ in
     };
 
     etcd = {
+      bootstrapGeneration = lib.mkOption {
+        type = types.int;
+        default = 1;
+        description = ''
+          Explicit etcd bootstrap generation. Bump this when cluster membership or
+          initial etcd topology changes and the cluster should be re-initialized.
+        '';
+      };
+
       heartbeatInterval = lib.mkOption {
         type = types.str;
         default = "500ms";
@@ -376,6 +385,10 @@ in
               message = "alanix.cluster.transport = \"wireguard\" requires alanix.wireguard.vpnIP to be set.";
             }
             {
+              assertion = cfg.etcd.bootstrapGeneration >= 1;
+              message = "alanix.cluster.etcd.bootstrapGeneration must be at least 1.";
+            }
+            {
               assertion = lib.hasAttrByPath [ "sops" "secrets" cfg.backup.passwordSecret ] config;
               message = "alanix.cluster.backup.passwordSecret must reference a declared sops secret.";
             }
@@ -400,6 +413,17 @@ in
         systemd.targets."alanix-cluster-active" = {
           description = "Alanix cluster active target";
         };
+
+        system.activationScripts.alanixClusterTor = lib.mkIf anyTorExposure ''
+          mkdir -p /var/lib/tor/alanix-cluster
+          chown root:tor /var/lib/tor/alanix-cluster
+          chmod 0750 /var/lib/tor/alanix-cluster
+          if [ ! -e /var/lib/tor/alanix-cluster/cluster.conf ]; then
+            touch /var/lib/tor/alanix-cluster/cluster.conf
+          fi
+          chown root:tor /var/lib/tor/alanix-cluster/cluster.conf
+          chmod 0640 /var/lib/tor/alanix-cluster/cluster.conf
+        '';
 
         systemd.services."alanix-cluster-controller" = {
           description = "Alanix cluster controller";
@@ -465,6 +489,27 @@ in
             ELECTION_TIMEOUT = toString (parseDurationMs cfg.etcd.electionTimeout);
           };
         };
+
+        systemd.services.etcd.preStart = lib.mkBefore ''
+          set -euo pipefail
+
+          generation_file=/var/lib/etcd/.alanix-bootstrap-generation
+          desired_generation=${lib.escapeShellArg (toString cfg.etcd.bootstrapGeneration)}
+          current_generation=""
+
+          if [ -f "$generation_file" ]; then
+            current_generation="$(cat "$generation_file" 2>/dev/null || true)"
+          fi
+
+          if [ "$current_generation" != "$desired_generation" ]; then
+            echo "alanix-cluster: resetting /var/lib/etcd for bootstrap generation $desired_generation"
+            rm -rf /var/lib/etcd
+            install -d -o etcd -g etcd -m 0700 /var/lib/etcd
+            printf '%s\n' "$desired_generation" > "$generation_file"
+            chown etcd:etcd "$generation_file"
+            chmod 0600 "$generation_file"
+          fi
+        '';
 
         systemd.services.etcd.serviceConfig.UnsetEnvironment = [
           "ETCD_CLIENT_CERT_AUTH"
