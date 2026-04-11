@@ -39,6 +39,23 @@ def decode_etcd_string(value: str) -> str:
     return value
 
 
+def parse_lease_id(value) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value, 10)
+        except ValueError:
+            return int(value, 16)
+    raise ValueError(f"unsupported lease id type: {type(value)!r}")
+
+
+def lease_id_arg(value: int) -> str:
+    return format(value, "x")
+
+
 class Controller:
     def __init__(self, config_path: str) -> None:
         with open(config_path, "r", encoding="utf-8") as handle:
@@ -106,17 +123,17 @@ class Controller:
         kv = kvs[0]
         return {
             "host": decode_etcd_string(kv["value"]),
-            "lease_id": str(kv.get("lease")),
+            "lease_id": parse_lease_id(kv.get("lease")),
             "create_revision": int(kv["create_revision"]),
             "mod_revision": int(kv["mod_revision"]),
         }
 
     def grant_lease(self):
         payload = json.loads(self.etcdctl(["lease", "grant", str(self.lease_ttl)]).stdout)
-        return str(payload["ID"])
+        return parse_lease_id(payload["ID"])
 
     def revoke_lease(self, lease_id):
-        self.etcdctl(["lease", "revoke", str(lease_id)], check=False)
+        self.etcdctl(["lease", "revoke", lease_id_arg(lease_id)], check=False)
 
     def acquire_lease(self):
         lease_id = self.grant_lease()
@@ -124,12 +141,14 @@ class Controller:
 version("{self.leader_key}") = "0"
 
 success requests (get, put, delete):
-put {self.leader_key} {self.hostname} --lease={lease_id}
+put {self.leader_key} {self.hostname} --lease={lease_id_arg(lease_id)}
 
 failure requests (get, put, delete):
 get {self.leader_key}
 """
-        self.etcdctl(["txn", "-i"], check=False, input_text=txn)
+        txn_proc = self.etcdctl(["txn", "-i"], check=False, input_text=txn)
+        if txn_proc.returncode != 0:
+            log(f"failed lease acquisition transaction: {txn_proc.stderr.strip() or txn_proc.stdout.strip()}")
         leader = self.get_leader()
         if leader and leader["host"] == self.hostname and leader["lease_id"] == lease_id:
             return leader
@@ -143,7 +162,7 @@ get {self.leader_key}
             f"--endpoints={','.join(self.endpoints)}",
             "lease",
             "keep-alive",
-            str(lease_id),
+            lease_id_arg(lease_id),
         ]
         env = os.environ.copy()
         env["ETCDCTL_API"] = "3"
@@ -167,11 +186,29 @@ get {self.leader_key}
     def target_is_active(self):
         return self.run(["systemctl", "is-active", "--quiet", self.target], check=False).returncode == 0
 
+    def managed_units(self):
+        units = [self.target]
+        for service in self.services.values():
+            units.extend(service.get("activeUnits", []))
+        seen = set()
+        ordered = []
+        for unit in units:
+            if unit not in seen:
+                ordered.append(unit)
+                seen.add(unit)
+        return ordered
+
+    def any_managed_unit_active(self):
+        return any(
+            self.run(["systemctl", "is-active", "--quiet", unit], check=False).returncode == 0
+            for unit in self.managed_units()
+        )
+
     def start_target(self):
         self.run(["systemctl", "start", self.target])
 
     def stop_target(self):
-        self.run(["systemctl", "stop", self.target], check=False)
+        self.run(["systemctl", "stop"] + self.managed_units(), check=False)
 
     def demote(self, reason):
         log(f"demoting: {reason}")
@@ -345,12 +382,12 @@ get {self.leader_key}
             self.last_leader_absent_at = None
             if leader["host"] == self.hostname:
                 self.adopt_existing_leader(leader)
-            elif self.target_is_active():
+            elif self.any_managed_unit_active():
                 log(f"stopping active target because {leader['host']} holds the cluster lease")
                 self.stop_target()
             return
 
-        if self.target_is_active():
+        if self.any_managed_unit_active():
             log("stopping active target because no cluster lease is present")
             self.stop_target()
 
