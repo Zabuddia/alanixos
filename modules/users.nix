@@ -280,6 +280,7 @@ in
       home-manager.useGlobalPkgs = true;
       home-manager.useUserPackages = true;
       home-manager.extraSpecialArgs = { inherit pkgs-unstable; };
+      home-manager.backupFileExtension = "hm-backup";
       home-manager.users = lib.mapAttrs mkHomeConfig homeEnabledAccounts;
     })
 
