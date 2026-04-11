@@ -29,6 +29,16 @@ def parse_duration_seconds(value: str) -> float:
     raise ValueError(f"unsupported duration: {value}")
 
 
+def decode_etcd_string(value: str) -> str:
+    try:
+        decoded = base64.b64decode(value, validate=True).decode("utf-8")
+        if decoded and all(ch.isprintable() or ch.isspace() for ch in decoded):
+            return decoded
+    except Exception:
+        pass
+    return value
+
+
 class Controller:
     def __init__(self, config_path: str) -> None:
         with open(config_path, "r", encoding="utf-8") as handle:
@@ -95,7 +105,7 @@ class Controller:
             return None
         kv = kvs[0]
         return {
-            "host": base64.b64decode(kv["value"]).decode("utf-8"),
+            "host": decode_etcd_string(kv["value"]),
             "lease_id": str(kv.get("lease")),
             "create_revision": int(kv["create_revision"]),
             "mod_revision": int(kv["mod_revision"]),
