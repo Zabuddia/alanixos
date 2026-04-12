@@ -161,6 +161,7 @@ in
           enable = true;
           publicPort = 80;
           secretKeyBase64Secret = "tor/invidious/secret-key-base64";
+          hostname = "hdfigfl2dxihdtzkowytehos7k4fgcupgr2jy2yjr7erd5cupcl33lid.onion";
         };
 
         tailscale = {

@@ -104,6 +104,12 @@ def unique_links(links: list[dict]) -> list[dict]:
     return unique
 
 
+def build_url(*, scheme: str, host: str, port: int, path: str = "/") -> str:
+    default_port = 443 if scheme == "https" else 80
+    port_suffix = "" if port == default_port else f":{port}"
+    return f"{scheme}://{host}{port_suffix}{path}"
+
+
 
 class Dashboard:
     def __init__(self, config_path: str) -> None:
@@ -245,6 +251,32 @@ class Dashboard:
             if unit in unit_statuses
         )
 
+    def runtime_tor_link(self, service_name: str, service: dict) -> dict | None:
+        tor_cfg = service.get("tor") or {}
+        if not tor_cfg.get("enabled"):
+            return None
+
+        state_dir_name = tor_cfg.get("stateDirName") or service_name
+        hostname_path = Path("/var/lib/tor/alanix-cluster") / state_dir_name / "hostname"
+        if not hostname_path.exists():
+            return None
+
+        try:
+            hostname = hostname_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+
+        if not hostname:
+            return None
+
+        scheme = "https" if tor_cfg.get("tls") else "http"
+        port = int(tor_cfg.get("publicPort") or (443 if scheme == "https" else 80))
+        return {
+            "url": build_url(scheme=scheme, host=hostname, port=port),
+            "label": f"{service_name.title()} (tor)",
+            "transport": "tor",
+        }
+
     def manifest_state(self, service_name: str, service: dict) -> dict:
         manifests = []
         for path in glob.glob(service["localManifestGlob"]):
@@ -306,6 +338,10 @@ class Dashboard:
                 "label": f"{service_name.title()} (tor)",
                 "transport": "tor",
             }
+        else:
+            tor_link = self.runtime_tor_link(service_name, service)
+            if tor_link:
+                result["torLink"] = tor_link
 
         return result
 
