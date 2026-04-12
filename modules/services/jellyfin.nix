@@ -1401,7 +1401,10 @@ in
             wait_for_server
 
             if ! try_declared_admin_logins; then
-              if [ ! -e "$BOOTSTRAP_MARKER" ]; then
+              if startup_is_incomplete; then
+                echo "Jellyfin startup is incomplete; bootstrapping declared admin."
+                bootstrap_first_admin || true
+              elif [ ! -e "$BOOTSTRAP_MARKER" ]; then
                 bootstrap_first_admin || true
               fi
 
