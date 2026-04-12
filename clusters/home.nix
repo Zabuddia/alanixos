@@ -278,6 +278,7 @@ in
           enable = true;
           publicPort = 80;
           secretKeyBase64Secret = "tor/jellyfin/secret-key-base64";
+          hostname = "ca5amtznn5yqbiytylqaz3vplp6fm7s736gncdzjmezvkf2bhlm5ktad.onion";
         };
 
         tailscale = {
