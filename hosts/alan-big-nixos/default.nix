@@ -316,28 +316,6 @@
       };
     };
 
-    alanix.immich = {
-      enable = true;
-      listenAddress = "127.0.0.1";
-      port = 2283;
-      expose.tor = {
-        enable = true;
-        publicPort = 80;
-        secretKeyBase64Secret = "tor/immich/secret-key-base64";
-      };
-      expose.wireguard = {
-        enable = true;
-        address = "10.100.0.1";
-        port = 2283;
-      };
-      users.buddia = {
-        admin = true;
-        email = "fife.alan@protonmail.com";
-        name = "Alan Fife";
-        passwordSecret = "immich-passwords/buddia";
-      };
-    };
-
     alanix.nextcloud = {
       enable = true;
       listenAddress = "127.0.0.1";

@@ -186,5 +186,38 @@ in
         passwordSecret = "invidious-passwords/buddia";
       };
     };
+
+    alanix.immich = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 2283;
+      backupDir = "/var/backup/immich";
+
+      expose = {
+        tor = {
+          enable = true;
+          publicPort = 80;
+          secretKeyBase64Secret = "tor/immich/secret-key-base64";
+        };
+
+        wireguard = {
+          enable = true;
+          port = 2283;
+        };
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "15m";
+        maxBackupAge = "1h";
+      };
+
+      users.buddia = {
+        admin = true;
+        email = "fife.alan@protonmail.com";
+        name = "Alan Fife";
+        passwordSecret = "immich-passwords/buddia";
+      };
+    };
   };
 }
