@@ -101,5 +101,40 @@ in
         sameTorAddress = true;
       };
     };
+
+    alanix.forgejo = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 3000;
+      rootUrl = "https://${config.alanix.tailscale.address}:13000/";
+      backupDir = "/var/backup/forgejo";
+
+      expose = {
+        tailscale = {
+          enable = true;
+          port = 13000;
+          tls = true;
+          tlsName = config.alanix.tailscale.address;
+        };
+
+        tor = {
+          enable = true;
+          publicPort = 80;
+          secretKeyBase64Secret = "tor/forgejo/secret-key-base64";
+        };
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "5m";
+        maxBackupAge = "15m";
+      };
+
+      users.buddia = {
+        admin = true;
+        email = "fife.alan@protonmail.com";
+        passwordSecret = "forgejo-passwords/buddia";
+      };
+    };
   };
 }

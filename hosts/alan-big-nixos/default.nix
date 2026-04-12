@@ -189,27 +189,6 @@
       };
     };
 
-    alanix.forgejo = {
-      enable = true;
-      listenAddress = "127.0.0.1";
-      port = 3000;
-      expose.tor = {
-        enable = true;
-        publicPort = 80;
-        secretKeyBase64Secret = "tor/forgejo/secret-key-base64";
-      };
-      expose.wireguard = {
-        enable = true;
-        address = "10.100.0.1";
-        port = 3000;
-      };
-      users.buddia = {
-        admin = true;
-        email = "fife.alan@protonmail.com";
-        passwordSecret = "forgejo-passwords/buddia";
-      };
-    };
-
     alanix.openwebui = {
       enable = true;
       listenAddress = "127.0.0.1";

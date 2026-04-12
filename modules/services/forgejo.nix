@@ -1,6 +1,7 @@
 { config, lib, pkgs, ... }:
 let
   cfg = config.alanix.forgejo;
+  clusterCfg = cfg.cluster;
   serviceExposure = import ../../lib/mkServiceExposure.nix { inherit lib pkgs; };
   passwordUsers = import ../../lib/mkPlaintextPasswordUsers.nix { inherit lib; };
   serviceIdentity = import ../../lib/mkServiceIdentity.nix { inherit lib; };
@@ -91,6 +92,26 @@ in
       default = true;
     };
 
+    backupDir = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Optional Forgejo cluster backup staging directory.";
+    };
+
+    cluster = {
+      enable = lib.mkEnableOption "cluster-manage Forgejo through alanix.cluster";
+
+      backupInterval = lib.mkOption {
+        type = lib.types.str;
+        default = "5m";
+      };
+
+      maxBackupAge = lib.mkOption {
+        type = lib.types.str;
+        default = "15m";
+      };
+    };
+
     pruneUndeclaredUsers = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -156,8 +177,16 @@ in
             message = "alanix.forgejo.stateDir must be an absolute path.";
           }
           {
+            assertion = cfg.backupDir == null || lib.hasPrefix "/" cfg.backupDir;
+            message = "alanix.forgejo.backupDir must be an absolute path when set.";
+          }
+          {
             assertion = config.services.forgejo.database.type == "sqlite3";
             message = "alanix.forgejo declarative users currently support only Forgejo's default sqlite3 database.";
+          }
+          {
+            assertion = !clusterCfg.enable || cfg.backupDir != null;
+            message = "alanix.forgejo.cluster.enable requires alanix.forgejo.backupDir to be set.";
           }
         ]
         ++ serviceExposure.mkAssertions {
@@ -353,7 +382,7 @@ in
       };
     }
 
-    (lib.mkIf baseConfigReady (
+    (lib.mkIf (baseConfigReady && !clusterCfg.enable) (
       serviceExposure.mkConfig {
         inherit config endpoint exposeCfg;
         serviceName = "forgejo";

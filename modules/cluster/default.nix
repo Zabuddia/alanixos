@@ -1,4 +1,4 @@
-{ config, lib, pkgs, hostname, ... }:
+{ config, lib, pkgs, hostname, allHosts, ... }:
 let
   cfg = config.alanix.cluster;
   types = lib.types;
@@ -150,13 +150,144 @@ in
       isVoter = builtins.elem hostname cfg.voters;
 
       vaultwardenCfg = config.alanix.vaultwarden;
+      forgejoCfg = config.alanix.forgejo;
       vaultwardenCluster = vaultwardenCfg.enable && vaultwardenCfg.cluster.enable;
+      forgejoCluster = forgejoCfg.enable && forgejoCfg.cluster.enable;
       dashboardCfg = cfg.dashboard;
       dashboardEndpoint = {
         address = dashboardCfg.listenAddress;
         port = dashboardCfg.port;
         protocol = "http";
       };
+
+      peerHostCfg = peer: lib.attrByPath [ peer ] null allHosts;
+
+      peerTailscaleAddress =
+        peer:
+        let
+          hostCfg = peerHostCfg peer;
+        in
+        if hostCfg != null then hostCfg.config.alanix.tailscale.address else null;
+
+      peerWireguardAddress =
+        peer:
+        let
+          hostCfg = peerHostCfg peer;
+        in
+        if hostCfg != null then hostCfg.config.alanix.wireguard.vpnIP else null;
+
+      mkUrl =
+        {
+          scheme,
+          host,
+          port,
+          path ? "/",
+        }:
+        let
+          defaultPort =
+            if scheme == "https" then
+              443
+            else
+              80;
+          portSuffix = if port == defaultPort then "" else ":${toString port}";
+        in
+        "${scheme}://${host}${portSuffix}${path}";
+
+      mkConstantLinksByHost =
+        links:
+        lib.listToAttrs (
+          map (peer: {
+            name = peer;
+            value = links;
+          }) cfg.members
+        );
+
+      mkPeerLinksByHost =
+        {
+          label,
+          transport,
+          scheme,
+          port,
+          addressFn,
+        }:
+        lib.listToAttrs (
+          map (peer: {
+            name = peer;
+            value =
+              let
+                address = addressFn peer;
+              in
+              lib.optionals (address != null && address != "") [
+                {
+                  inherit scheme transport;
+                  label = "${label} (${transport})";
+                  host = peer;
+                  url = mkUrl {
+                    inherit scheme port;
+                    host = address;
+                  };
+                }
+              ];
+          }) cfg.members
+        );
+
+      mkPeerConfigLinksByHost =
+        {
+          label,
+          transport ? "canonical",
+          urlFn,
+        }:
+        lib.listToAttrs (
+          map (peer: {
+            name = peer;
+            value =
+              let
+                url = urlFn peer;
+              in
+              lib.optionals (url != null && url != "") [
+                {
+                  inherit label transport;
+                  host = peer;
+                  url = url;
+                }
+              ];
+          }) cfg.members
+        );
+
+      mergeLinksByHost =
+        attrsets:
+        lib.listToAttrs (
+          map (peer: {
+            name = peer;
+            value = lib.concatLists (map (attrs: attrs.${peer} or [ ]) attrsets);
+          }) cfg.members
+        );
+
+      dashboardLinks =
+        lib.optionals dashboardCfg.expose.tailscale.enable (
+          map (peer: {
+            label = "${peer} dashboard (tailscale)";
+            host = peer;
+            transport = "tailscale";
+            url = mkUrl {
+              scheme = "http";
+              host = peerTailscaleAddress peer;
+              port = dashboardCfg.expose.tailscale.port;
+            };
+          }) (lib.filter (peer: peerTailscaleAddress peer != null && peerTailscaleAddress peer != "") cfg.members)
+        )
+        ++ lib.optionals dashboardCfg.expose.wireguard.enable (
+          map (peer: {
+            label = "${peer} dashboard (wireguard)";
+            host = peer;
+            transport = "wireguard";
+            url = mkUrl {
+              scheme = "http";
+              host = peerWireguardAddress peer;
+              port = dashboardCfg.expose.wireguard.port;
+            };
+          }) (lib.filter (peer: peerWireguardAddress peer != null && peerWireguardAddress peer != "") cfg.members)
+        );
 
       vaultwardenRestoreScript =
         if vaultwardenCluster then
@@ -180,6 +311,36 @@ in
         else
           null;
 
+      forgejoRestoreScript =
+        if forgejoCluster then
+          let
+            stagedStateDir = "${forgejoCfg.backupDir}${forgejoCfg.stateDir}";
+            stagedDbPath = "${forgejoCfg.backupDir}${config.services.forgejo.database.path}";
+          in
+          pkgs.writeShellScript "alanix-forgejo-cluster-restore-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg forgejoCfg.backupDir}
+            state_dir=${lib.escapeShellArg forgejoCfg.stateDir}
+            db_path=${lib.escapeShellArg config.services.forgejo.database.path}
+            staged_state_dir=${lib.escapeShellArg stagedStateDir}
+            staged_db_path=${lib.escapeShellArg stagedDbPath}
+
+            rm -rf "$state_dir"
+            mkdir -p "$state_dir"
+            if [[ -d "$staged_state_dir" ]]; then
+              cp -a "$staged_state_dir"/. "$state_dir"/
+            fi
+
+            mkdir -p "$(dirname "$db_path")"
+            cp -a "$staged_db_path" "$db_path"
+
+            chown -R forgejo:forgejo "$backup_dir" "$state_dir"
+            chown forgejo:forgejo "$db_path"
+          ''
+        else
+          null;
+
       vaultwardenBackupPrepScript =
         if vaultwardenCluster then
           pkgs.writeShellScript "alanix-vaultwarden-cluster-backup-runtime" ''
@@ -198,6 +359,35 @@ in
               chgrp -R "$backup_group" "$backup_dir"
               chmod -R u=rwX,g=rX,o= "$backup_dir"
             fi
+          ''
+        else
+          null;
+
+      forgejoBackupPrepScript =
+        if forgejoCluster then
+          let
+            stagedStateDir = "${forgejoCfg.backupDir}${forgejoCfg.stateDir}";
+            stagedDbPath = "${forgejoCfg.backupDir}${config.services.forgejo.database.path}";
+          in
+          pkgs.writeShellScript "alanix-forgejo-cluster-backup-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg forgejoCfg.backupDir}
+            backup_group=${lib.escapeShellArg backupRepoUserGroup}
+            state_dir=${lib.escapeShellArg forgejoCfg.stateDir}
+            db_path=${lib.escapeShellArg config.services.forgejo.database.path}
+            staged_state_dir=${lib.escapeShellArg stagedStateDir}
+            staged_db_path=${lib.escapeShellArg stagedDbPath}
+
+            rm -rf "$backup_dir"
+            mkdir -p "$staged_state_dir" "$(dirname "$staged_db_path")"
+
+            rsync -a --delete "$state_dir"/ "$staged_state_dir"/
+            sqlite3 "$db_path" ".backup '$staged_db_path'"
+
+            chown -R forgejo:forgejo "$backup_dir"
+            chgrp -R "$backup_group" "$backup_dir"
+            chmod -R u=rwX,g=rX,o= "$backup_dir"
           ''
         else
           null;
@@ -234,15 +424,121 @@ in
         else
           null;
 
-      anyTlsExposure =
-        vaultwardenCluster
-        && (
-          (vaultwardenCfg.expose.tailscale.enable && vaultwardenCfg.expose.tailscale.tls)
-          || (vaultwardenCfg.expose.wireguard.enable && vaultwardenCfg.expose.wireguard.tls)
-          || (vaultwardenCfg.expose.tor.enable && vaultwardenCfg.expose.tor.tls)
+      forgejoWireguardAddress =
+        if forgejoCfg.expose.wireguard.address != null then
+          forgejoCfg.expose.wireguard.address
+        else
+          config.alanix.wireguard.vpnIP;
+
+      forgejoTailscaleTlsName =
+        if forgejoCfg.expose.tailscale.tlsName != null then
+          forgejoCfg.expose.tailscale.tlsName
+        else
+          config.alanix.tailscale.address;
+
+      forgejoTorTargetAddress =
+        normalizeLocalAddress (
+          if forgejoCfg.expose.tor.targetAddress != null then
+            forgejoCfg.expose.tor.targetAddress
+          else
+            forgejoCfg.listenAddress
         );
 
-      anyTorExposure = vaultwardenCluster && vaultwardenCfg.expose.tor.enable;
+      forgejoTorTargetPort =
+        if forgejoCfg.expose.tor.tls then
+          forgejoCfg.expose.tor.publicPort
+        else
+          forgejoCfg.port;
+
+      forgejoTorSecretPath =
+        if forgejoCfg.expose.tor.secretKeyBase64Secret != null then
+          config.sops.secrets.${forgejoCfg.expose.tor.secretKeyBase64Secret}.path
+        else
+          null;
+
+      anyTlsExposure =
+        (
+          vaultwardenCluster
+          && (
+            (vaultwardenCfg.expose.tailscale.enable && vaultwardenCfg.expose.tailscale.tls)
+            || (vaultwardenCfg.expose.wireguard.enable && vaultwardenCfg.expose.wireguard.tls)
+            || (vaultwardenCfg.expose.tor.enable && vaultwardenCfg.expose.tor.tls)
+          )
+        )
+        || (
+          forgejoCluster
+          && (
+            (forgejoCfg.expose.tailscale.enable && forgejoCfg.expose.tailscale.tls)
+            || (forgejoCfg.expose.wireguard.enable && forgejoCfg.expose.wireguard.tls)
+            || (forgejoCfg.expose.tor.enable && forgejoCfg.expose.tor.tls)
+          )
+        );
+
+      anyTorExposure =
+        (vaultwardenCluster && vaultwardenCfg.expose.tor.enable)
+        || (forgejoCluster && forgejoCfg.expose.tor.enable);
+
+      vaultwardenLinksByHost = mergeLinksByHost [
+        (lib.optionalAttrs (vaultwardenCluster && vaultwardenCfg.expose.tailscale.enable) (
+          mkPeerLinksByHost {
+            label = "Vaultwarden";
+            transport = "tailscale";
+            scheme = if vaultwardenCfg.expose.tailscale.tls then "https" else "http";
+            port = vaultwardenCfg.expose.tailscale.port;
+            addressFn = peerTailscaleAddress;
+          }
+        ))
+        (lib.optionalAttrs (vaultwardenCluster && vaultwardenCfg.expose.wireguard.enable) (
+          mkPeerLinksByHost {
+            label = "Vaultwarden";
+            transport = "wireguard";
+            scheme = if vaultwardenCfg.expose.wireguard.tls then "https" else "http";
+            port = vaultwardenCfg.expose.wireguard.port;
+            addressFn = peerWireguardAddress;
+          }
+        ))
+        (lib.optionalAttrs vaultwardenCluster (
+          mkPeerConfigLinksByHost {
+            label = "Vaultwarden (canonical)";
+            urlFn = peer:
+              let
+                hostCfg = peerHostCfg peer;
+              in
+              if hostCfg != null then hostCfg.config.alanix.vaultwarden.rootUrl else null;
+          }
+        ))
+      ];
+
+      forgejoLinksByHost = mergeLinksByHost [
+        (lib.optionalAttrs (forgejoCluster && forgejoCfg.expose.tailscale.enable) (
+          mkPeerLinksByHost {
+            label = "Forgejo";
+            transport = "tailscale";
+            scheme = if forgejoCfg.expose.tailscale.tls then "https" else "http";
+            port = forgejoCfg.expose.tailscale.port;
+            addressFn = peerTailscaleAddress;
+          }
+        ))
+        (lib.optionalAttrs (forgejoCluster && forgejoCfg.expose.wireguard.enable) (
+          mkPeerLinksByHost {
+            label = "Forgejo";
+            transport = "wireguard";
+            scheme = if forgejoCfg.expose.wireguard.tls then "https" else "http";
+            port = forgejoCfg.expose.wireguard.port;
+            addressFn = peerWireguardAddress;
+          }
+        ))
+        (lib.optionalAttrs forgejoCluster (
+          mkPeerConfigLinksByHost {
+            label = "Forgejo (canonical)";
+            urlFn = peer:
+              let
+                hostCfg = peerHostCfg peer;
+              in
+              if hostCfg != null then hostCfg.config.alanix.forgejo.rootUrl else null;
+          }
+        ))
+      ];
 
       controllerConfig = {
         cluster = {
@@ -276,31 +572,59 @@ in
           listenAddress = dashboardCfg.listenAddress;
           port = dashboardCfg.port;
           recentEvents = dashboardCfg.recentEvents;
+          links = dashboardLinks;
         };
-        services = lib.optionalAttrs vaultwardenCluster {
-          vaultwarden = {
-            name = "vaultwarden";
-            backupInterval = vaultwardenCfg.cluster.backupInterval;
-            maxBackupAge = vaultwardenCfg.cluster.maxBackupAge;
-            activeUnits =
-              [ "vaultwarden.service" ]
-              ++ lib.optionals (anyTlsExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
-            backupPaths = [ vaultwardenCfg.backupDir ];
-            preBackupCommand = [ vaultwardenBackupPrepScript ];
-            postRestoreCommand = [ vaultwardenRestoreScript ];
-            remoteTargets =
-              map
-                (peer: {
-                  host = peer;
-                  address = hostTransportAddress peer;
-                  repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-${hostname}/repo";
-                  manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-${hostname}/manifest.json";
-                })
-                (lib.filter (peer: peer != hostname) cfg.members);
-            localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-*/repo";
-            localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-*/manifest.json";
-          };
-        };
+        services =
+          (lib.optionalAttrs vaultwardenCluster {
+            vaultwarden = {
+              name = "vaultwarden";
+              backupInterval = vaultwardenCfg.cluster.backupInterval;
+              maxBackupAge = vaultwardenCfg.cluster.maxBackupAge;
+              activeUnits =
+                [ "vaultwarden.service" ]
+                ++ lib.optionals (anyTlsExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
+              backupPaths = [ vaultwardenCfg.backupDir ];
+              preBackupCommand = [ vaultwardenBackupPrepScript ];
+              postRestoreCommand = [ vaultwardenRestoreScript ];
+              remoteTargets =
+                map
+                  (peer: {
+                    host = peer;
+                    address = hostTransportAddress peer;
+                    repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-${hostname}/repo";
+                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-${hostname}/manifest.json";
+                  })
+                  (lib.filter (peer: peer != hostname) cfg.members);
+              localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-*/repo";
+              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-*/manifest.json";
+              linksByHost = vaultwardenLinksByHost;
+            };
+          })
+          // (lib.optionalAttrs forgejoCluster {
+            forgejo = {
+              name = "forgejo";
+              backupInterval = forgejoCfg.cluster.backupInterval;
+              maxBackupAge = forgejoCfg.cluster.maxBackupAge;
+              activeUnits =
+                [ "forgejo.service" ]
+                ++ lib.optionals (anyTlsExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
+              backupPaths = [ forgejoCfg.backupDir ];
+              preBackupCommand = [ forgejoBackupPrepScript ];
+              postRestoreCommand = [ forgejoRestoreScript ];
+              remoteTargets =
+                map
+                  (peer: {
+                    host = peer;
+                    address = hostTransportAddress peer;
+                    repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-${hostname}/repo";
+                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-${hostname}/manifest.json";
+                  })
+                  (lib.filter (peer: peer != hostname) cfg.members);
+              localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-*/repo";
+              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-*/manifest.json";
+              linksByHost = forgejoLinksByHost;
+            };
+          });
       };
 
       controllerConfigFile = pkgs.writeText "alanix-cluster-controller.json" (builtins.toJSON controllerConfig);
@@ -320,7 +644,10 @@ in
           : > "$caddy_file"
           : > "$tor_file"
 
-          ${lib.optionalString (cfg.transport == "tailscale" && anyTlsExposure && vaultwardenCfg.expose.tailscale.enable && vaultwardenCfg.expose.tailscale.tls) ''
+          ${lib.optionalString (cfg.transport == "tailscale" && anyTlsExposure && (
+            (vaultwardenCluster && vaultwardenCfg.expose.tailscale.enable && vaultwardenCfg.expose.tailscale.tls)
+            || (forgejoCluster && forgejoCfg.expose.tailscale.enable && forgejoCfg.expose.tailscale.tls)
+          )) ''
             ts_ip="$(${config.services.tailscale.package}/bin/tailscale ip -4 | head -n1)"
             if [[ -z "$ts_ip" ]]; then
               echo "failed to determine Tailscale IPv4 address" >&2
@@ -383,6 +710,61 @@ in
             EOF
           ''}
 
+          ${lib.optionalString (forgejoCluster && forgejoCfg.expose.tailscale.enable && forgejoCfg.expose.tailscale.tls) ''
+            cat >> "$caddy_file" <<EOF
+            https://${forgejoTailscaleTlsName}:${toString forgejoCfg.expose.tailscale.port} {
+              bind $ts_ip
+              tls internal
+              reverse_proxy ${normalizeLocalAddress forgejoCfg.listenAddress}:${toString forgejoCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (forgejoCluster && forgejoCfg.expose.wireguard.enable && forgejoCfg.expose.wireguard.tls) ''
+            cat >> "$caddy_file" <<EOF
+            https://${forgejoWireguardAddress}:${toString forgejoCfg.expose.wireguard.port} {
+              bind ${forgejoWireguardAddress}
+              tls internal
+              reverse_proxy ${normalizeLocalAddress forgejoCfg.listenAddress}:${toString forgejoCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (forgejoCluster && forgejoCfg.expose.tor.enable && forgejoCfg.expose.tor.tls) ''
+            cat >> "$caddy_file" <<EOF
+            https://${forgejoCfg.expose.tor.tlsName}:${toString forgejoCfg.expose.tor.publicPort} {
+              bind ${forgejoTorTargetAddress}
+              tls internal
+              reverse_proxy ${normalizeLocalAddress forgejoCfg.listenAddress}:${toString forgejoCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (forgejoCluster && forgejoCfg.expose.tor.enable) ''
+            rm -rf "$tor_state_dir/forgejo"
+            mkdir -p "$tor_state_dir/forgejo"
+            chown tor:tor "$tor_state_dir/forgejo"
+            chmod 0700 "$tor_state_dir/forgejo"
+          ''}
+
+          ${lib.optionalString (forgejoCluster && forgejoCfg.expose.tor.enable && forgejoTorSecretPath != null) ''
+            base64 --decode ${lib.escapeShellArg forgejoTorSecretPath} > "$tor_state_dir/forgejo/hs_ed25519_secret_key"
+            chown tor:tor "$tor_state_dir/forgejo/hs_ed25519_secret_key"
+            chmod 0600 "$tor_state_dir/forgejo/hs_ed25519_secret_key"
+          ''}
+
+          ${lib.optionalString (forgejoCluster && forgejoCfg.expose.tor.enable) ''
+            cat >> "$tor_file" <<EOF
+            HiddenServiceDir $tor_state_dir/forgejo
+            HiddenServiceVersion 3
+            HiddenServicePort ${toString forgejoCfg.expose.tor.publicPort} ${forgejoTorTargetAddress}:${toString forgejoTorTargetPort}
+
+            EOF
+          ''}
+
           ${lib.optionalString anyTlsExposure ''
             systemctl start caddy.service
             systemctl reload caddy.service
@@ -396,6 +778,7 @@ in
           : > "$caddy_file"
           : > "$tor_file"
           rm -rf "$tor_state_dir/vaultwarden"
+          rm -rf "$tor_state_dir/forgejo"
 
           ${lib.optionalString anyTlsExposure ''
             systemctl reload caddy.service || true
@@ -484,6 +867,12 @@ in
               message = "Vaultwarden cluster mode requires backup-vaultwarden.service to exist.";
             }
           ]
+          ++ lib.optionals forgejoCluster [
+            {
+              assertion = config.services.forgejo.database.type == "sqlite3";
+              message = "Forgejo cluster mode currently requires the sqlite3 backend.";
+            }
+          ]
           ++ serviceExposure.mkAssertions {
             inherit config;
             optionPrefix = "alanix.cluster.dashboard.expose";
@@ -524,6 +913,8 @@ in
             openssh
             python3
             restic
+            rsync
+            sqlite
             systemd
             util-linux
           ];
@@ -567,6 +958,9 @@ in
         systemd.tmpfiles.rules =
           [
             "d ${cfg.backup.repoBaseDir} 0700 ${cfg.backup.repoUser} users - -"
+          ]
+          ++ lib.optionals forgejoCluster [
+            "d ${forgejoCfg.backupDir} 0750 forgejo ${backupRepoUserGroup} - -"
           ]
           ++ lib.optionals anyTlsExposure [
             "d /run/alanix-cluster 0755 root root - -"
@@ -670,8 +1064,12 @@ in
           description = "Alanix cluster runtime exposure manager";
           wantedBy = [ "alanix-cluster-active.target" ];
           partOf = [ "alanix-cluster-active.target" ];
-          after = [ "vaultwarden.service" ];
-          wants = [ "vaultwarden.service" ];
+          after =
+            lib.optionals vaultwardenCluster [ "vaultwarden.service" ]
+            ++ lib.optionals forgejoCluster [ "forgejo.service" ];
+          wants =
+            lib.optionals vaultwardenCluster [ "vaultwarden.service" ]
+            ++ lib.optionals forgejoCluster [ "forgejo.service" ];
           path =
             [ pkgs.coreutils pkgs.systemd ]
             ++ lib.optionals anyTlsExposure [ config.services.caddy.package ]
@@ -693,6 +1091,13 @@ in
 
         systemd.services.backup-vaultwarden.wantedBy = lib.mkForce [ ];
         systemd.timers.backup-vaultwarden.wantedBy = lib.mkForce [ ];
+      })
+
+      (lib.mkIf forgejoCluster {
+        systemd.services.forgejo = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
       })
     ]
   );
