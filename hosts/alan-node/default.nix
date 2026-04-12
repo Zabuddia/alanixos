@@ -71,12 +71,8 @@
 
         sh.enable = true;
 
-        azahar.enable = true;
         desktop.enable = true;
         chromium.enable = true;
-        dolphin.enable = true;
-        melonds.enable = true;
-        ryubing.enable = true;
       };
     };
 

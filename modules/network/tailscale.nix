@@ -47,7 +47,6 @@ in
         description = "Wait for Tailscale interface readiness";
         after = [ "tailscaled.service" ];
         wants = [ "tailscaled.service" ];
-        wantedBy = [ "multi-user.target" ];
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
