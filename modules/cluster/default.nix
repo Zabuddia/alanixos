@@ -515,16 +515,6 @@ in
             addressFn = peerWireguardAddress;
           }
         ))
-        (lib.optionalAttrs vaultwardenCluster (
-          mkPeerConfigLinksByHost {
-            label = "Vaultwarden (canonical)";
-            urlFn = peer:
-              let
-                hostCfg = peerHostCfg peer;
-              in
-              if hostCfg != null then hostCfg.config.alanix.vaultwarden.rootUrl else null;
-          }
-        ))
       ];
 
       forgejoLinksByHost = mergeLinksByHost [
@@ -544,16 +534,6 @@ in
             scheme = if forgejoCfg.expose.wireguard.tls then "https" else "http";
             port = forgejoCfg.expose.wireguard.port;
             addressFn = peerWireguardAddress;
-          }
-        ))
-        (lib.optionalAttrs forgejoCluster (
-          mkPeerConfigLinksByHost {
-            label = "Forgejo (canonical)";
-            urlFn = peer:
-              let
-                hostCfg = peerHostCfg peer;
-              in
-              if hostCfg != null then hostCfg.config.alanix.forgejo.rootUrl else null;
           }
         ))
       ];
