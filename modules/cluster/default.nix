@@ -442,6 +442,11 @@ in
             chown -R immich:immich "$backup_dir" "$media_dir"
 
             if [[ -f "$staged_dump" ]]; then
+              restore_dump="$(mktemp /var/tmp/alanix-immich-restore-XXXXXX.pgcustom)"
+              trap 'rm -f "$restore_dump"' EXIT
+
+              install -m 0600 -o postgres -g postgres "$staged_dump" "$restore_dump"
+
               runuser -u postgres -- env \
                 PGHOST="$pg_host" \
                 dropdb --if-exists "$pg_database"
@@ -458,7 +463,7 @@ in
                   --no-privileges \
                   --exit-on-error \
                   --dbname="$pg_database" \
-                  "$staged_dump"
+                  "$restore_dump"
             fi
           ''
         else
