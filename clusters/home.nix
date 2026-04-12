@@ -127,7 +127,7 @@ in
           enable = true;
           publicPort = 80;
           secretKeyBase64Secret = "tor/forgejo/secret-key-base64";
-          hostname = "v75vursfye2nc52psierh35xpeury5x7yxfkdamr3i76vuh3rlh42fyd.onion"
+          hostname = "v75vursfye2nc52psierh35xpeury5x7yxfkdamr3i76vuh3rlh42fyd.onion";
         };
 
         wireguard = {
