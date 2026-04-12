@@ -316,7 +316,7 @@ class Dashboard:
             port_suffix = f":{tor_port}" if tor_port != default_port else ""
             result["torLink"] = {
                 "url": f"{tor_scheme}://{tor_hostname}{port_suffix}/",
-                "label": f"{service_name} (tor)",
+                "label": f"{service_name.title()} (tor)",
                 "transport": "tor",
             }
 
@@ -387,7 +387,8 @@ class Dashboard:
             links_by_host = self.services[service_name].get("linksByHost", {})
             tor_link = service_state.pop("torLink", None)
             active_links = unique_links(links_by_host.get(leader_host, [])) if leader_host else []
-            if tor_link and leader_host:
+            # Tor links are stable regardless of which host holds the lease — always show them.
+            if tor_link:
                 active_links = unique_links(active_links + [tor_link])
             service_state["activeLinks"] = active_links
             # On the leader the service is actively running here — "stale-backup" is
@@ -857,6 +858,10 @@ class Dashboard:
         async function refresh() {{
           try {{
             var y = window.scrollY;
+            var openIdx = new Set();
+            document.querySelectorAll('main details').forEach(function(el, i) {{
+              if (el.open) openIdx.add(i);
+            }});
             var res = await fetch('/');
             if (!res.ok) return;
             var doc = new DOMParser().parseFromString(await res.text(), 'text/html');
@@ -864,6 +869,9 @@ class Dashboard:
             var curMain = document.querySelector('main');
             if (newMain && curMain) {{
               curMain.innerHTML = newMain.innerHTML;
+              curMain.querySelectorAll('details').forEach(function(el, i) {{
+                if (openIdx.has(i)) el.open = true;
+              }});
               window.scrollTo(0, y);
               refreshedAt = Date.now();
               updateAge();
