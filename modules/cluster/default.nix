@@ -442,14 +442,19 @@ in
             chown -R immich:immich "$backup_dir" "$media_dir"
 
             if [[ -f "$staged_dump" ]]; then
-              runuser -u immich -- env \
+              runuser -u postgres -- env \
                 PGHOST="$pg_host" \
-                PGUSER="$pg_user" \
-                PGDATABASE="$pg_database" \
+                dropdb --if-exists "$pg_database"
+
+              runuser -u postgres -- env \
+                PGHOST="$pg_host" \
+                createdb --owner="$pg_user" "$pg_database"
+
+              runuser -u postgres -- env \
+                PGHOST="$pg_host" \
                 pg_restore \
                   --clean \
                   --if-exists \
-                  --no-owner \
                   --no-privileges \
                   --exit-on-error \
                   --dbname="$pg_database" \
