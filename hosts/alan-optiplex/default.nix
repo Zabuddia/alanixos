@@ -62,7 +62,9 @@
           directory = "/home/buddia";
           stateVersion = "25.11";
           files = { };
-          packages = [ handbrake ];
+          packages = with pkgs; [
+            handbrake
+          ];
           unstablePackages = with pkgs-unstable; [ yt-dlp ];
           modules = [ ];
         };
