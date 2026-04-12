@@ -1,6 +1,7 @@
 { config, lib, pkgs, pkgs-unstable, ... }:
 let
   cfg = config.alanix.searxng;
+  clusterCfg = cfg.cluster;
   serviceExposure = import ../../lib/mkServiceExposure.nix { inherit lib pkgs; };
   serviceIdentity = import ../../lib/mkServiceIdentity.nix { inherit lib; };
 
@@ -75,6 +76,26 @@ in
       description = "Directory used for Alanix-managed SearXNG runtime state such as the generated secret key.";
     };
 
+    backupDir = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Optional SearXNG cluster backup staging directory.";
+    };
+
+    cluster = {
+      enable = lib.mkEnableOption "cluster-manage SearXNG through alanix.cluster";
+
+      backupInterval = lib.mkOption {
+        type = lib.types.str;
+        default = "15m";
+      };
+
+      maxBackupAge = lib.mkOption {
+        type = lib.types.str;
+        default = "1h";
+      };
+    };
+
     rootUrl = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -111,8 +132,16 @@ in
             message = "alanix.searxng.stateDir must be an absolute path.";
           }
           {
+            assertion = cfg.backupDir == null || lib.hasPrefix "/" cfg.backupDir;
+            message = "alanix.searxng.backupDir must be an absolute path when set.";
+          }
+          {
             assertion = cfg.rootUrl == null || builtins.match "^https?://.+" cfg.rootUrl != null;
             message = "alanix.searxng.rootUrl must include http:// or https:// when set.";
+          }
+          {
+            assertion = !clusterCfg.enable || cfg.backupDir != null;
+            message = "alanix.searxng.cluster.enable requires alanix.searxng.backupDir.";
           }
         ]
         ++ serviceExposure.mkAssertions {
@@ -145,6 +174,7 @@ in
           User = "root";
           Group = "root";
           UMask = "0077";
+          SuccessExitStatus = [ "SIGTERM" ];
         };
 
         path = [ pkgs.coreutils pkgs.openssl ];
@@ -176,7 +206,7 @@ in
       };
     }
 
-    (lib.mkIf baseConfigReady (
+    (lib.mkIf (baseConfigReady && !clusterCfg.enable) (
       serviceExposure.mkConfig {
         inherit config endpoint exposeCfg;
         serviceName = "searxng";

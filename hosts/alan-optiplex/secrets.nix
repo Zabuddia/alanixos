@@ -61,6 +61,13 @@
     mode = "0400";
   };
 
+  sops.secrets."openwebui-passwords/buddia" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."sunshine-web-ui-passwords/alan-optiplex" = {
     owner = "buddia";
     group = "users";
@@ -115,6 +122,20 @@
   };
 
   sops.secrets."tor/immich/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/openwebui/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/searxng/secret-key-base64" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
     group = "root";

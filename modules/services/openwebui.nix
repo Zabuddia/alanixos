@@ -1,6 +1,7 @@
 { config, lib, pkgs, pkgs-unstable, ... }:
 let
   cfg = config.alanix.openwebui;
+  clusterCfg = cfg.cluster;
   webSearchCfg = cfg.webSearch;
   serviceExposure = import ../../lib/mkServiceExposure.nix { inherit lib pkgs; };
   passwordUsers = import ../../lib/mkPlaintextPasswordUsers.nix { inherit lib; };
@@ -129,6 +130,26 @@ in
     stateDir = lib.mkOption {
       type = lib.types.str;
       default = "/var/lib/open-webui";
+    };
+
+    backupDir = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Optional Open WebUI cluster backup staging directory.";
+    };
+
+    cluster = {
+      enable = lib.mkEnableOption "cluster-manage Open WebUI through alanix.cluster";
+
+      backupInterval = lib.mkOption {
+        type = lib.types.str;
+        default = "5m";
+      };
+
+      maxBackupAge = lib.mkOption {
+        type = lib.types.str;
+        default = "15m";
+      };
     };
 
     rootUrl = lib.mkOption {
@@ -309,6 +330,10 @@ in
             message = "alanix.openwebui.stateDir must be an absolute path.";
           }
           {
+            assertion = cfg.backupDir == null || lib.hasPrefix "/" cfg.backupDir;
+            message = "alanix.openwebui.backupDir must be an absolute path when set.";
+          }
+          {
             assertion = cfg.rootUrl == null || builtins.match "^https?://.+" cfg.rootUrl != null;
             message = "alanix.openwebui.rootUrl must include http:// or https:// when set.";
           }
@@ -327,6 +352,10 @@ in
           {
             assertion = builtins.length cfg.openai.apiKeys <= builtins.length cfg.openai.baseUrls;
             message = "alanix.openwebui.openai.apiKeys must not contain more entries than alanix.openwebui.openai.baseUrls.";
+          }
+          {
+            assertion = !clusterCfg.enable || cfg.backupDir != null;
+            message = "alanix.openwebui.cluster.enable requires alanix.openwebui.backupDir.";
           }
           {
             assertion = !webSearchCfg.enable || hasValue webSearchCfg.engine;
@@ -408,11 +437,27 @@ in
         environmentFile = cfg.environmentFile;
       };
 
-      systemd.services.open-webui.serviceConfig.EnvironmentFile = lib.mkIf baseConfigReady (
-        lib.mkForce (
-          lib.optional (cfg.environmentFile != null) cfg.environmentFile
-          ++ lib.optional (webSearchCfg.braveApiKeySecret != null) config.sops.templates."alanix-openwebui-env".path
-        )
+      users.groups.open-webui = lib.mkIf clusterCfg.enable { };
+
+      users.users.open-webui = lib.mkIf clusterCfg.enable {
+        isSystemUser = true;
+        group = "open-webui";
+        home = cfg.stateDir;
+        createHome = false;
+      };
+
+      systemd.services.open-webui.serviceConfig = lib.mkIf baseConfigReady (
+        (lib.optionalAttrs clusterCfg.enable {
+          DynamicUser = lib.mkForce false;
+          User = lib.mkForce "open-webui";
+          Group = lib.mkForce "open-webui";
+        })
+        // {
+          EnvironmentFile = lib.mkForce (
+            lib.optional (cfg.environmentFile != null) cfg.environmentFile
+            ++ lib.optional (webSearchCfg.braveApiKeySecret != null) config.sops.templates."alanix-openwebui-env".path
+          );
+        }
       );
 
       systemd.services.open-webui-reconcile = lib.mkIf (cfg.users != { } && baseConfigReady) {
@@ -424,6 +469,7 @@ in
 
         serviceConfig = {
           Type = "oneshot";
+          SuccessExitStatus = [ "SIGTERM" ];
           User = "root";
           Group = "root";
           RuntimeDirectory = "alanix-openwebui";
@@ -979,7 +1025,7 @@ PY
       };
     }
 
-    (lib.mkIf baseConfigReady (
+    (lib.mkIf (baseConfigReady && !clusterCfg.enable) (
       serviceExposure.mkConfig {
         inherit config endpoint exposeCfg;
         serviceName = "openwebui";
