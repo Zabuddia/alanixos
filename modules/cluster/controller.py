@@ -3,8 +3,8 @@
 import base64
 import glob
 import json
+import math
 import os
-import random
 import shlex
 import shutil
 import subprocess
@@ -248,13 +248,61 @@ class Controller:
         manifests.sort(key=lambda item: item.get("completedAt", ""))
         return manifests[-1]
 
+    def manifest_age_seconds(self, manifest):
+        if manifest is None:
+            return None
+        completed_at = datetime.fromisoformat(manifest["completedAt"].replace("Z", "+00:00"))
+        return (datetime.now(timezone.utc) - completed_at).total_seconds()
+
     def manifest_is_fresh(self, service_name, manifest):
         if manifest is None:
             return False
         max_age_seconds = parse_duration_seconds(self.services[service_name]["maxBackupAge"])
-        completed_at = datetime.fromisoformat(manifest["completedAt"].replace("Z", "+00:00"))
-        age = (datetime.now(timezone.utc) - completed_at).total_seconds()
+        age = self.manifest_age_seconds(manifest)
         return age <= max_age_seconds
+
+    def local_recovery_profile(self):
+        manifests = {}
+        all_fresh = True
+        worst_age_seconds = 0.0
+        missing_services = []
+
+        for service_name in self.services:
+            manifest = self.freshest_manifest(service_name)
+            manifests[service_name] = manifest
+
+            if manifest is None:
+                all_fresh = False
+                missing_services.append(service_name)
+                worst_age_seconds = math.inf
+                continue
+
+            age_seconds = self.manifest_age_seconds(manifest)
+            if age_seconds is None:
+                all_fresh = False
+                worst_age_seconds = math.inf
+                continue
+
+            worst_age_seconds = max(worst_age_seconds, age_seconds)
+            if not self.manifest_is_fresh(service_name, manifest):
+                all_fresh = False
+
+        return {
+            "manifests": manifests,
+            "allFresh": all_fresh,
+            "worstAgeSeconds": worst_age_seconds,
+            "missingServices": missing_services,
+        }
+
+    def stale_recovery_wait_seconds(self, worst_age_seconds):
+        bucket_step = max(0.25, min(1.0, self.acquisition_step / 2.0))
+        priority_tie_step = bucket_step / max(1, len(self.priority) + 1)
+        if math.isinf(worst_age_seconds):
+            bucket = 60
+        else:
+            bucket = min(60, int(math.log2(max(1.0, worst_age_seconds))))
+        fresh_window = len(self.priority) * self.acquisition_step + 1.0
+        return fresh_window + bucket * bucket_step + self.priority_index * priority_tie_step
 
     def ensure_restic_repo(self, remote_uri):
         check = self.run_as_backup_user(["restic", "-r", remote_uri, "snapshots"], check=False)
@@ -352,7 +400,7 @@ class Controller:
         finally:
             shutil.rmtree(restore_root, ignore_errors=True)
 
-    def recover_services(self):
+    def recover_services(self, *, allow_stale=False):
         bootstrap = self.hostname == self.bootstrap_host
         for service_name in self.services:
             manifest = self.freshest_manifest(service_name)
@@ -362,13 +410,24 @@ class Controller:
                     continue
                 raise RuntimeError(f"{service_name}: no local backup available")
             if not self.manifest_is_fresh(service_name, manifest):
-                raise RuntimeError(f"{service_name}: freshest backup is older than maxBackupAge")
+                if bootstrap:
+                    log(
+                        f"{service_name}: freshest backup is older than maxBackupAge, "
+                        "allowing stale bootstrap on preferred host"
+                    )
+                elif allow_stale:
+                    log(
+                        f"{service_name}: freshest backup is older than maxBackupAge, "
+                        "allowing stale recovery based on local backup recency"
+                    )
+                else:
+                    raise RuntimeError(f"{service_name}: freshest backup is older than maxBackupAge")
             self.restore_service(service_name, manifest)
 
-    def promote(self, leader):
+    def promote(self, leader, *, allow_stale=False):
         self.lease_id = leader["lease_id"]
         self.leader_revision = leader["create_revision"]
-        self.recover_services()
+        self.recover_services(allow_stale=allow_stale)
         self.start_target()
         self.start_keepalive(self.lease_id)
         for service_name in self.next_backup_at:
@@ -379,7 +438,7 @@ class Controller:
         self.lease_id = leader["lease_id"]
         self.leader_revision = leader["create_revision"]
         if not self.target_is_active():
-            self.recover_services()
+            self.recover_services(allow_stale=True)
             self.start_target()
         self.start_keepalive(self.lease_id)
         log(f"adopted existing leadership at revision {self.leader_revision}")
@@ -454,7 +513,14 @@ class Controller:
             self.last_leader_absent_at = now
             return
 
-        wait_seconds = self.priority_index * self.acquisition_step + random.uniform(0.0, 1.0)
+        recovery_profile = self.local_recovery_profile()
+        if recovery_profile["allFresh"]:
+            wait_seconds = self.priority_index * self.acquisition_step
+            allow_stale = False
+        else:
+            wait_seconds = self.stale_recovery_wait_seconds(recovery_profile["worstAgeSeconds"])
+            allow_stale = True
+
         if now - self.last_leader_absent_at < wait_seconds:
             return
 
@@ -463,7 +529,7 @@ class Controller:
             return
 
         try:
-            self.promote(leader)
+            self.promote(leader, allow_stale=allow_stale)
         except Exception as exc:
             self.demote(f"promotion failed: {exc}")
 
