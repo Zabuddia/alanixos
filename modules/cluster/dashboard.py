@@ -893,6 +893,8 @@ class Dashboard:
         async function refresh() {{
           try {{
             var y = window.scrollY;
+            var eventsEl = document.querySelector('.events-log');
+            var eventsTop = eventsEl ? eventsEl.scrollTop : 0;
             var openIdx = new Set();
             document.querySelectorAll('main details').forEach(function(el, i) {{
               if (el.open) openIdx.add(i);
@@ -907,6 +909,8 @@ class Dashboard:
               curMain.querySelectorAll('details').forEach(function(el, i) {{
                 if (openIdx.has(i)) el.open = true;
               }});
+              var newEventsEl = curMain.querySelector('.events-log');
+              if (newEventsEl) newEventsEl.scrollTop = eventsTop;
               window.scrollTo(0, y);
               refreshedAt = Date.now();
               updateAge();
