@@ -151,8 +151,10 @@ in
 
       vaultwardenCfg = config.alanix.vaultwarden;
       forgejoCfg = config.alanix.forgejo;
+      invidiousCfg = config.alanix.invidious;
       vaultwardenCluster = vaultwardenCfg.enable && vaultwardenCfg.cluster.enable;
       forgejoCluster = forgejoCfg.enable && forgejoCfg.cluster.enable;
+      invidiousCluster = invidiousCfg.enable && invidiousCfg.cluster.enable;
       dashboardCfg = cfg.dashboard;
       dashboardEndpoint = {
         address = dashboardCfg.listenAddress;
@@ -359,6 +361,58 @@ in
         else
           null;
 
+      invidiousRestoreScript =
+        if invidiousCluster then
+          let
+            invidiousStateDir = "/var/lib/invidious";
+            companionStateDir = "/var/lib/invidious-companion";
+            stagedInvidiousStateDir = "${invidiousCfg.backupDir}${invidiousStateDir}";
+            stagedCompanionStateDir = "${invidiousCfg.backupDir}${companionStateDir}";
+            stagedDatabaseDump = "${invidiousCfg.backupDir}/database/invidious.pgcustom";
+          in
+          pkgs.writeShellScript "alanix-invidious-cluster-restore-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg invidiousCfg.backupDir}
+            state_dir=${lib.escapeShellArg invidiousStateDir}
+            companion_dir=${lib.escapeShellArg companionStateDir}
+            staged_state_dir=${lib.escapeShellArg stagedInvidiousStateDir}
+            staged_companion_dir=${lib.escapeShellArg stagedCompanionStateDir}
+            staged_dump=${lib.escapeShellArg stagedDatabaseDump}
+            pg_user=${lib.escapeShellArg config.services.invidious.settings.db.user}
+            pg_database=${lib.escapeShellArg config.services.invidious.settings.db.dbname}
+
+            rm -rf "$state_dir" "$companion_dir"
+            mkdir -p "$state_dir" "$companion_dir"
+
+            if [[ -d "$staged_state_dir" ]]; then
+              cp -a "$staged_state_dir"/. "$state_dir"/
+            fi
+
+            if [[ -d "$staged_companion_dir" ]]; then
+              cp -a "$staged_companion_dir"/. "$companion_dir"/
+            fi
+
+            chown -R invidious:invidious "$backup_dir" "$state_dir" "$companion_dir"
+
+            if [[ -f "$staged_dump" ]]; then
+              runuser -u invidious -- env \
+                PGHOST=/run/postgresql \
+                PGUSER="$pg_user" \
+                PGDATABASE="$pg_database" \
+                pg_restore \
+                  --clean \
+                  --if-exists \
+                  --no-owner \
+                  --no-privileges \
+                  --exit-on-error \
+                  --dbname="$pg_database" \
+                  "$staged_dump"
+            fi
+          ''
+        else
+          null;
+
       vaultwardenBackupPrepScript =
         if vaultwardenCluster then
           pkgs.writeShellScript "alanix-vaultwarden-cluster-backup-runtime" ''
@@ -404,6 +458,56 @@ in
             sqlite3 "$db_path" ".backup '$staged_db_path'"
 
             chown -R forgejo:forgejo "$backup_dir"
+            chgrp -R "$backup_group" "$backup_dir"
+            chmod -R u=rwX,g=rX,o= "$backup_dir"
+          ''
+        else
+          null;
+
+      invidiousBackupPrepScript =
+        if invidiousCluster then
+          let
+            invidiousStateDir = "/var/lib/invidious";
+            companionStateDir = "/var/lib/invidious-companion";
+            stagedInvidiousStateDir = "${invidiousCfg.backupDir}${invidiousStateDir}";
+            stagedCompanionStateDir = "${invidiousCfg.backupDir}${companionStateDir}";
+            stagedDatabaseDump = "${invidiousCfg.backupDir}/database/invidious.pgcustom";
+          in
+          pkgs.writeShellScript "alanix-invidious-cluster-backup-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg invidiousCfg.backupDir}
+            backup_group=${lib.escapeShellArg backupRepoUserGroup}
+            state_dir=${lib.escapeShellArg invidiousStateDir}
+            companion_dir=${lib.escapeShellArg companionStateDir}
+            staged_state_dir=${lib.escapeShellArg stagedInvidiousStateDir}
+            staged_companion_dir=${lib.escapeShellArg stagedCompanionStateDir}
+            staged_dump=${lib.escapeShellArg stagedDatabaseDump}
+            pg_user=${lib.escapeShellArg config.services.invidious.settings.db.user}
+            pg_database=${lib.escapeShellArg config.services.invidious.settings.db.dbname}
+
+            rm -rf "$backup_dir"
+            mkdir -p "$staged_state_dir" "$staged_companion_dir" "$(dirname "$staged_dump")"
+            chown -R invidious:invidious "$backup_dir"
+
+            if [[ -d "$state_dir" ]]; then
+              rsync -a --delete "$state_dir"/ "$staged_state_dir"/
+            fi
+
+            if [[ -d "$companion_dir" ]]; then
+              rsync -a --delete "$companion_dir"/ "$staged_companion_dir"/
+            fi
+
+            runuser -u invidious -- env \
+              PGHOST=/run/postgresql \
+              PGUSER="$pg_user" \
+              PGDATABASE="$pg_database" \
+              pg_dump \
+                --format=custom \
+                --file="$staged_dump" \
+                "$pg_database"
+
+            chown -R invidious:invidious "$backup_dir"
             chgrp -R "$backup_group" "$backup_dir"
             chmod -R u=rwX,g=rX,o= "$backup_dir"
           ''
@@ -474,27 +578,73 @@ in
         else
           null;
 
-      anyTlsExposure =
+      invidiousWireguardAddress =
+        if invidiousCfg.expose.wireguard.address != null then
+          invidiousCfg.expose.wireguard.address
+        else
+          config.alanix.wireguard.vpnIP;
+
+      invidiousTailscaleTlsName =
+        if invidiousCfg.expose.tailscale.tlsName != null then
+          invidiousCfg.expose.tailscale.tlsName
+        else
+          config.alanix.tailscale.address;
+
+      invidiousTorTargetAddress =
+        normalizeLocalAddress (
+          if invidiousCfg.expose.tor.targetAddress != null then
+            invidiousCfg.expose.tor.targetAddress
+          else
+            invidiousCfg.listenAddress
+        );
+
+      invidiousTorTargetPort =
+        if invidiousCfg.expose.tor.tls then
+          invidiousCfg.expose.tor.publicPort
+        else
+          invidiousCfg.port;
+
+      invidiousTorSecretPath =
+        if invidiousCfg.expose.tor.secretKeyBase64Secret != null then
+          config.sops.secrets.${invidiousCfg.expose.tor.secretKeyBase64Secret}.path
+        else
+          null;
+
+      anyCaddyExposure =
         (
           vaultwardenCluster
           && (
-            (vaultwardenCfg.expose.tailscale.enable && vaultwardenCfg.expose.tailscale.tls)
-            || (vaultwardenCfg.expose.wireguard.enable && vaultwardenCfg.expose.wireguard.tls)
+            vaultwardenCfg.expose.tailscale.enable
+            || vaultwardenCfg.expose.wireguard.enable
             || (vaultwardenCfg.expose.tor.enable && vaultwardenCfg.expose.tor.tls)
           )
         )
         || (
           forgejoCluster
           && (
-            (forgejoCfg.expose.tailscale.enable && forgejoCfg.expose.tailscale.tls)
-            || (forgejoCfg.expose.wireguard.enable && forgejoCfg.expose.wireguard.tls)
+            forgejoCfg.expose.tailscale.enable
+            || forgejoCfg.expose.wireguard.enable
             || (forgejoCfg.expose.tor.enable && forgejoCfg.expose.tor.tls)
+          )
+        )
+        || (
+          invidiousCluster
+          && (
+            invidiousCfg.expose.tailscale.enable
+            || invidiousCfg.expose.wireguard.enable
+            || (invidiousCfg.expose.tor.enable && invidiousCfg.expose.tor.tls)
           )
         );
 
+      anyTailscaleCaddyExposure =
+        (vaultwardenCluster && vaultwardenCfg.expose.tailscale.enable)
+        || (forgejoCluster && forgejoCfg.expose.tailscale.enable)
+        || (invidiousCluster && invidiousCfg.expose.tailscale.enable);
+
       anyTorExposure =
         (vaultwardenCluster && vaultwardenCfg.expose.tor.enable)
-        || (forgejoCluster && forgejoCfg.expose.tor.enable);
+        || (forgejoCluster && forgejoCfg.expose.tor.enable)
+        || (invidiousCluster && invidiousCfg.expose.tor.enable);
 
       # Build a stable Tor URL from the tor exposure options.
       # Returns null when tor.enable is false or tor.hostname is not set.
@@ -553,6 +703,27 @@ in
         ))
       ];
 
+      invidiousLinksByHost = mergeLinksByHost [
+        (lib.optionalAttrs (invidiousCluster && invidiousCfg.expose.tailscale.enable) (
+          mkPeerLinksByHost {
+            label = "Invidious";
+            transport = "tailscale";
+            scheme = if invidiousCfg.expose.tailscale.tls then "https" else "http";
+            port = invidiousCfg.expose.tailscale.port;
+            addressFn = peerTailscaleAddress;
+          }
+        ))
+        (lib.optionalAttrs (invidiousCluster && invidiousCfg.expose.wireguard.enable) (
+          mkPeerLinksByHost {
+            label = "Invidious";
+            transport = "wireguard";
+            scheme = if invidiousCfg.expose.wireguard.tls then "https" else "http";
+            port = invidiousCfg.expose.wireguard.port;
+            addressFn = peerWireguardAddress;
+          }
+        ))
+      ];
+
       controllerConfig = {
         cluster = {
           name = cfg.name;
@@ -595,7 +766,7 @@ in
               maxBackupAge = vaultwardenCfg.cluster.maxBackupAge;
               activeUnits =
                 [ "vaultwarden.service" ]
-                ++ lib.optionals (anyTlsExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
+                ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
               backupPaths = [ vaultwardenCfg.backupDir ];
               preBackupCommand = [ vaultwardenBackupPrepScript ];
               postRestoreCommand = [ vaultwardenRestoreScript ];
@@ -621,7 +792,7 @@ in
               maxBackupAge = forgejoCfg.cluster.maxBackupAge;
               activeUnits =
                 [ "forgejo.service" ]
-                ++ lib.optionals (anyTlsExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
+                ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
               backupPaths = [ forgejoCfg.backupDir ];
               preBackupCommand = [ forgejoBackupPrepScript ];
               postRestoreCommand = [ forgejoRestoreScript ];
@@ -638,6 +809,33 @@ in
               localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-*/manifest.json";
               linksByHost = forgejoLinksByHost;
               torUrl = mkTorUrl forgejoCfg.expose.tor;
+            };
+          })
+          // (lib.optionalAttrs invidiousCluster {
+            invidious = {
+              name = "invidious";
+              backupInterval = invidiousCfg.cluster.backupInterval;
+              maxBackupAge = invidiousCfg.cluster.maxBackupAge;
+              activeUnits =
+                [ "invidious.service" ]
+                ++ lib.optionals invidiousCfg.companion.enable [ "invidious-companion.service" ]
+                ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
+              backupPaths = [ invidiousCfg.backupDir ];
+              preBackupCommand = [ invidiousBackupPrepScript ];
+              postRestoreCommand = [ invidiousRestoreScript ];
+              remoteTargets =
+                map
+                  (peer: {
+                    host = peer;
+                    address = hostTransportAddress peer;
+                    repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/invidious/from-${hostname}/repo";
+                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/invidious/from-${hostname}/manifest.json";
+                  })
+                  (lib.filter (peer: peer != hostname) cfg.members);
+              localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/invidious/from-*/repo";
+              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/invidious/from-*/manifest.json";
+              linksByHost = invidiousLinksByHost;
+              torUrl = mkTorUrl invidiousCfg.expose.tor;
             };
           });
       };
@@ -659,10 +857,7 @@ in
           : > "$caddy_file"
           : > "$tor_file"
 
-          ${lib.optionalString (cfg.transport == "tailscale" && anyTlsExposure && (
-            (vaultwardenCluster && vaultwardenCfg.expose.tailscale.enable && vaultwardenCfg.expose.tailscale.tls)
-            || (forgejoCluster && forgejoCfg.expose.tailscale.enable && forgejoCfg.expose.tailscale.tls)
-          )) ''
+          ${lib.optionalString anyTailscaleCaddyExposure ''
             ts_ip="$(${config.services.tailscale.package}/bin/tailscale ip -4 | head -n1)"
             if [[ -z "$ts_ip" ]]; then
               echo "failed to determine Tailscale IPv4 address" >&2
@@ -670,22 +865,22 @@ in
             fi
           ''}
 
-          ${lib.optionalString (vaultwardenCluster && vaultwardenCfg.expose.tailscale.enable && vaultwardenCfg.expose.tailscale.tls) ''
+          ${lib.optionalString (vaultwardenCluster && vaultwardenCfg.expose.tailscale.enable) ''
             cat >> "$caddy_file" <<EOF
-            https://${vaultwardenTailscaleTlsName}:${toString vaultwardenCfg.expose.tailscale.port} {
+            ${if vaultwardenCfg.expose.tailscale.tls then "https" else "http"}://${vaultwardenTailscaleTlsName}:${toString vaultwardenCfg.expose.tailscale.port} {
               bind $ts_ip
-              tls internal
+              ${lib.optionalString vaultwardenCfg.expose.tailscale.tls "tls internal"}
               reverse_proxy ${normalizeLocalAddress vaultwardenCfg.listenAddress}:${toString vaultwardenCfg.port}
             }
 
             EOF
           ''}
 
-          ${lib.optionalString (vaultwardenCluster && vaultwardenCfg.expose.wireguard.enable && vaultwardenCfg.expose.wireguard.tls) ''
+          ${lib.optionalString (vaultwardenCluster && vaultwardenCfg.expose.wireguard.enable) ''
             cat >> "$caddy_file" <<EOF
-            https://${vaultwardenWireguardAddress}:${toString vaultwardenCfg.expose.wireguard.port} {
+            ${if vaultwardenCfg.expose.wireguard.tls then "https" else "http"}://${vaultwardenWireguardAddress}:${toString vaultwardenCfg.expose.wireguard.port} {
               bind ${vaultwardenWireguardAddress}
-              tls internal
+              ${lib.optionalString vaultwardenCfg.expose.wireguard.tls "tls internal"}
               reverse_proxy ${normalizeLocalAddress vaultwardenCfg.listenAddress}:${toString vaultwardenCfg.port}
             }
 
@@ -725,22 +920,22 @@ in
             EOF
           ''}
 
-          ${lib.optionalString (forgejoCluster && forgejoCfg.expose.tailscale.enable && forgejoCfg.expose.tailscale.tls) ''
+          ${lib.optionalString (forgejoCluster && forgejoCfg.expose.tailscale.enable) ''
             cat >> "$caddy_file" <<EOF
-            https://${forgejoTailscaleTlsName}:${toString forgejoCfg.expose.tailscale.port} {
+            ${if forgejoCfg.expose.tailscale.tls then "https" else "http"}://${forgejoTailscaleTlsName}:${toString forgejoCfg.expose.tailscale.port} {
               bind $ts_ip
-              tls internal
+              ${lib.optionalString forgejoCfg.expose.tailscale.tls "tls internal"}
               reverse_proxy ${normalizeLocalAddress forgejoCfg.listenAddress}:${toString forgejoCfg.port}
             }
 
             EOF
           ''}
 
-          ${lib.optionalString (forgejoCluster && forgejoCfg.expose.wireguard.enable && forgejoCfg.expose.wireguard.tls) ''
+          ${lib.optionalString (forgejoCluster && forgejoCfg.expose.wireguard.enable) ''
             cat >> "$caddy_file" <<EOF
-            https://${forgejoWireguardAddress}:${toString forgejoCfg.expose.wireguard.port} {
+            ${if forgejoCfg.expose.wireguard.tls then "https" else "http"}://${forgejoWireguardAddress}:${toString forgejoCfg.expose.wireguard.port} {
               bind ${forgejoWireguardAddress}
-              tls internal
+              ${lib.optionalString forgejoCfg.expose.wireguard.tls "tls internal"}
               reverse_proxy ${normalizeLocalAddress forgejoCfg.listenAddress}:${toString forgejoCfg.port}
             }
 
@@ -780,7 +975,62 @@ in
             EOF
           ''}
 
-          ${lib.optionalString anyTlsExposure ''
+          ${lib.optionalString (invidiousCluster && invidiousCfg.expose.tailscale.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if invidiousCfg.expose.tailscale.tls then "https" else "http"}://${invidiousTailscaleTlsName}:${toString invidiousCfg.expose.tailscale.port} {
+              bind $ts_ip
+              ${lib.optionalString invidiousCfg.expose.tailscale.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress invidiousCfg.listenAddress}:${toString invidiousCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (invidiousCluster && invidiousCfg.expose.wireguard.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if invidiousCfg.expose.wireguard.tls then "https" else "http"}://${invidiousWireguardAddress}:${toString invidiousCfg.expose.wireguard.port} {
+              bind ${invidiousWireguardAddress}
+              ${lib.optionalString invidiousCfg.expose.wireguard.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress invidiousCfg.listenAddress}:${toString invidiousCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (invidiousCluster && invidiousCfg.expose.tor.enable && invidiousCfg.expose.tor.tls) ''
+            cat >> "$caddy_file" <<EOF
+            https://${invidiousCfg.expose.tor.tlsName}:${toString invidiousCfg.expose.tor.publicPort} {
+              bind ${invidiousTorTargetAddress}
+              tls internal
+              reverse_proxy ${normalizeLocalAddress invidiousCfg.listenAddress}:${toString invidiousCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (invidiousCluster && invidiousCfg.expose.tor.enable) ''
+            rm -rf "$tor_state_dir/invidious"
+            mkdir -p "$tor_state_dir/invidious"
+            chown tor:tor "$tor_state_dir/invidious"
+            chmod 0700 "$tor_state_dir/invidious"
+          ''}
+
+          ${lib.optionalString (invidiousCluster && invidiousCfg.expose.tor.enable && invidiousTorSecretPath != null) ''
+            base64 --decode ${lib.escapeShellArg invidiousTorSecretPath} > "$tor_state_dir/invidious/hs_ed25519_secret_key"
+            chown tor:tor "$tor_state_dir/invidious/hs_ed25519_secret_key"
+            chmod 0600 "$tor_state_dir/invidious/hs_ed25519_secret_key"
+          ''}
+
+          ${lib.optionalString (invidiousCluster && invidiousCfg.expose.tor.enable) ''
+            cat >> "$tor_file" <<EOF
+            HiddenServiceDir $tor_state_dir/invidious
+            HiddenServiceVersion 3
+            HiddenServicePort ${toString invidiousCfg.expose.tor.publicPort} ${invidiousTorTargetAddress}:${toString invidiousTorTargetPort}
+
+            EOF
+          ''}
+
+          ${lib.optionalString anyCaddyExposure ''
             systemctl start caddy.service
             systemctl reload caddy.service
           ''}
@@ -794,8 +1044,9 @@ in
           : > "$tor_file"
           rm -rf "$tor_state_dir/vaultwarden"
           rm -rf "$tor_state_dir/forgejo"
+          rm -rf "$tor_state_dir/invidious"
 
-          ${lib.optionalString anyTlsExposure ''
+          ${lib.optionalString anyCaddyExposure ''
             systemctl reload caddy.service || true
           ''}
 
@@ -888,6 +1139,16 @@ in
               message = "Forgejo cluster mode currently requires the sqlite3 backend.";
             }
           ]
+          ++ lib.optionals invidiousCluster [
+            {
+              assertion = config.services.invidious.database.createLocally;
+              message = "Invidious cluster mode currently requires a locally managed PostgreSQL database.";
+            }
+            {
+              assertion = config.services.invidious.database.host == null;
+              message = "Invidious cluster mode currently requires PostgreSQL on the local host.";
+            }
+          ]
           ++ serviceExposure.mkAssertions {
             inherit config;
             optionPrefix = "alanix.cluster.dashboard.expose";
@@ -916,10 +1177,12 @@ in
           after =
             [ "network-online.target" "sops-nix.service" ]
             ++ lib.optional (cfg.transport == "tailscale") "tailscaled.service"
+            ++ lib.optional invidiousCluster "postgresql.service"
             ++ lib.optional isVoter "etcd.service";
           wants =
             [ "network-online.target" "sops-nix.service" ]
             ++ lib.optional (cfg.transport == "tailscale") "tailscaled.service"
+            ++ lib.optional invidiousCluster "postgresql.service"
             ++ lib.optional isVoter "etcd.service";
           path = with pkgs; [
             coreutils
@@ -932,7 +1195,7 @@ in
             sqlite
             systemd
             util-linux
-          ];
+          ] ++ lib.optionals invidiousCluster [ config.services.postgresql.package ];
           serviceConfig = {
             Type = "simple";
             Restart = "always";
@@ -977,7 +1240,10 @@ in
           ++ lib.optionals forgejoCluster [
             "d ${forgejoCfg.backupDir} 0750 forgejo ${backupRepoUserGroup} - -"
           ]
-          ++ lib.optionals anyTlsExposure [
+          ++ lib.optionals invidiousCluster [
+            "d ${invidiousCfg.backupDir} 0750 invidious ${backupRepoUserGroup} - -"
+          ]
+          ++ lib.optionals anyCaddyExposure [
             "d /run/alanix-cluster 0755 root root - -"
             "d /run/alanix-cluster/caddy 0755 root root - -"
             "f /run/alanix-cluster/caddy/cluster.caddy 0644 root root - -"
@@ -1062,7 +1328,7 @@ in
         }
       ))
 
-      (lib.mkIf anyTlsExposure {
+      (lib.mkIf anyCaddyExposure {
         services.caddy.enable = true;
         services.caddy.extraConfig = lib.mkAfter ''
           import /run/alanix-cluster/caddy/cluster.caddy
@@ -1074,20 +1340,22 @@ in
         services.tor.settings."%include" = "/var/lib/tor/alanix-cluster/cluster.conf";
       })
 
-      (lib.mkIf (anyTlsExposure || anyTorExposure) {
+      (lib.mkIf (anyCaddyExposure || anyTorExposure) {
         systemd.services."alanix-cluster-exposure" = {
           description = "Alanix cluster runtime exposure manager";
           wantedBy = [ "alanix-cluster-active.target" ];
           partOf = [ "alanix-cluster-active.target" ];
           after =
             lib.optionals vaultwardenCluster [ "vaultwarden.service" ]
-            ++ lib.optionals forgejoCluster [ "forgejo.service" ];
+            ++ lib.optionals forgejoCluster [ "forgejo.service" ]
+            ++ lib.optionals invidiousCluster [ "invidious.service" ];
           wants =
             lib.optionals vaultwardenCluster [ "vaultwarden.service" ]
-            ++ lib.optionals forgejoCluster [ "forgejo.service" ];
+            ++ lib.optionals forgejoCluster [ "forgejo.service" ]
+            ++ lib.optionals invidiousCluster [ "invidious.service" ];
           path =
             [ pkgs.coreutils pkgs.systemd ]
-            ++ lib.optionals anyTlsExposure [ config.services.caddy.package ]
+            ++ lib.optionals anyCaddyExposure [ config.services.caddy.package ]
             ++ lib.optionals (cfg.transport == "tailscale") [ config.services.tailscale.package ];
           script = "${exposureScript} start";
           serviceConfig = {
@@ -1110,6 +1378,18 @@ in
 
       (lib.mkIf forgejoCluster {
         systemd.services.forgejo = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+      })
+
+      (lib.mkIf invidiousCluster {
+        systemd.services.invidious = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.services.invidious-companion = lib.mkIf invidiousCfg.companion.enable {
           wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
           partOf = [ "alanix-cluster-active.target" ];
         };
