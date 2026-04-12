@@ -1359,25 +1359,12 @@ in
           // (lib.optionalAttrs searxngCluster {
             searxng = {
               name = "searxng";
-              backupInterval = searxngCfg.cluster.backupInterval;
-              maxBackupAge = searxngCfg.cluster.maxBackupAge;
+              recoveryMode = "declarative";
+              recoveryDescription = "declarative secret";
               activeUnits =
                 [ "searx.service" ]
                 ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
-              backupPaths = [ searxngCfg.backupDir ];
-              preBackupCommand = [ searxngBackupPrepScript ];
-              postRestoreCommand = [ searxngRestoreScript ];
-              remoteTargets =
-                map
-                  (peer: {
-                    host = peer;
-                    address = hostTransportAddress peer;
-                    repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/searxng/from-${hostname}/repo";
-                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/searxng/from-${hostname}/manifest.json";
-                  })
-                  (lib.filter (peer: peer != hostname) cfg.members);
-              localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/searxng/from-*/repo";
-              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/searxng/from-*/manifest.json";
+              remoteTargets = [ ];
               linksByHost = searxngLinksByHost;
               torUrl = mkTorUrl searxngCfg.expose.tor;
               tor = {
@@ -2030,9 +2017,6 @@ in
           ]
           ++ lib.optionals openwebuiCluster [
             "d ${openwebuiCfg.backupDir} 0750 open-webui ${backupRepoUserGroup} - -"
-          ]
-          ++ lib.optionals searxngCluster [
-            "d ${searxngCfg.backupDir} 0750 searx ${backupRepoUserGroup} - -"
           ]
           ++ lib.optionals anyCaddyExposure [
             "d /run/alanix-cluster 0755 root root - -"

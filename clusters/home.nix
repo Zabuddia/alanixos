@@ -230,7 +230,7 @@ in
       enable = true;
       listenAddress = "127.0.0.1";
       port = 8888;
-      backupDir = "/var/backup/searxng";
+      secretKeySecret = "searxng-app/secret-key";
       settings.search.formats = [
         "html"
         "json"
@@ -241,6 +241,7 @@ in
           enable = true;
           publicPort = 80;
           secretKeyBase64Secret = "tor/searxng/secret-key-base64";
+          hostname = "kjhjydcizmjq7ufqsvcnqsqg2xxjaxq6l6khp5isehu7a766wv5m3jyd.onion";
         };
 
         tailscale = {
@@ -256,8 +257,6 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "15m";
-        maxBackupAge = "1h";
       };
     };
 

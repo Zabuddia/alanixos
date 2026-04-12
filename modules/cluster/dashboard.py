@@ -290,6 +290,34 @@ class Dashboard:
         }
 
     def manifest_state(self, service_name: str, service: dict) -> dict:
+        recovery_mode = service.get("recoveryMode", "backup")
+        if recovery_mode == "declarative":
+            result = {
+                "freshestManifest": None,
+                "manifests": [],
+                "promotionReadiness": {"ready": True, "reason": "declarative"},
+                "remoteTargets": [target["host"] for target in service.get("remoteTargets", [])],
+                "backupInterval": service.get("backupInterval"),
+                "maxBackupAge": service.get("maxBackupAge"),
+                "activeUnits": service.get("activeUnits", []),
+                "recoveryMode": recovery_mode,
+                "recoveryDescription": service.get("recoveryDescription", "declarative configuration"),
+            }
+
+            tor_url = service.get("torUrl") or None
+            if tor_url:
+                result["torLink"] = {
+                    "url": tor_url,
+                    "label": f"{service_name.title()} (tor)",
+                    "transport": "tor",
+                }
+            else:
+                tor_link = self.runtime_tor_link(service_name, service)
+                if tor_link:
+                    result["torLink"] = tor_link
+
+            return result
+
         manifests = []
         for path in glob.glob(service["localManifestGlob"]):
             manifest_path = Path(path)
@@ -341,6 +369,7 @@ class Dashboard:
             "backupInterval": service["backupInterval"],
             "maxBackupAge": service["maxBackupAge"],
             "activeUnits": service.get("activeUnits", []),
+            "recoveryMode": recovery_mode,
         }
 
         tor_url = service.get("torUrl") or None
@@ -532,19 +561,35 @@ class Dashboard:
             freshest = service["freshestManifest"]
             manifests = service["manifests"]
             active_links = service.get("activeLinks", [])
-            if freshest is None:
+            if service.get("recoveryMode") == "declarative":
+                freshest_html = (
+                    "<span class='muted'>No runtime backup required; service identity comes from declarative configuration.</span>"
+                )
+                config_html = (
+                    f"<span class='svc-config muted'>{html.escape(service.get('recoveryDescription') or 'declarative configuration')}</span>"
+                )
+            elif freshest is None:
                 freshest_html = "<span class='muted'>No local manifest</span>"
+                config_html = (
+                    f"<span class='svc-config muted'>every {html.escape(service['backupInterval'])} · max {html.escape(service['maxBackupAge'])}</span>"
+                )
             elif freshest.get("fresh"):
                 freshest_html = (
                     f"<strong>{html.escape(freshest.get('sourceHost') or 'unknown')}</strong>"
                     f"<span class='muted'> · {html.escape(freshest.get('ageHuman') or 'unknown')} old"
                     f" · {html.escape(freshest.get('completedAt') or '')}</span>"
                 )
+                config_html = (
+                    f"<span class='svc-config muted'>every {html.escape(service['backupInterval'])} · max {html.escape(service['maxBackupAge'])}</span>"
+                )
             else:
                 freshest_html = (
                     f"<strong>{html.escape(freshest.get('sourceHost') or 'unknown')}</strong>"
                     f"<span class='text-warn'> · {html.escape(freshest.get('ageHuman') or 'unknown')} old</span>"
                     f"<span class='muted'> · {html.escape(freshest.get('completedAt') or '')}</span>"
+                )
+                config_html = (
+                    f"<span class='svc-config muted'>every {html.escape(service['backupInterval'])} · max {html.escape(service['maxBackupAge'])}</span>"
                 )
 
             manifest_rows = []
@@ -584,7 +629,7 @@ class Dashboard:
                 "<div class='service-header'>"
                 f"<h3>{html.escape(service_name)}</h3>"
                 f"<span class='badge {badge_class(readiness_kind)}'>{html.escape(readiness['reason'])}</span>"
-                f"<span class='svc-config muted'>every {html.escape(service['backupInterval'])} · max {html.escape(service['maxBackupAge'])}</span>"
+                f"{config_html}"
                 "</div>"
                 f"<div class='manifest-info'>{freshest_html}</div>"
                 f"<div class='link-row'>{active_links_html}</div>"

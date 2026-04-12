@@ -141,6 +141,13 @@
     mode = "0400";
   };
 
+  sops.secrets."searxng-app/secret-key" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."tor/filebrowser/secret-key-base64" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
