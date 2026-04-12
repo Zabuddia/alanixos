@@ -198,6 +198,7 @@ in
           enable = true;
           publicPort = 80;
           secretKeyBase64Secret = "tor/immich/secret-key-base64";
+          hostname = "jvezpjvvukajiymxudgujcvlb3vne77zcj7juxhe7ejrdhqu35h6dead.onion";
         };
 
         tailscale = {

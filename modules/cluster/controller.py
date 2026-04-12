@@ -26,6 +26,10 @@ def parse_duration_seconds(value: str) -> float:
         return float(value[:-1])
     if value.endswith("m"):
         return float(value[:-1]) * 60.0
+    if value.endswith("h"):
+        return float(value[:-1]) * 60.0 * 60.0
+    if value.endswith("d"):
+        return float(value[:-1]) * 60.0 * 60.0 * 24.0
     raise ValueError(f"unsupported duration: {value}")
 
 
