@@ -243,8 +243,11 @@ class Controller:
 
     def local_manifests_for_service(self, service_name):
         service = self.services[service_name]
+        manifest_glob = service.get("localManifestGlob")
+        if not manifest_glob:
+            return []
         manifests = []
-        for path in glob.glob(service["localManifestGlob"]):
+        for path in glob.glob(manifest_glob):
             manifest_path = Path(path)
             if not manifest_path.exists():
                 continue
@@ -272,7 +275,10 @@ class Controller:
     def manifest_is_fresh(self, service_name, manifest):
         if manifest is None:
             return False
-        max_age_seconds = parse_duration_seconds(self.services[service_name]["maxBackupAge"])
+        max_age = self.services[service_name].get("maxBackupAge")
+        if not max_age:
+            return True
+        max_age_seconds = parse_duration_seconds(max_age)
         age = self.manifest_age_seconds(manifest)
         return age <= max_age_seconds
 
@@ -283,6 +289,11 @@ class Controller:
         missing_services = []
 
         for service_name in self.services:
+            service = self.services[service_name]
+            if service.get("recoveryMode") == "declarative":
+                manifests[service_name] = None
+                continue
+
             manifest = self.freshest_manifest(service_name)
             manifests[service_name] = manifest
 
@@ -443,7 +454,11 @@ class Controller:
 
     def recover_services(self, *, allow_stale=False):
         bootstrap = self.hostname == self.bootstrap_host
-        for service_name in self.services:
+        for service_name, service in self.services.items():
+            if service.get("recoveryMode") == "declarative":
+                description = service.get("recoveryDescription") or "declarative configuration"
+                log(f"{service_name}: using {description}; no restore required")
+                continue
             manifest = self.freshest_manifest(service_name)
             if manifest is None:
                 if bootstrap:
@@ -518,6 +533,8 @@ class Controller:
 
         now = time.monotonic()
         for service_name, service in self.services.items():
+            if service.get("recoveryMode") == "declarative":
+                continue
             if now >= self.next_backup_at[service_name]:
                 try:
                     result = self.backup_service(service_name)

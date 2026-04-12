@@ -17,6 +17,7 @@ let
   baseConfigReady = hasValue cfg.listenAddress && cfg.port != null;
   environmentFilePath = "${cfg.stateDir}/environment";
   secretKeyFilePath = "${cfg.stateDir}/secret_key";
+  secretKeySourcePath = if cfg.secretKeySecret != null then config.sops.secrets.${cfg.secretKeySecret}.path else null;
 
   effectiveRootUrl =
     let
@@ -73,7 +74,7 @@ in
     stateDir = lib.mkOption {
       type = lib.types.str;
       default = "/var/lib/searxng";
-      description = "Directory used for Alanix-managed SearXNG runtime state such as the generated secret key.";
+      description = "Directory used for Alanix-managed SearXNG runtime state such as the materialized secret key and environment file.";
     };
 
     backupDir = lib.mkOption {
@@ -94,6 +95,12 @@ in
         type = lib.types.str;
         default = "1h";
       };
+    };
+
+    secretKeySecret = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Optional sops secret whose contents become the SearXNG secret key.";
     };
 
     rootUrl = lib.mkOption {
@@ -140,8 +147,12 @@ in
             message = "alanix.searxng.rootUrl must include http:// or https:// when set.";
           }
           {
-            assertion = !clusterCfg.enable || cfg.backupDir != null;
-            message = "alanix.searxng.cluster.enable requires alanix.searxng.backupDir.";
+            assertion = cfg.secretKeySecret == null || lib.hasAttrByPath [ "sops" "secrets" cfg.secretKeySecret ] config;
+            message = "alanix.searxng.secretKeySecret must reference a declared sops secret.";
+          }
+          {
+            assertion = !clusterCfg.enable || cfg.secretKeySecret != null;
+            message = "alanix.searxng.cluster.enable requires alanix.searxng.secretKeySecret.";
           }
         ]
         ++ serviceExposure.mkAssertions {
@@ -182,7 +193,9 @@ in
         script = ''
           set -euo pipefail
 
-          if [ ! -s ${lib.escapeShellArg secretKeyFilePath} ]; then
+          if [ -n ${lib.escapeShellArg (if secretKeySourcePath != null then secretKeySourcePath else "")} ]; then
+            install -m 0400 ${lib.escapeShellArg (if secretKeySourcePath != null then secretKeySourcePath else "/dev/null")} ${lib.escapeShellArg secretKeyFilePath}
+          elif [ ! -s ${lib.escapeShellArg secretKeyFilePath} ]; then
             tmp_secret="$(mktemp ${lib.escapeShellArg "${cfg.stateDir}/secret_key.XXXXXX"})"
             openssl rand -hex 32 > "$tmp_secret"
             install -m 0400 "$tmp_secret" ${lib.escapeShellArg secretKeyFilePath}

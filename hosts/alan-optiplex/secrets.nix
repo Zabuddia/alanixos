@@ -68,6 +68,13 @@
     mode = "0400";
   };
 
+  sops.secrets."searxng-app/secret-key" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."sunshine-web-ui-passwords/alan-optiplex" = {
     owner = "buddia";
     group = "users";
