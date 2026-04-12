@@ -142,11 +142,10 @@
     };
 
     alanix.syncthing = {
-      enable = true;
-      transport = "tailscale";
       deviceId = "5CVWFSK-CV4SWJP-Z7S4TTV-UAX263E-AEEWI6K-Z22GRUZ-F2JFFQY-LOZWLAS";
-      listenPort = 22000;
       peers = [
+        "alan-node"
+        "alan-optiplex"
         "alan-framework"
         "alan-framework-laptop"
       ];
@@ -185,72 +184,6 @@
           password = null;
           passwordFile = null;
           passwordSecret = "filebrowser-passwords/buddia";
-        };
-      };
-    };
-
-    alanix.jellyfin = {
-      enable = true;
-      listenAddress = "127.0.0.1";
-      port = 8096;
-      users = {
-        buddia = {
-          admin = true;
-          passwordSecret = "jellyfin-passwords/buddia";
-        };
-      };
-      libraries = {
-        Movies = {
-          type = "movies";
-          folder = "movies";
-        };
-        Shows = {
-          type = "tvshows";
-          folder = "shows";
-        };
-        Recordings = {
-          type = "homevideos";
-          folder = "recordings";
-        };
-      };
-      liveTv.tvheadend.sources.local = {
-        enable = true;
-        friendlyName = "Local TVHeadend";
-        baseUrl = "http://127.0.0.1:9981";
-        playlistPath = "/playlist/channels";
-        xmltvPath = "/xmltv/channels";
-      };
-      expose.tor = {
-        enable = true;
-        publicPort = 80;
-        secretKeyBase64Secret = "tor/jellyfin/secret-key-base64";
-      };
-      expose.tailscale = {
-        enable = true;
-        port = 18096;
-      };
-      expose.wireguard = {
-        enable = true;
-        address = "10.100.0.1";
-        port = 8096;
-      };
-      mediaFolders = {
-        movies = {
-          path = "/srv/media/movies";
-          create = true;
-          user = "buddia";
-          group = "jellyfin";
-          mode = "0775";
-        };
-        shows = {
-          path = "/srv/media/shows";
-          create = true;
-          user = "buddia";
-          group = "jellyfin";
-          mode = "0775";
-        };
-        recordings = {
-          path = "/srv/tvheadend/recordings";
         };
       };
     };

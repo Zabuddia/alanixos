@@ -19,6 +19,7 @@ in
             "https://github.com"
             "https://tailscale.com"
             "https://chess.com"
+            "https://lichess.org"
           ];
         };
       };

@@ -142,6 +142,14 @@
       operator = "buddia";
     };
 
+    alanix.syncthing = {
+      deviceId = "2BGWQTB-75JJCIW-OEWFP4L-Y2BTROG-IYJ2ESY-IAQ5CIO-QGOXUYW-GBM5HA4";
+      peers = [
+        "alan-big-nixos"
+        "alan-node"
+      ];
+    };
+
     alanix.remote-desktop = {
       enable = true;
       autoStart = true;

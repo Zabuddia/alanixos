@@ -69,6 +69,13 @@ in
       };
     };
 
+    alanix.syncthing = {
+      enable = true;
+      transport = "tailscale";
+      listenPort = 22000;
+      folderSets = [ "jellyfin-media" ];
+    };
+
     alanix.vaultwarden = {
       enable = true;
       listenAddress = "127.0.0.1";
@@ -223,6 +230,97 @@ in
         email = "fife.alan@protonmail.com";
         name = "Alan Fife";
         passwordSecret = "immich-passwords/buddia";
+      };
+    };
+
+    alanix.jellyfin = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 8096;
+      backupDir = "/var/backup/jellyfin";
+
+      users.buddia = {
+        admin = true;
+        passwordSecret = "jellyfin-passwords/buddia";
+      };
+
+      libraries = {
+        Movies = {
+          type = "movies";
+          folder = "movies";
+        };
+
+        Shows = {
+          type = "tvshows";
+          folder = "shows";
+        };
+
+        Recordings = {
+          type = "homevideos";
+          folder = "recordings";
+        };
+      };
+
+      liveTv = {
+        recordingPath = "/srv/tvheadend/recordings";
+
+        tvheadend.sources.local = {
+          enable = true;
+          friendlyName = "alan-big-nixos TVHeadend";
+          baseUrl = "http://alan-big-nixos:9981";
+          playlistPath = "/playlist/channels";
+          xmltvPath = "/xmltv/channels";
+        };
+      };
+
+      expose = {
+        tor = {
+          enable = true;
+          publicPort = 80;
+          secretKeyBase64Secret = "tor/jellyfin/secret-key-base64";
+        };
+
+        tailscale = {
+          enable = true;
+          port = 18096;
+        };
+
+        wireguard = {
+          enable = true;
+          port = 8096;
+        };
+      };
+
+      mediaFolders = {
+        movies = {
+          path = "/srv/media/movies";
+          create = true;
+          user = "buddia";
+          group = "jellyfin";
+          mode = "0775";
+        };
+
+        shows = {
+          path = "/srv/media/shows";
+          create = true;
+          user = "buddia";
+          group = "jellyfin";
+          mode = "0775";
+        };
+
+        recordings = {
+          path = "/srv/tvheadend/recordings";
+          create = true;
+          user = "root";
+          group = "root";
+          mode = "0755";
+        };
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "30m";
+        maxBackupAge = "4h";
       };
     };
 

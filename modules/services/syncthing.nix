@@ -96,8 +96,26 @@ let
     };
   };
 
+  jellyfinMediaFolders = {
+    "media-movies" = {
+      label = "media/movies";
+      path = "/srv/media/movies";
+      user = "buddia";
+      group = "jellyfin";
+      mode = "0775";
+    };
+    "media-shows" = {
+      label = "media/shows";
+      path = "/srv/media/shows";
+      user = "buddia";
+      group = "jellyfin";
+      mode = "0775";
+    };
+  };
+
   folderCatalog = {
     emulation = emulationFolders;
+    jellyfin-media = jellyfinMediaFolders;
   };
 
   emulationLinks = {
@@ -149,9 +167,14 @@ let
         let
           members = folderSetMembers folderSet;
           remoteMembers = lib.filter (member: member != hostname && builtins.elem member cfg.peers) members;
+          folderPath =
+            if folderCfg ? path then
+              folderCfg.path
+            else
+              "${cfg.syncRoot}/${folderCfg.relativePath}";
         in
         lib.nameValuePair folderId {
-          path = "${cfg.syncRoot}/${folderCfg.relativePath}";
+          path = folderPath;
           id = folderId;
           label = folderCfg.label;
           type = "sendreceive";
@@ -175,7 +198,13 @@ let
         (idx: lib.concatStringsSep "/" (lib.take (idx + 1) parts))
         (builtins.length parts);
 
-  selectedFolderRelativePaths = map (folderCfg: folderCfg.relativePath) (lib.attrValues selectedFolderCatalog);
+  selectedFolderRelativePaths =
+    map (folderCfg: folderCfg.relativePath) (
+      lib.filter (folderCfg: folderCfg ? relativePath) (lib.attrValues selectedFolderCatalog)
+    );
+
+  selectedAbsoluteFolders =
+    lib.filter (folderCfg: folderCfg ? path) (lib.attrValues selectedFolderCatalog);
 
   managedSyncRootRelativePaths =
     lib.unique (lib.flatten (map folderRelativePathPrefixes selectedFolderRelativePaths));
@@ -190,6 +219,16 @@ let
       (relativePath: "d ${cfg.syncRoot}/${relativePath}/.stfolder 0755 ${cfg.user} users - -")
       selectedFolderRelativePaths;
 
+  managedAbsoluteFolderTmpfiles =
+    map
+      (folderCfg: "d ${folderCfg.path} ${folderCfg.mode or "0755"} ${folderCfg.user or cfg.user} ${folderCfg.group or "users"} - -")
+      selectedAbsoluteFolders;
+
+  managedAbsoluteFolderMarkerTmpfiles =
+    map
+      (folderCfg: "d ${folderCfg.path}/.stfolder 0755 ${cfg.user} users - -")
+      selectedAbsoluteFolders;
+
   managedSyncRootDirsScript =
     lib.concatMapStringsSep "\n"
       (relativePath: ''
@@ -203,6 +242,14 @@ let
         install -d -m 0755 -o ${cfg.user} -g users "${cfg.syncRoot}/${relativePath}/.stfolder"
       '')
       selectedFolderRelativePaths;
+
+  managedAbsoluteFolderScript =
+    lib.concatMapStringsSep "\n"
+      (folderCfg: ''
+        install -d -m ${folderCfg.mode or "0755"} -o ${folderCfg.user or cfg.user} -g ${folderCfg.group or "users"} "${folderCfg.path}"
+        install -d -m 0755 -o ${cfg.user} -g users "${folderCfg.path}/.stfolder"
+      '')
+      selectedAbsoluteFolders;
 
   selectedLinkAttrs =
     if cfg.linkFolderSets == [ ] then
@@ -315,7 +362,7 @@ in
     };
 
     folderSets = lib.mkOption {
-      type = lib.types.listOf (lib.types.enum [ "emulation" ]);
+      type = lib.types.listOf (lib.types.enum [ "emulation" "jellyfin-media" ]);
       default = [ ];
       description = "Named folder sets enabled on this host.";
     };
@@ -448,12 +495,15 @@ in
         install -d -m 0750 -o ${cfg.user} -g users "${cfg.syncRoot}"
         ${managedSyncRootDirsScript}
         ${managedFolderMarkerScript}
+        ${managedAbsoluteFolderScript}
       '';
 
       systemd.tmpfiles.rules =
         [ "d ${cfg.syncRoot} 0750 ${cfg.user} users - -" ]
         ++ managedSyncRootTmpfiles
-        ++ managedFolderMarkerTmpfiles;
+        ++ managedFolderMarkerTmpfiles
+        ++ managedAbsoluteFolderTmpfiles
+        ++ managedAbsoluteFolderMarkerTmpfiles;
 
       services.syncthing = {
         enable = true;
