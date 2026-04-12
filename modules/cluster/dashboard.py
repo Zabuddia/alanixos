@@ -257,14 +257,22 @@ class Dashboard:
             return None
 
         state_dir_name = tor_cfg.get("stateDirName") or service_name
-        hostname_path = Path("/var/lib/tor/alanix-cluster") / state_dir_name / "hostname"
-        if not hostname_path.exists():
-            return None
+        hostname = None
+        hostname_paths = [
+            Path("/var/lib/alanix-cluster/tor-hostnames") / state_dir_name,
+            Path("/var/lib/tor/alanix-cluster") / state_dir_name / "hostname",
+        ]
 
-        try:
-            hostname = hostname_path.read_text(encoding="utf-8").strip()
-        except OSError:
-            return None
+        for hostname_path in hostname_paths:
+            if not hostname_path.exists():
+                continue
+            try:
+                candidate = hostname_path.read_text(encoding="utf-8").strip()
+            except OSError:
+                continue
+            if candidate:
+                hostname = candidate
+                break
 
         if not hostname:
             return None

@@ -1052,8 +1052,9 @@ in
         caddy_file="$runtime_dir/caddy/cluster.caddy"
         tor_state_dir=/var/lib/tor/alanix-cluster
         tor_file="$tor_state_dir/cluster.conf"
+        tor_hostname_dir=/var/lib/alanix-cluster/tor-hostnames
 
-        mkdir -p "$runtime_dir/caddy" "$tor_state_dir"
+        mkdir -p "$runtime_dir/caddy" "$tor_state_dir" "$tor_hostname_dir"
 
         if [[ "$action" == "start" ]]; then
           : > "$caddy_file"
@@ -1295,6 +1296,37 @@ in
           ${lib.optionalString anyTorExposure ''
             systemctl start tor.service
             systemctl reload tor.service
+
+            publish_tor_hostname() {
+              local service_name="$1"
+              local source="$tor_state_dir/$service_name/hostname"
+              local target="$tor_hostname_dir/$service_name"
+              local attempts=20
+
+              while [[ "$attempts" -gt 0 ]]; do
+                if [[ -s "$source" ]]; then
+                  install -m0644 -o root -g root "$source" "$target"
+                  return 0
+                fi
+                sleep 1
+                attempts=$((attempts - 1))
+              done
+
+              return 0
+            }
+
+            ${lib.optionalString (vaultwardenCluster && vaultwardenCfg.expose.tor.enable) ''
+              publish_tor_hostname vaultwarden
+            ''}
+            ${lib.optionalString (forgejoCluster && forgejoCfg.expose.tor.enable) ''
+              publish_tor_hostname forgejo
+            ''}
+            ${lib.optionalString (invidiousCluster && invidiousCfg.expose.tor.enable) ''
+              publish_tor_hostname invidious
+            ''}
+            ${lib.optionalString (immichCluster && immichCfg.expose.tor.enable) ''
+              publish_tor_hostname immich
+            ''}
           ''}
         else
           : > "$caddy_file"
@@ -1526,6 +1558,8 @@ in
           ++ lib.optionals anyTorExposure [
             "d /var/lib/tor/alanix-cluster 0750 root tor - -"
             "f /var/lib/tor/alanix-cluster/cluster.conf 0640 root tor - -"
+            "d /var/lib/alanix-cluster 0755 root root - -"
+            "d /var/lib/alanix-cluster/tor-hostnames 0755 root root - -"
           ];
       }
 
