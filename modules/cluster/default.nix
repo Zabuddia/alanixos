@@ -153,10 +153,14 @@ in
       forgejoCfg = config.alanix.forgejo;
       invidiousCfg = config.alanix.invidious;
       immichCfg = config.alanix.immich;
+      openwebuiCfg = config.alanix.openwebui;
+      searxngCfg = config.alanix.searxng;
       vaultwardenCluster = vaultwardenCfg.enable && vaultwardenCfg.cluster.enable;
       forgejoCluster = forgejoCfg.enable && forgejoCfg.cluster.enable;
       invidiousCluster = invidiousCfg.enable && invidiousCfg.cluster.enable;
       immichCluster = immichCfg.enable && immichCfg.cluster.enable;
+      openwebuiCluster = openwebuiCfg.enable && openwebuiCfg.cluster.enable;
+      searxngCluster = searxngCfg.enable && searxngCfg.cluster.enable;
       dashboardCfg = cfg.dashboard;
       dashboardEndpoint = {
         address = dashboardCfg.listenAddress;
@@ -469,6 +473,54 @@ in
         else
           null;
 
+      openwebuiRestoreScript =
+        if openwebuiCluster then
+          let
+            stagedStateDir = "${openwebuiCfg.backupDir}${openwebuiCfg.stateDir}";
+          in
+          pkgs.writeShellScript "alanix-openwebui-cluster-restore-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg openwebuiCfg.backupDir}
+            state_dir=${lib.escapeShellArg openwebuiCfg.stateDir}
+            staged_state_dir=${lib.escapeShellArg stagedStateDir}
+
+            rm -rf "$state_dir"
+            mkdir -p "$state_dir"
+
+            if [[ -d "$staged_state_dir" ]]; then
+              cp -a "$staged_state_dir"/. "$state_dir"/
+            fi
+
+            chown -R open-webui:open-webui "$backup_dir" "$state_dir"
+          ''
+        else
+          null;
+
+      searxngRestoreScript =
+        if searxngCluster then
+          let
+            stagedStateDir = "${searxngCfg.backupDir}${searxngCfg.stateDir}";
+          in
+          pkgs.writeShellScript "alanix-searxng-cluster-restore-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg searxngCfg.backupDir}
+            state_dir=${lib.escapeShellArg searxngCfg.stateDir}
+            staged_state_dir=${lib.escapeShellArg stagedStateDir}
+
+            rm -rf "$state_dir"
+            mkdir -p "$state_dir"
+
+            if [[ -d "$staged_state_dir" ]]; then
+              cp -a "$staged_state_dir"/. "$state_dir"/
+            fi
+
+            chown -R searx:searx "$backup_dir" "$state_dir"
+          ''
+        else
+          null;
+
       vaultwardenBackupPrepScript =
         if vaultwardenCluster then
           pkgs.writeShellScript "alanix-vaultwarden-cluster-backup-runtime" ''
@@ -612,6 +664,102 @@ in
         else
           null;
 
+      openwebuiBackupPrepScript =
+        if openwebuiCluster then
+          let
+            defaultDatabaseUrl = "sqlite:///${openwebuiCfg.stateDir}/data/webui.db";
+            stagedStateDir = "${openwebuiCfg.backupDir}${openwebuiCfg.stateDir}";
+            environmentFile =
+              if openwebuiCfg.environmentFile != null then openwebuiCfg.environmentFile else "";
+          in
+          pkgs.writeShellScript "alanix-openwebui-cluster-backup-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg openwebuiCfg.backupDir}
+            backup_group=${lib.escapeShellArg backupRepoUserGroup}
+            state_dir=${lib.escapeShellArg openwebuiCfg.stateDir}
+            staged_state_dir=${lib.escapeShellArg stagedStateDir}
+            environment_file=${lib.escapeShellArg environmentFile}
+            default_database_url=${lib.escapeShellArg defaultDatabaseUrl}
+
+            database_url="$default_database_url"
+            if [[ -n "$environment_file" && -f "$environment_file" ]]; then
+              set -a
+              source "$environment_file"
+              set +a
+              if [[ -n "''${DATABASE_URL:-}" ]]; then
+                database_url="$DATABASE_URL"
+              fi
+            fi
+
+            case "$database_url" in
+              sqlite:///*)
+                db_path="''${database_url#sqlite:///}"
+                ;;
+              *)
+                echo "Open WebUI cluster mode currently requires a local sqlite DATABASE_URL." >&2
+                exit 1
+                ;;
+            esac
+
+            case "$db_path" in
+              "$state_dir"/*)
+                ;;
+              *)
+                echo "Open WebUI cluster mode currently requires the sqlite database to live under $state_dir." >&2
+                exit 1
+                ;;
+            esac
+
+            staged_db_path="$staged_state_dir''${db_path#"$state_dir"}"
+
+            rm -rf "$backup_dir"
+            mkdir -p "$staged_state_dir" "$(dirname "$staged_db_path")"
+            chown -R open-webui:open-webui "$backup_dir"
+
+            if [[ -d "$state_dir" ]]; then
+              rsync -a --delete "$state_dir"/ "$staged_state_dir"/
+            fi
+
+            if [[ -f "$db_path" ]]; then
+              sqlite3 "$db_path" ".backup '$staged_db_path'"
+            fi
+
+            chown -R open-webui:open-webui "$backup_dir"
+            chgrp -R "$backup_group" "$backup_dir"
+            chmod -R u=rwX,g=rX,o= "$backup_dir"
+          ''
+        else
+          null;
+
+      searxngBackupPrepScript =
+        if searxngCluster then
+          let
+            stagedStateDir = "${searxngCfg.backupDir}${searxngCfg.stateDir}";
+          in
+          pkgs.writeShellScript "alanix-searxng-cluster-backup-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg searxngCfg.backupDir}
+            backup_group=${lib.escapeShellArg backupRepoUserGroup}
+            state_dir=${lib.escapeShellArg searxngCfg.stateDir}
+            staged_state_dir=${lib.escapeShellArg stagedStateDir}
+
+            rm -rf "$backup_dir"
+            mkdir -p "$staged_state_dir"
+            chown -R searx:searx "$backup_dir"
+
+            if [[ -d "$state_dir" ]]; then
+              rsync -a --delete "$state_dir"/ "$staged_state_dir"/
+            fi
+
+            chown -R searx:searx "$backup_dir"
+            chgrp -R "$backup_group" "$backup_dir"
+            chmod -R u=rwX,g=rX,o= "$backup_dir"
+          ''
+        else
+          null;
+
       vaultwardenWireguardAddress =
         if vaultwardenCfg.expose.wireguard.address != null then
           vaultwardenCfg.expose.wireguard.address
@@ -740,6 +888,70 @@ in
         else
           null;
 
+      openwebuiWireguardAddress =
+        if openwebuiCfg.expose.wireguard.address != null then
+          openwebuiCfg.expose.wireguard.address
+        else
+          config.alanix.wireguard.vpnIP;
+
+      openwebuiTailscaleTlsName =
+        if openwebuiCfg.expose.tailscale.tlsName != null then
+          openwebuiCfg.expose.tailscale.tlsName
+        else
+          config.alanix.tailscale.address;
+
+      openwebuiTorTargetAddress =
+        normalizeLocalAddress (
+          if openwebuiCfg.expose.tor.targetAddress != null then
+            openwebuiCfg.expose.tor.targetAddress
+          else
+            openwebuiCfg.listenAddress
+        );
+
+      openwebuiTorTargetPort =
+        if openwebuiCfg.expose.tor.tls then
+          openwebuiCfg.expose.tor.publicPort
+        else
+          openwebuiCfg.port;
+
+      openwebuiTorSecretPath =
+        if openwebuiCfg.expose.tor.secretKeyBase64Secret != null then
+          config.sops.secrets.${openwebuiCfg.expose.tor.secretKeyBase64Secret}.path
+        else
+          null;
+
+      searxngWireguardAddress =
+        if searxngCfg.expose.wireguard.address != null then
+          searxngCfg.expose.wireguard.address
+        else
+          config.alanix.wireguard.vpnIP;
+
+      searxngTailscaleTlsName =
+        if searxngCfg.expose.tailscale.tlsName != null then
+          searxngCfg.expose.tailscale.tlsName
+        else
+          config.alanix.tailscale.address;
+
+      searxngTorTargetAddress =
+        normalizeLocalAddress (
+          if searxngCfg.expose.tor.targetAddress != null then
+            searxngCfg.expose.tor.targetAddress
+          else
+            searxngCfg.listenAddress
+        );
+
+      searxngTorTargetPort =
+        if searxngCfg.expose.tor.tls then
+          searxngCfg.expose.tor.publicPort
+        else
+          searxngCfg.port;
+
+      searxngTorSecretPath =
+        if searxngCfg.expose.tor.secretKeyBase64Secret != null then
+          config.sops.secrets.${searxngCfg.expose.tor.secretKeyBase64Secret}.path
+        else
+          null;
+
       anyCaddyExposure =
         (
           vaultwardenCluster
@@ -772,19 +984,39 @@ in
             || immichCfg.expose.wireguard.enable
             || (immichCfg.expose.tor.enable && immichCfg.expose.tor.tls)
           )
+        )
+        || (
+          openwebuiCluster
+          && (
+            openwebuiCfg.expose.tailscale.enable
+            || openwebuiCfg.expose.wireguard.enable
+            || (openwebuiCfg.expose.tor.enable && openwebuiCfg.expose.tor.tls)
+          )
+        )
+        || (
+          searxngCluster
+          && (
+            searxngCfg.expose.tailscale.enable
+            || searxngCfg.expose.wireguard.enable
+            || (searxngCfg.expose.tor.enable && searxngCfg.expose.tor.tls)
+          )
         );
 
       anyTailscaleCaddyExposure =
         (vaultwardenCluster && vaultwardenCfg.expose.tailscale.enable)
         || (forgejoCluster && forgejoCfg.expose.tailscale.enable)
         || (invidiousCluster && invidiousCfg.expose.tailscale.enable)
-        || (immichCluster && immichCfg.expose.tailscale.enable);
+        || (immichCluster && immichCfg.expose.tailscale.enable)
+        || (openwebuiCluster && openwebuiCfg.expose.tailscale.enable)
+        || (searxngCluster && searxngCfg.expose.tailscale.enable);
 
       anyTorExposure =
         (vaultwardenCluster && vaultwardenCfg.expose.tor.enable)
         || (forgejoCluster && forgejoCfg.expose.tor.enable)
         || (invidiousCluster && invidiousCfg.expose.tor.enable)
-        || (immichCluster && immichCfg.expose.tor.enable);
+        || (immichCluster && immichCfg.expose.tor.enable)
+        || (openwebuiCluster && openwebuiCfg.expose.tor.enable)
+        || (searxngCluster && searxngCfg.expose.tor.enable);
 
       # Build a stable Tor URL from the tor exposure options.
       # Returns null when tor.enable is false or tor.hostname is not set.
@@ -880,6 +1112,48 @@ in
             transport = "wireguard";
             scheme = if immichCfg.expose.wireguard.tls then "https" else "http";
             port = immichCfg.expose.wireguard.port;
+            addressFn = peerWireguardAddress;
+          }
+        ))
+      ];
+
+      openwebuiLinksByHost = mergeLinksByHost [
+        (lib.optionalAttrs (openwebuiCluster && openwebuiCfg.expose.tailscale.enable) (
+          mkPeerLinksByHost {
+            label = "Open WebUI";
+            transport = "tailscale";
+            scheme = if openwebuiCfg.expose.tailscale.tls then "https" else "http";
+            port = openwebuiCfg.expose.tailscale.port;
+            addressFn = peerTailscaleAddress;
+          }
+        ))
+        (lib.optionalAttrs (openwebuiCluster && openwebuiCfg.expose.wireguard.enable) (
+          mkPeerLinksByHost {
+            label = "Open WebUI";
+            transport = "wireguard";
+            scheme = if openwebuiCfg.expose.wireguard.tls then "https" else "http";
+            port = openwebuiCfg.expose.wireguard.port;
+            addressFn = peerWireguardAddress;
+          }
+        ))
+      ];
+
+      searxngLinksByHost = mergeLinksByHost [
+        (lib.optionalAttrs (searxngCluster && searxngCfg.expose.tailscale.enable) (
+          mkPeerLinksByHost {
+            label = "SearXNG";
+            transport = "tailscale";
+            scheme = if searxngCfg.expose.tailscale.tls then "https" else "http";
+            port = searxngCfg.expose.tailscale.port;
+            addressFn = peerTailscaleAddress;
+          }
+        ))
+        (lib.optionalAttrs (searxngCluster && searxngCfg.expose.wireguard.enable) (
+          mkPeerLinksByHost {
+            label = "SearXNG";
+            transport = "wireguard";
+            scheme = if searxngCfg.expose.wireguard.tls then "https" else "http";
+            port = searxngCfg.expose.wireguard.port;
             addressFn = peerWireguardAddress;
           }
         ))
@@ -1047,6 +1321,70 @@ in
                 tls = immichCfg.expose.tor.tls;
                 publicPort = immichCfg.expose.tor.publicPort;
                 stateDirName = "immich";
+              };
+            };
+          })
+          // (lib.optionalAttrs openwebuiCluster {
+            openwebui = {
+              name = "openwebui";
+              backupInterval = openwebuiCfg.cluster.backupInterval;
+              maxBackupAge = openwebuiCfg.cluster.maxBackupAge;
+              activeUnits =
+                [ "open-webui.service" ]
+                ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
+              backupPaths = [ openwebuiCfg.backupDir ];
+              preBackupCommand = [ openwebuiBackupPrepScript ];
+              postRestoreCommand = [ openwebuiRestoreScript ];
+              remoteTargets =
+                map
+                  (peer: {
+                    host = peer;
+                    address = hostTransportAddress peer;
+                    repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/openwebui/from-${hostname}/repo";
+                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/openwebui/from-${hostname}/manifest.json";
+                  })
+                  (lib.filter (peer: peer != hostname) cfg.members);
+              localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/openwebui/from-*/repo";
+              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/openwebui/from-*/manifest.json";
+              linksByHost = openwebuiLinksByHost;
+              torUrl = mkTorUrl openwebuiCfg.expose.tor;
+              tor = {
+                enabled = openwebuiCfg.expose.tor.enable;
+                tls = openwebuiCfg.expose.tor.tls;
+                publicPort = openwebuiCfg.expose.tor.publicPort;
+                stateDirName = "openwebui";
+              };
+            };
+          })
+          // (lib.optionalAttrs searxngCluster {
+            searxng = {
+              name = "searxng";
+              backupInterval = searxngCfg.cluster.backupInterval;
+              maxBackupAge = searxngCfg.cluster.maxBackupAge;
+              activeUnits =
+                [ "searx.service" ]
+                ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
+              backupPaths = [ searxngCfg.backupDir ];
+              preBackupCommand = [ searxngBackupPrepScript ];
+              postRestoreCommand = [ searxngRestoreScript ];
+              remoteTargets =
+                map
+                  (peer: {
+                    host = peer;
+                    address = hostTransportAddress peer;
+                    repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/searxng/from-${hostname}/repo";
+                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/searxng/from-${hostname}/manifest.json";
+                  })
+                  (lib.filter (peer: peer != hostname) cfg.members);
+              localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/searxng/from-*/repo";
+              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/searxng/from-*/manifest.json";
+              linksByHost = searxngLinksByHost;
+              torUrl = mkTorUrl searxngCfg.expose.tor;
+              tor = {
+                enabled = searxngCfg.expose.tor.enable;
+                tls = searxngCfg.expose.tor.tls;
+                publicPort = searxngCfg.expose.tor.publicPort;
+                stateDirName = "searxng";
               };
             };
           });
@@ -1298,6 +1636,116 @@ in
             EOF
           ''}
 
+          ${lib.optionalString (openwebuiCluster && openwebuiCfg.expose.tailscale.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if openwebuiCfg.expose.tailscale.tls then "https" else "http"}://${openwebuiTailscaleTlsName}:${toString openwebuiCfg.expose.tailscale.port} {
+              bind $ts_ip
+              ${lib.optionalString openwebuiCfg.expose.tailscale.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress openwebuiCfg.listenAddress}:${toString openwebuiCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (openwebuiCluster && openwebuiCfg.expose.wireguard.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if openwebuiCfg.expose.wireguard.tls then "https" else "http"}://${openwebuiWireguardAddress}:${toString openwebuiCfg.expose.wireguard.port} {
+              bind ${openwebuiWireguardAddress}
+              ${lib.optionalString openwebuiCfg.expose.wireguard.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress openwebuiCfg.listenAddress}:${toString openwebuiCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (openwebuiCluster && openwebuiCfg.expose.tor.enable && openwebuiCfg.expose.tor.tls) ''
+            cat >> "$caddy_file" <<EOF
+            https://${openwebuiCfg.expose.tor.tlsName}:${toString openwebuiCfg.expose.tor.publicPort} {
+              bind ${openwebuiTorTargetAddress}
+              tls internal
+              reverse_proxy ${normalizeLocalAddress openwebuiCfg.listenAddress}:${toString openwebuiCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (openwebuiCluster && openwebuiCfg.expose.tor.enable) ''
+            rm -rf "$tor_state_dir/openwebui"
+            mkdir -p "$tor_state_dir/openwebui"
+            chown tor:tor "$tor_state_dir/openwebui"
+            chmod 0700 "$tor_state_dir/openwebui"
+          ''}
+
+          ${lib.optionalString (openwebuiCluster && openwebuiCfg.expose.tor.enable && openwebuiTorSecretPath != null) ''
+            base64 --decode ${lib.escapeShellArg openwebuiTorSecretPath} > "$tor_state_dir/openwebui/hs_ed25519_secret_key"
+            chown tor:tor "$tor_state_dir/openwebui/hs_ed25519_secret_key"
+            chmod 0600 "$tor_state_dir/openwebui/hs_ed25519_secret_key"
+          ''}
+
+          ${lib.optionalString (openwebuiCluster && openwebuiCfg.expose.tor.enable) ''
+            cat >> "$tor_file" <<EOF
+            HiddenServiceDir $tor_state_dir/openwebui
+            HiddenServiceVersion 3
+            HiddenServicePort ${toString openwebuiCfg.expose.tor.publicPort} ${openwebuiTorTargetAddress}:${toString openwebuiTorTargetPort}
+
+            EOF
+          ''}
+
+          ${lib.optionalString (searxngCluster && searxngCfg.expose.tailscale.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if searxngCfg.expose.tailscale.tls then "https" else "http"}://${searxngTailscaleTlsName}:${toString searxngCfg.expose.tailscale.port} {
+              bind $ts_ip
+              ${lib.optionalString searxngCfg.expose.tailscale.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress searxngCfg.listenAddress}:${toString searxngCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (searxngCluster && searxngCfg.expose.wireguard.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if searxngCfg.expose.wireguard.tls then "https" else "http"}://${searxngWireguardAddress}:${toString searxngCfg.expose.wireguard.port} {
+              bind ${searxngWireguardAddress}
+              ${lib.optionalString searxngCfg.expose.wireguard.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress searxngCfg.listenAddress}:${toString searxngCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (searxngCluster && searxngCfg.expose.tor.enable && searxngCfg.expose.tor.tls) ''
+            cat >> "$caddy_file" <<EOF
+            https://${searxngCfg.expose.tor.tlsName}:${toString searxngCfg.expose.tor.publicPort} {
+              bind ${searxngTorTargetAddress}
+              tls internal
+              reverse_proxy ${normalizeLocalAddress searxngCfg.listenAddress}:${toString searxngCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (searxngCluster && searxngCfg.expose.tor.enable) ''
+            rm -rf "$tor_state_dir/searxng"
+            mkdir -p "$tor_state_dir/searxng"
+            chown tor:tor "$tor_state_dir/searxng"
+            chmod 0700 "$tor_state_dir/searxng"
+          ''}
+
+          ${lib.optionalString (searxngCluster && searxngCfg.expose.tor.enable && searxngTorSecretPath != null) ''
+            base64 --decode ${lib.escapeShellArg searxngTorSecretPath} > "$tor_state_dir/searxng/hs_ed25519_secret_key"
+            chown tor:tor "$tor_state_dir/searxng/hs_ed25519_secret_key"
+            chmod 0600 "$tor_state_dir/searxng/hs_ed25519_secret_key"
+          ''}
+
+          ${lib.optionalString (searxngCluster && searxngCfg.expose.tor.enable) ''
+            cat >> "$tor_file" <<EOF
+            HiddenServiceDir $tor_state_dir/searxng
+            HiddenServiceVersion 3
+            HiddenServicePort ${toString searxngCfg.expose.tor.publicPort} ${searxngTorTargetAddress}:${toString searxngTorTargetPort}
+
+            EOF
+          ''}
+
           ${lib.optionalString anyCaddyExposure ''
             systemctl start caddy.service
             systemctl reload caddy.service
@@ -1337,6 +1785,12 @@ in
             ${lib.optionalString (immichCluster && immichCfg.expose.tor.enable) ''
               publish_tor_hostname immich
             ''}
+            ${lib.optionalString (openwebuiCluster && openwebuiCfg.expose.tor.enable) ''
+              publish_tor_hostname openwebui
+            ''}
+            ${lib.optionalString (searxngCluster && searxngCfg.expose.tor.enable) ''
+              publish_tor_hostname searxng
+            ''}
           ''}
         else
           : > "$caddy_file"
@@ -1345,6 +1799,8 @@ in
           rm -rf "$tor_state_dir/forgejo"
           rm -rf "$tor_state_dir/invidious"
           rm -rf "$tor_state_dir/immich"
+          rm -rf "$tor_state_dir/openwebui"
+          rm -rf "$tor_state_dir/searxng"
 
           ${lib.optionalString anyCaddyExposure ''
             systemctl reload caddy.service || true
@@ -1463,6 +1919,18 @@ in
               message = "Immich cluster mode currently requires services.immich.database.user to match services.immich.user.";
             }
           ]
+          ++ lib.optionals openwebuiCluster [
+            {
+              assertion = lib.hasPrefix "/" openwebuiCfg.stateDir;
+              message = "Open WebUI cluster mode requires alanix.openwebui.stateDir to be an absolute path.";
+            }
+          ]
+          ++ lib.optionals searxngCluster [
+            {
+              assertion = lib.hasPrefix "/" searxngCfg.stateDir;
+              message = "SearXNG cluster mode requires alanix.searxng.stateDir to be an absolute path.";
+            }
+          ]
           ++ serviceExposure.mkAssertions {
             inherit config;
             optionPrefix = "alanix.cluster.dashboard.expose";
@@ -1559,6 +2027,12 @@ in
           ]
           ++ lib.optionals immichCluster [
             "d ${immichCfg.backupDir} 0750 immich ${backupRepoUserGroup} - -"
+          ]
+          ++ lib.optionals openwebuiCluster [
+            "d ${openwebuiCfg.backupDir} 0750 open-webui ${backupRepoUserGroup} - -"
+          ]
+          ++ lib.optionals searxngCluster [
+            "d ${searxngCfg.backupDir} 0750 searx ${backupRepoUserGroup} - -"
           ]
           ++ lib.optionals anyCaddyExposure [
             "d /run/alanix-cluster 0755 root root - -"
@@ -1668,12 +2142,16 @@ in
             lib.optionals vaultwardenCluster [ "vaultwarden.service" ]
             ++ lib.optionals forgejoCluster [ "forgejo.service" ]
             ++ lib.optionals invidiousCluster [ "invidious.service" ]
-            ++ lib.optionals immichCluster [ "immich-server.service" ];
+            ++ lib.optionals immichCluster [ "immich-server.service" ]
+            ++ lib.optionals openwebuiCluster [ "open-webui.service" ]
+            ++ lib.optionals searxngCluster [ "searx.service" ];
           wants =
             lib.optionals vaultwardenCluster [ "vaultwarden.service" ]
             ++ lib.optionals forgejoCluster [ "forgejo.service" ]
             ++ lib.optionals invidiousCluster [ "invidious.service" ]
-            ++ lib.optionals immichCluster [ "immich-server.service" ];
+            ++ lib.optionals immichCluster [ "immich-server.service" ]
+            ++ lib.optionals openwebuiCluster [ "open-webui.service" ]
+            ++ lib.optionals searxngCluster [ "searx.service" ];
           path =
             [ pkgs.coreutils pkgs.systemd ]
             ++ lib.optionals anyCaddyExposure [ config.services.caddy.package ]
@@ -1724,6 +2202,20 @@ in
         };
 
         systemd.services.immich-machine-learning = lib.mkIf immichCfg.machineLearning.enable {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+      })
+
+      (lib.mkIf openwebuiCluster {
+        systemd.services.open-webui = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+      })
+
+      (lib.mkIf searxngCluster {
+        systemd.services.searx = {
           wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
           partOf = [ "alanix-cluster-active.target" ];
         };

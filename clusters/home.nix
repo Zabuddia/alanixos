@@ -225,5 +225,91 @@ in
         passwordSecret = "immich-passwords/buddia";
       };
     };
+
+    alanix.searxng = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 8888;
+      backupDir = "/var/backup/searxng";
+      settings.search.formats = [
+        "html"
+        "json"
+      ];
+
+      expose = {
+        tor = {
+          enable = true;
+          publicPort = 80;
+          secretKeyBase64Secret = "tor/searxng/secret-key-base64";
+        };
+
+        tailscale = {
+          enable = true;
+          port = 18888;
+        };
+
+        wireguard = {
+          enable = true;
+          port = 8888;
+        };
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "15m";
+        maxBackupAge = "1h";
+      };
+    };
+
+    alanix.openwebui = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 3002;
+      backupDir = "/var/backup/openwebui";
+      disableRegistration = true;
+
+      openai = {
+        baseUrls = [ "http://alan-framework:4000/v1" ];
+        apiKeys = [ "" ];
+      };
+
+      webSearch = {
+        enable = true;
+        engine = "searxng";
+        resultCount = 3;
+        concurrentRequests = 1;
+      };
+
+      expose = {
+        tor = {
+          enable = true;
+          publicPort = 80;
+          secretKeyBase64Secret = "tor/openwebui/secret-key-base64";
+        };
+
+        wireguard = {
+          enable = true;
+          port = 3002;
+        };
+
+        tailscale = {
+          enable = true;
+          port = 13002;
+        };
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "5m";
+        maxBackupAge = "15m";
+      };
+
+      users.buddia = {
+        admin = true;
+        email = "fife.alan@protonmail.com";
+        name = "Alan Fife";
+        passwordSecret = "openwebui-passwords/buddia";
+      };
+    };
   };
 }
