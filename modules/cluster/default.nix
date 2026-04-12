@@ -1682,6 +1682,7 @@ in
           serviceConfig = {
             Type = "oneshot";
             RemainAfterExit = true;
+            SuccessExitStatus = [ "SIGTERM" ];
             ExecStop = "${exposureScript} stop";
           };
         };

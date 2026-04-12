@@ -318,6 +318,7 @@ in
         serviceConfig =
           {
             Type = "oneshot";
+            SuccessExitStatus = [ "SIGTERM" ];
             User = config.services.immich.user;
             Group = config.services.immich.group;
             WorkingDirectory = "/var/lib/immich";
