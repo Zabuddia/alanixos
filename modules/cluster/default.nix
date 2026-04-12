@@ -153,12 +153,14 @@ in
       forgejoCfg = config.alanix.forgejo;
       invidiousCfg = config.alanix.invidious;
       immichCfg = config.alanix.immich;
+      jellyfinCfg = config.alanix.jellyfin;
       openwebuiCfg = config.alanix.openwebui;
       searxngCfg = config.alanix.searxng;
       vaultwardenCluster = vaultwardenCfg.enable && vaultwardenCfg.cluster.enable;
       forgejoCluster = forgejoCfg.enable && forgejoCfg.cluster.enable;
       invidiousCluster = invidiousCfg.enable && invidiousCfg.cluster.enable;
       immichCluster = immichCfg.enable && immichCfg.cluster.enable;
+      jellyfinCluster = jellyfinCfg.enable && jellyfinCfg.cluster.enable;
       openwebuiCluster = openwebuiCfg.enable && openwebuiCfg.cluster.enable;
       searxngCluster = searxngCfg.enable && searxngCfg.cluster.enable;
       dashboardCfg = cfg.dashboard;
@@ -337,6 +339,9 @@ in
         else
           null;
 
+      jellyfinClusteredPaths =
+        [ jellyfinCfg.dataDir ];
+
       forgejoRestoreScript =
         if forgejoCluster then
           let
@@ -469,6 +474,50 @@ in
                   --dbname="$pg_database" \
                   "$restore_dump"
             fi
+          ''
+        else
+          null;
+
+      jellyfinRestoreScript =
+        if jellyfinCluster then
+          let
+            mediaFolderOwnershipFixups = lib.concatMapStringsSep "\n"
+              (folderCfg: ''
+                chown -R ${folderCfg.user}:${folderCfg.group} ${lib.escapeShellArg folderCfg.path}
+              '')
+              (builtins.attrValues jellyfinCfg.mediaFolders);
+            recordingOwnershipFixup =
+              lib.optionalString (
+                jellyfinCfg.liveTv.recordingPath != null
+                && !(lib.any (folderCfg: folderCfg.path == jellyfinCfg.liveTv.recordingPath) (builtins.attrValues jellyfinCfg.mediaFolders))
+              ) ''
+                chown -R root:root ${lib.escapeShellArg jellyfinCfg.liveTv.recordingPath}
+              '';
+          in
+          pkgs.writeShellScript "alanix-jellyfin-cluster-restore-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg jellyfinCfg.backupDir}
+
+            restore_dir() {
+              local target="$1"
+              local staged_dir="$backup_dir$target"
+
+              rm -rf "$target"
+              mkdir -p "$target"
+
+              if [[ -d "$staged_dir" ]]; then
+                cp -a "$staged_dir"/. "$target"/
+              fi
+            }
+
+            ${lib.concatMapStringsSep "\n" (path: ''
+              restore_dir ${lib.escapeShellArg path}
+            '') jellyfinClusteredPaths}
+
+            chown -R jellyfin:jellyfin ${lib.escapeShellArg jellyfinCfg.dataDir}
+            ${mediaFolderOwnershipFixups}
+            ${recordingOwnershipFixup}
           ''
         else
           null;
@@ -658,6 +707,48 @@ in
                 "$pg_database"
 
             chown -R immich:immich "$backup_dir"
+            chgrp -R "$backup_group" "$backup_dir"
+            chmod -R u=rwX,g=rX,o= "$backup_dir"
+          ''
+        else
+          null;
+
+      jellyfinBackupPrepScript =
+        if jellyfinCluster then
+          pkgs.writeShellScript "alanix-jellyfin-cluster-backup-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg jellyfinCfg.backupDir}
+            backup_group=${lib.escapeShellArg backupRepoUserGroup}
+            data_dir=${lib.escapeShellArg jellyfinCfg.dataDir}
+
+            stage_dir() {
+              local source_dir="$1"
+              local staged_dir="$backup_dir$source_dir"
+
+              mkdir -p "$staged_dir"
+
+              if [[ -d "$source_dir" ]]; then
+                rsync -a --delete "$source_dir"/ "$staged_dir"/
+              fi
+            }
+
+            rm -rf "$backup_dir"
+            mkdir -p "$backup_dir"
+
+            ${lib.concatMapStringsSep "\n" (path: ''
+              stage_dir ${lib.escapeShellArg path}
+            '') jellyfinClusteredPaths}
+
+            shopt -s globstar nullglob
+            for db_path in "$data_dir"/**/*.db "$data_dir"/*.db; do
+              [[ -f "$db_path" ]] || continue
+              staged_db="$backup_dir$db_path"
+              mkdir -p "$(dirname "$staged_db")"
+              sqlite3 "$db_path" ".backup '$staged_db'"
+            done
+            shopt -u globstar nullglob
+
             chgrp -R "$backup_group" "$backup_dir"
             chmod -R u=rwX,g=rX,o= "$backup_dir"
           ''
@@ -888,6 +979,38 @@ in
         else
           null;
 
+      jellyfinWireguardAddress =
+        if jellyfinCfg.expose.wireguard.address != null then
+          jellyfinCfg.expose.wireguard.address
+        else
+          config.alanix.wireguard.vpnIP;
+
+      jellyfinTailscaleTlsName =
+        if jellyfinCfg.expose.tailscale.tlsName != null then
+          jellyfinCfg.expose.tailscale.tlsName
+        else
+          config.alanix.tailscale.address;
+
+      jellyfinTorTargetAddress =
+        normalizeLocalAddress (
+          if jellyfinCfg.expose.tor.targetAddress != null then
+            jellyfinCfg.expose.tor.targetAddress
+          else
+            jellyfinCfg.listenAddress
+        );
+
+      jellyfinTorTargetPort =
+        if jellyfinCfg.expose.tor.tls then
+          jellyfinCfg.expose.tor.publicPort
+        else
+          jellyfinCfg.port;
+
+      jellyfinTorSecretPath =
+        if jellyfinCfg.expose.tor.secretKeyBase64Secret != null then
+          config.sops.secrets.${jellyfinCfg.expose.tor.secretKeyBase64Secret}.path
+        else
+          null;
+
       openwebuiWireguardAddress =
         if openwebuiCfg.expose.wireguard.address != null then
           openwebuiCfg.expose.wireguard.address
@@ -986,6 +1109,14 @@ in
           )
         )
         || (
+          jellyfinCluster
+          && (
+            jellyfinCfg.expose.tailscale.enable
+            || jellyfinCfg.expose.wireguard.enable
+            || (jellyfinCfg.expose.tor.enable && jellyfinCfg.expose.tor.tls)
+          )
+        )
+        || (
           openwebuiCluster
           && (
             openwebuiCfg.expose.tailscale.enable
@@ -1007,6 +1138,7 @@ in
         || (forgejoCluster && forgejoCfg.expose.tailscale.enable)
         || (invidiousCluster && invidiousCfg.expose.tailscale.enable)
         || (immichCluster && immichCfg.expose.tailscale.enable)
+        || (jellyfinCluster && jellyfinCfg.expose.tailscale.enable)
         || (openwebuiCluster && openwebuiCfg.expose.tailscale.enable)
         || (searxngCluster && searxngCfg.expose.tailscale.enable);
 
@@ -1015,6 +1147,7 @@ in
         || (forgejoCluster && forgejoCfg.expose.tor.enable)
         || (invidiousCluster && invidiousCfg.expose.tor.enable)
         || (immichCluster && immichCfg.expose.tor.enable)
+        || (jellyfinCluster && jellyfinCfg.expose.tor.enable)
         || (openwebuiCluster && openwebuiCfg.expose.tor.enable)
         || (searxngCluster && searxngCfg.expose.tor.enable);
 
@@ -1112,6 +1245,27 @@ in
             transport = "wireguard";
             scheme = if immichCfg.expose.wireguard.tls then "https" else "http";
             port = immichCfg.expose.wireguard.port;
+            addressFn = peerWireguardAddress;
+          }
+        ))
+      ];
+
+      jellyfinLinksByHost = mergeLinksByHost [
+        (lib.optionalAttrs (jellyfinCluster && jellyfinCfg.expose.tailscale.enable) (
+          mkPeerLinksByHost {
+            label = "Jellyfin";
+            transport = "tailscale";
+            scheme = if jellyfinCfg.expose.tailscale.tls then "https" else "http";
+            port = jellyfinCfg.expose.tailscale.port;
+            addressFn = peerTailscaleAddress;
+          }
+        ))
+        (lib.optionalAttrs (jellyfinCluster && jellyfinCfg.expose.wireguard.enable) (
+          mkPeerLinksByHost {
+            label = "Jellyfin";
+            transport = "wireguard";
+            scheme = if jellyfinCfg.expose.wireguard.tls then "https" else "http";
+            port = jellyfinCfg.expose.wireguard.port;
             addressFn = peerWireguardAddress;
           }
         ))
@@ -1321,6 +1475,38 @@ in
                 tls = immichCfg.expose.tor.tls;
                 publicPort = immichCfg.expose.tor.publicPort;
                 stateDirName = "immich";
+              };
+            };
+          })
+          // (lib.optionalAttrs jellyfinCluster {
+            jellyfin = {
+              name = "jellyfin";
+              backupInterval = jellyfinCfg.cluster.backupInterval;
+              maxBackupAge = jellyfinCfg.cluster.maxBackupAge;
+              activeUnits =
+                [ "jellyfin.service" ]
+                ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
+              backupPaths = [ jellyfinCfg.backupDir ];
+              preBackupCommand = [ jellyfinBackupPrepScript ];
+              postRestoreCommand = [ jellyfinRestoreScript ];
+              remoteTargets =
+                map
+                  (peer: {
+                    host = peer;
+                    address = hostTransportAddress peer;
+                    repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/jellyfin/from-${hostname}/repo";
+                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/jellyfin/from-${hostname}/manifest.json";
+                  })
+                  (lib.filter (peer: peer != hostname) cfg.members);
+              localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/jellyfin/from-*/repo";
+              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/jellyfin/from-*/manifest.json";
+              linksByHost = jellyfinLinksByHost;
+              torUrl = mkTorUrl jellyfinCfg.expose.tor;
+              tor = {
+                enabled = jellyfinCfg.expose.tor.enable;
+                tls = jellyfinCfg.expose.tor.tls;
+                publicPort = jellyfinCfg.expose.tor.publicPort;
+                stateDirName = "jellyfin";
               };
             };
           })
@@ -1623,6 +1809,61 @@ in
             EOF
           ''}
 
+          ${lib.optionalString (jellyfinCluster && jellyfinCfg.expose.tailscale.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if jellyfinCfg.expose.tailscale.tls then "https" else "http"}://${jellyfinTailscaleTlsName}:${toString jellyfinCfg.expose.tailscale.port} {
+              bind $ts_ip
+              ${lib.optionalString jellyfinCfg.expose.tailscale.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress jellyfinCfg.listenAddress}:${toString jellyfinCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (jellyfinCluster && jellyfinCfg.expose.wireguard.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if jellyfinCfg.expose.wireguard.tls then "https" else "http"}://${jellyfinWireguardAddress}:${toString jellyfinCfg.expose.wireguard.port} {
+              bind ${jellyfinWireguardAddress}
+              ${lib.optionalString jellyfinCfg.expose.wireguard.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress jellyfinCfg.listenAddress}:${toString jellyfinCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (jellyfinCluster && jellyfinCfg.expose.tor.enable && jellyfinCfg.expose.tor.tls) ''
+            cat >> "$caddy_file" <<EOF
+            https://${jellyfinCfg.expose.tor.tlsName}:${toString jellyfinCfg.expose.tor.publicPort} {
+              bind ${jellyfinTorTargetAddress}
+              tls internal
+              reverse_proxy ${normalizeLocalAddress jellyfinCfg.listenAddress}:${toString jellyfinCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (jellyfinCluster && jellyfinCfg.expose.tor.enable) ''
+            rm -rf "$tor_state_dir/jellyfin"
+            mkdir -p "$tor_state_dir/jellyfin"
+            chown tor:tor "$tor_state_dir/jellyfin"
+            chmod 0700 "$tor_state_dir/jellyfin"
+          ''}
+
+          ${lib.optionalString (jellyfinCluster && jellyfinCfg.expose.tor.enable && jellyfinTorSecretPath != null) ''
+            base64 --decode ${lib.escapeShellArg jellyfinTorSecretPath} > "$tor_state_dir/jellyfin/hs_ed25519_secret_key"
+            chown tor:tor "$tor_state_dir/jellyfin/hs_ed25519_secret_key"
+            chmod 0600 "$tor_state_dir/jellyfin/hs_ed25519_secret_key"
+          ''}
+
+          ${lib.optionalString (jellyfinCluster && jellyfinCfg.expose.tor.enable) ''
+            cat >> "$tor_file" <<EOF
+            HiddenServiceDir $tor_state_dir/jellyfin
+            HiddenServiceVersion 3
+            HiddenServicePort ${toString jellyfinCfg.expose.tor.publicPort} ${jellyfinTorTargetAddress}:${toString jellyfinTorTargetPort}
+
+            EOF
+          ''}
+
           ${lib.optionalString (openwebuiCluster && openwebuiCfg.expose.tailscale.enable) ''
             cat >> "$caddy_file" <<EOF
             ${if openwebuiCfg.expose.tailscale.tls then "https" else "http"}://${openwebuiTailscaleTlsName}:${toString openwebuiCfg.expose.tailscale.port} {
@@ -1772,6 +2013,9 @@ in
             ${lib.optionalString (immichCluster && immichCfg.expose.tor.enable) ''
               publish_tor_hostname immich
             ''}
+            ${lib.optionalString (jellyfinCluster && jellyfinCfg.expose.tor.enable) ''
+              publish_tor_hostname jellyfin
+            ''}
             ${lib.optionalString (openwebuiCluster && openwebuiCfg.expose.tor.enable) ''
               publish_tor_hostname openwebui
             ''}
@@ -1786,6 +2030,7 @@ in
           rm -rf "$tor_state_dir/forgejo"
           rm -rf "$tor_state_dir/invidious"
           rm -rf "$tor_state_dir/immich"
+          rm -rf "$tor_state_dir/jellyfin"
           rm -rf "$tor_state_dir/openwebui"
           rm -rf "$tor_state_dir/searxng"
 
@@ -1906,6 +2151,16 @@ in
               message = "Immich cluster mode currently requires services.immich.database.user to match services.immich.user.";
             }
           ]
+          ++ lib.optionals jellyfinCluster [
+            {
+              assertion = lib.hasPrefix "/" jellyfinCfg.dataDir;
+              message = "Jellyfin cluster mode requires alanix.jellyfin.dataDir to be an absolute path.";
+            }
+            {
+              assertion = lib.hasPrefix "/" jellyfinCfg.backupDir;
+              message = "Jellyfin cluster mode requires alanix.jellyfin.backupDir to be an absolute path.";
+            }
+          ]
           ++ lib.optionals openwebuiCluster [
             {
               assertion = lib.hasPrefix "/" openwebuiCfg.stateDir;
@@ -2014,6 +2269,9 @@ in
           ]
           ++ lib.optionals immichCluster [
             "d ${immichCfg.backupDir} 0750 immich ${backupRepoUserGroup} - -"
+          ]
+          ++ lib.optionals jellyfinCluster [
+            "d ${jellyfinCfg.backupDir} 0750 jellyfin ${backupRepoUserGroup} - -"
           ]
           ++ lib.optionals openwebuiCluster [
             "d ${openwebuiCfg.backupDir} 0750 open-webui ${backupRepoUserGroup} - -"
@@ -2127,6 +2385,7 @@ in
             ++ lib.optionals forgejoCluster [ "forgejo.service" ]
             ++ lib.optionals invidiousCluster [ "invidious.service" ]
             ++ lib.optionals immichCluster [ "immich-server.service" ]
+            ++ lib.optionals jellyfinCluster [ "jellyfin.service" ]
             ++ lib.optionals openwebuiCluster [ "open-webui.service" ]
             ++ lib.optionals searxngCluster [ "searx.service" ];
           wants =
@@ -2134,6 +2393,7 @@ in
             ++ lib.optionals forgejoCluster [ "forgejo.service" ]
             ++ lib.optionals invidiousCluster [ "invidious.service" ]
             ++ lib.optionals immichCluster [ "immich-server.service" ]
+            ++ lib.optionals jellyfinCluster [ "jellyfin.service" ]
             ++ lib.optionals openwebuiCluster [ "open-webui.service" ]
             ++ lib.optionals searxngCluster [ "searx.service" ];
           path =
@@ -2186,6 +2446,13 @@ in
         };
 
         systemd.services.immich-machine-learning = lib.mkIf immichCfg.machineLearning.enable {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+      })
+
+      (lib.mkIf jellyfinCluster {
+        systemd.services.jellyfin = {
           wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
           partOf = [ "alanix-cluster-active.target" ];
         };

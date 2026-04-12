@@ -61,6 +61,13 @@
     mode = "0400";
   };
 
+  sops.secrets."jellyfin-passwords/buddia" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."openwebui-passwords/buddia" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
@@ -107,6 +114,18 @@
     path = "/etc/ssh/ssh_host_ed25519_key";
   };
 
+  sops.secrets."syncthing-certs/alan-node" = {
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."syncthing-keys/alan-node" = {
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."tor/vaultwarden/secret-key-base64" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
@@ -129,6 +148,13 @@
   };
 
   sops.secrets."tor/immich/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/jellyfin/secret-key-base64" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
     group = "root";

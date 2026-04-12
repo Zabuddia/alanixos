@@ -1,6 +1,7 @@
 { config, lib, pkgs, pkgs-unstable, ... }:
 let
   cfg = config.alanix.jellyfin;
+  clusterCfg = cfg.cluster;
   tvheadendCfg = config.alanix.tvheadend;
   serviceExposure = import ../../lib/mkServiceExposure.nix { inherit lib pkgs; };
   serviceIdentity = import ../../lib/mkServiceIdentity.nix { inherit lib; };
@@ -205,6 +206,26 @@ in
       type = lib.types.str;
       default = "/var/cache/jellyfin";
       description = "Jellyfin cache directory.";
+    };
+
+    backupDir = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Optional Jellyfin cluster backup staging directory.";
+    };
+
+    cluster = {
+      enable = lib.mkEnableOption "cluster-manage Jellyfin through alanix.cluster";
+
+      backupInterval = lib.mkOption {
+        type = lib.types.str;
+        default = "30m";
+      };
+
+      maxBackupAge = lib.mkOption {
+        type = lib.types.str;
+        default = "4h";
+      };
     };
 
     extraGroups = lib.mkOption {
@@ -443,6 +464,10 @@ in
             message = "alanix.jellyfin.cacheDir must be an absolute path.";
           }
           {
+            assertion = cfg.backupDir == null || lib.hasPrefix "/" cfg.backupDir;
+            message = "alanix.jellyfin.backupDir must be an absolute path when set.";
+          }
+          {
             assertion = cfg.users == { } || adminUserNames != [ ];
             message = "alanix.jellyfin: at least one declared user must have admin = true.";
           }
@@ -451,8 +476,8 @@ in
             message = "alanix.jellyfin: declarative libraries and Live TV require at least one declared admin user.";
           }
           {
-            assertion = !liveTvEnabled || hasValue effectiveTvheadendBaseUrl;
-            message = "alanix.jellyfin.liveTv.tvheadend.enable requires either alanix.jellyfin.liveTv.tvheadend.baseUrl or an enabled alanix.tvheadend service.";
+            assertion = !liveTvEnabled || cfg.liveTv.tvheadend.sources != { } || hasValue effectiveTvheadendBaseUrl;
+            message = "alanix.jellyfin.liveTv.tvheadend.enable requires either alanix.jellyfin.liveTv.tvheadend.baseUrl, a configured liveTv.tvheadend.sources.<name>.baseUrl, or an enabled alanix.tvheadend service.";
           }
           {
             assertion = effectiveTvheadendBaseUrl == null || builtins.match "^https?://.+" effectiveTvheadendBaseUrl != null;
@@ -493,6 +518,10 @@ in
               cfg.liveTv.tvheadend.passwordSecret == null
               || lib.hasAttrByPath [ "sops" "secrets" cfg.liveTv.tvheadend.passwordSecret ] config;
             message = "alanix.jellyfin.liveTv.tvheadend.passwordSecret must reference a declared sops secret.";
+          }
+          {
+            assertion = !clusterCfg.enable || cfg.backupDir != null;
+            message = "alanix.jellyfin.cluster.enable requires alanix.jellyfin.backupDir to be set.";
           }
         ]
         ++ serviceExposure.mkAssertions {
@@ -702,6 +731,7 @@ in
           RuntimeDirectory = "alanix-jellyfin";
           RuntimeDirectoryMode = "0700";
           UMask = "0077";
+          SuccessExitStatus = [ "SIGTERM" ];
         };
 
         path = [
@@ -1423,7 +1453,7 @@ in
       };
     }
 
-    (lib.mkIf baseConfigReady (
+    (lib.mkIf (baseConfigReady && !clusterCfg.enable) (
       serviceExposure.mkConfig {
         inherit config endpoint exposeCfg;
         serviceName = "jellyfin";
