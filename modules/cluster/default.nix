@@ -152,9 +152,11 @@ in
       vaultwardenCfg = config.alanix.vaultwarden;
       forgejoCfg = config.alanix.forgejo;
       invidiousCfg = config.alanix.invidious;
+      immichCfg = config.alanix.immich;
       vaultwardenCluster = vaultwardenCfg.enable && vaultwardenCfg.cluster.enable;
       forgejoCluster = forgejoCfg.enable && forgejoCfg.cluster.enable;
       invidiousCluster = invidiousCfg.enable && invidiousCfg.cluster.enable;
+      immichCluster = immichCfg.enable && immichCfg.cluster.enable;
       dashboardCfg = cfg.dashboard;
       dashboardEndpoint = {
         address = dashboardCfg.listenAddress;
@@ -413,6 +415,50 @@ in
         else
           null;
 
+      immichRestoreScript =
+        if immichCluster then
+          let
+            stagedMediaDir = "${immichCfg.backupDir}${toString immichCfg.mediaLocation}";
+            stagedDatabaseDump = "${immichCfg.backupDir}/database/immich.pgcustom";
+          in
+          pkgs.writeShellScript "alanix-immich-cluster-restore-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg immichCfg.backupDir}
+            media_dir=${lib.escapeShellArg (toString immichCfg.mediaLocation)}
+            staged_media_dir=${lib.escapeShellArg stagedMediaDir}
+            staged_dump=${lib.escapeShellArg stagedDatabaseDump}
+            pg_host=${lib.escapeShellArg config.services.immich.database.host}
+            pg_user=${lib.escapeShellArg config.services.immich.database.user}
+            pg_database=${lib.escapeShellArg config.services.immich.database.name}
+
+            rm -rf "$media_dir"
+            mkdir -p "$media_dir"
+
+            if [[ -d "$staged_media_dir" ]]; then
+              cp -a "$staged_media_dir"/. "$media_dir"/
+            fi
+
+            chown -R immich:immich "$backup_dir" "$media_dir"
+
+            if [[ -f "$staged_dump" ]]; then
+              runuser -u immich -- env \
+                PGHOST="$pg_host" \
+                PGUSER="$pg_user" \
+                PGDATABASE="$pg_database" \
+                pg_restore \
+                  --clean \
+                  --if-exists \
+                  --no-owner \
+                  --no-privileges \
+                  --exit-on-error \
+                  --dbname="$pg_database" \
+                  "$staged_dump"
+            fi
+          ''
+        else
+          null;
+
       vaultwardenBackupPrepScript =
         if vaultwardenCluster then
           pkgs.writeShellScript "alanix-vaultwarden-cluster-backup-runtime" ''
@@ -508,6 +554,48 @@ in
                 "$pg_database"
 
             chown -R invidious:invidious "$backup_dir"
+            chgrp -R "$backup_group" "$backup_dir"
+            chmod -R u=rwX,g=rX,o= "$backup_dir"
+          ''
+        else
+          null;
+
+      immichBackupPrepScript =
+        if immichCluster then
+          let
+            stagedMediaDir = "${immichCfg.backupDir}${toString immichCfg.mediaLocation}";
+            stagedDatabaseDump = "${immichCfg.backupDir}/database/immich.pgcustom";
+          in
+          pkgs.writeShellScript "alanix-immich-cluster-backup-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg immichCfg.backupDir}
+            backup_group=${lib.escapeShellArg backupRepoUserGroup}
+            media_dir=${lib.escapeShellArg (toString immichCfg.mediaLocation)}
+            staged_media_dir=${lib.escapeShellArg stagedMediaDir}
+            staged_dump=${lib.escapeShellArg stagedDatabaseDump}
+            pg_host=${lib.escapeShellArg config.services.immich.database.host}
+            pg_user=${lib.escapeShellArg config.services.immich.database.user}
+            pg_database=${lib.escapeShellArg config.services.immich.database.name}
+
+            rm -rf "$backup_dir"
+            mkdir -p "$staged_media_dir" "$(dirname "$staged_dump")"
+            chown -R immich:immich "$backup_dir"
+
+            if [[ -d "$media_dir" ]]; then
+              rsync -a --delete "$media_dir"/ "$staged_media_dir"/
+            fi
+
+            runuser -u immich -- env \
+              PGHOST="$pg_host" \
+              PGUSER="$pg_user" \
+              PGDATABASE="$pg_database" \
+              pg_dump \
+                --format=custom \
+                --file="$staged_dump" \
+                "$pg_database"
+
+            chown -R immich:immich "$backup_dir"
             chgrp -R "$backup_group" "$backup_dir"
             chmod -R u=rwX,g=rX,o= "$backup_dir"
           ''
@@ -610,6 +698,38 @@ in
         else
           null;
 
+      immichWireguardAddress =
+        if immichCfg.expose.wireguard.address != null then
+          immichCfg.expose.wireguard.address
+        else
+          config.alanix.wireguard.vpnIP;
+
+      immichTailscaleTlsName =
+        if immichCfg.expose.tailscale.tlsName != null then
+          immichCfg.expose.tailscale.tlsName
+        else
+          config.alanix.tailscale.address;
+
+      immichTorTargetAddress =
+        normalizeLocalAddress (
+          if immichCfg.expose.tor.targetAddress != null then
+            immichCfg.expose.tor.targetAddress
+          else
+            immichCfg.listenAddress
+        );
+
+      immichTorTargetPort =
+        if immichCfg.expose.tor.tls then
+          immichCfg.expose.tor.publicPort
+        else
+          immichCfg.port;
+
+      immichTorSecretPath =
+        if immichCfg.expose.tor.secretKeyBase64Secret != null then
+          config.sops.secrets.${immichCfg.expose.tor.secretKeyBase64Secret}.path
+        else
+          null;
+
       anyCaddyExposure =
         (
           vaultwardenCluster
@@ -634,17 +754,27 @@ in
             || invidiousCfg.expose.wireguard.enable
             || (invidiousCfg.expose.tor.enable && invidiousCfg.expose.tor.tls)
           )
+        )
+        || (
+          immichCluster
+          && (
+            immichCfg.expose.tailscale.enable
+            || immichCfg.expose.wireguard.enable
+            || (immichCfg.expose.tor.enable && immichCfg.expose.tor.tls)
+          )
         );
 
       anyTailscaleCaddyExposure =
         (vaultwardenCluster && vaultwardenCfg.expose.tailscale.enable)
         || (forgejoCluster && forgejoCfg.expose.tailscale.enable)
-        || (invidiousCluster && invidiousCfg.expose.tailscale.enable);
+        || (invidiousCluster && invidiousCfg.expose.tailscale.enable)
+        || (immichCluster && immichCfg.expose.tailscale.enable);
 
       anyTorExposure =
         (vaultwardenCluster && vaultwardenCfg.expose.tor.enable)
         || (forgejoCluster && forgejoCfg.expose.tor.enable)
-        || (invidiousCluster && invidiousCfg.expose.tor.enable);
+        || (invidiousCluster && invidiousCfg.expose.tor.enable)
+        || (immichCluster && immichCfg.expose.tor.enable);
 
       # Build a stable Tor URL from the tor exposure options.
       # Returns null when tor.enable is false or tor.hostname is not set.
@@ -719,6 +849,27 @@ in
             transport = "wireguard";
             scheme = if invidiousCfg.expose.wireguard.tls then "https" else "http";
             port = invidiousCfg.expose.wireguard.port;
+            addressFn = peerWireguardAddress;
+          }
+        ))
+      ];
+
+      immichLinksByHost = mergeLinksByHost [
+        (lib.optionalAttrs (immichCluster && immichCfg.expose.tailscale.enable) (
+          mkPeerLinksByHost {
+            label = "Immich";
+            transport = "tailscale";
+            scheme = if immichCfg.expose.tailscale.tls then "https" else "http";
+            port = immichCfg.expose.tailscale.port;
+            addressFn = peerTailscaleAddress;
+          }
+        ))
+        (lib.optionalAttrs (immichCluster && immichCfg.expose.wireguard.enable) (
+          mkPeerLinksByHost {
+            label = "Immich";
+            transport = "wireguard";
+            scheme = if immichCfg.expose.wireguard.tls then "https" else "http";
+            port = immichCfg.expose.wireguard.port;
             addressFn = peerWireguardAddress;
           }
         ))
@@ -853,6 +1004,39 @@ in
                 tls = invidiousCfg.expose.tor.tls;
                 publicPort = invidiousCfg.expose.tor.publicPort;
                 stateDirName = "invidious";
+              };
+            };
+          })
+          // (lib.optionalAttrs immichCluster {
+            immich = {
+              name = "immich";
+              backupInterval = immichCfg.cluster.backupInterval;
+              maxBackupAge = immichCfg.cluster.maxBackupAge;
+              activeUnits =
+                [ "immich-server.service" ]
+                ++ lib.optionals immichCfg.machineLearning.enable [ "immich-machine-learning.service" ]
+                ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
+              backupPaths = [ immichCfg.backupDir ];
+              preBackupCommand = [ immichBackupPrepScript ];
+              postRestoreCommand = [ immichRestoreScript ];
+              remoteTargets =
+                map
+                  (peer: {
+                    host = peer;
+                    address = hostTransportAddress peer;
+                    repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/immich/from-${hostname}/repo";
+                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/immich/from-${hostname}/manifest.json";
+                  })
+                  (lib.filter (peer: peer != hostname) cfg.members);
+              localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/immich/from-*/repo";
+              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/immich/from-*/manifest.json";
+              linksByHost = immichLinksByHost;
+              torUrl = mkTorUrl immichCfg.expose.tor;
+              tor = {
+                enabled = immichCfg.expose.tor.enable;
+                tls = immichCfg.expose.tor.tls;
+                publicPort = immichCfg.expose.tor.publicPort;
+                stateDirName = "immich";
               };
             };
           });
@@ -1048,6 +1232,61 @@ in
             EOF
           ''}
 
+          ${lib.optionalString (immichCluster && immichCfg.expose.tailscale.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if immichCfg.expose.tailscale.tls then "https" else "http"}://${immichTailscaleTlsName}:${toString immichCfg.expose.tailscale.port} {
+              bind $ts_ip
+              ${lib.optionalString immichCfg.expose.tailscale.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress immichCfg.listenAddress}:${toString immichCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (immichCluster && immichCfg.expose.wireguard.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if immichCfg.expose.wireguard.tls then "https" else "http"}://${immichWireguardAddress}:${toString immichCfg.expose.wireguard.port} {
+              bind ${immichWireguardAddress}
+              ${lib.optionalString immichCfg.expose.wireguard.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress immichCfg.listenAddress}:${toString immichCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (immichCluster && immichCfg.expose.tor.enable && immichCfg.expose.tor.tls) ''
+            cat >> "$caddy_file" <<EOF
+            https://${immichCfg.expose.tor.tlsName}:${toString immichCfg.expose.tor.publicPort} {
+              bind ${immichTorTargetAddress}
+              tls internal
+              reverse_proxy ${normalizeLocalAddress immichCfg.listenAddress}:${toString immichCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (immichCluster && immichCfg.expose.tor.enable) ''
+            rm -rf "$tor_state_dir/immich"
+            mkdir -p "$tor_state_dir/immich"
+            chown tor:tor "$tor_state_dir/immich"
+            chmod 0700 "$tor_state_dir/immich"
+          ''}
+
+          ${lib.optionalString (immichCluster && immichCfg.expose.tor.enable && immichTorSecretPath != null) ''
+            base64 --decode ${lib.escapeShellArg immichTorSecretPath} > "$tor_state_dir/immich/hs_ed25519_secret_key"
+            chown tor:tor "$tor_state_dir/immich/hs_ed25519_secret_key"
+            chmod 0600 "$tor_state_dir/immich/hs_ed25519_secret_key"
+          ''}
+
+          ${lib.optionalString (immichCluster && immichCfg.expose.tor.enable) ''
+            cat >> "$tor_file" <<EOF
+            HiddenServiceDir $tor_state_dir/immich
+            HiddenServiceVersion 3
+            HiddenServicePort ${toString immichCfg.expose.tor.publicPort} ${immichTorTargetAddress}:${toString immichTorTargetPort}
+
+            EOF
+          ''}
+
           ${lib.optionalString anyCaddyExposure ''
             systemctl start caddy.service
             systemctl reload caddy.service
@@ -1063,6 +1302,7 @@ in
           rm -rf "$tor_state_dir/vaultwarden"
           rm -rf "$tor_state_dir/forgejo"
           rm -rf "$tor_state_dir/invidious"
+          rm -rf "$tor_state_dir/immich"
 
           ${lib.optionalString anyCaddyExposure ''
             systemctl reload caddy.service || true
@@ -1167,6 +1407,20 @@ in
               message = "Invidious cluster mode currently requires PostgreSQL on the local host.";
             }
           ]
+          ++ lib.optionals immichCluster [
+            {
+              assertion = config.services.immich.database.enable;
+              message = "Immich cluster mode currently requires a locally managed PostgreSQL database.";
+            }
+            {
+              assertion = lib.hasPrefix "/" config.services.immich.database.host;
+              message = "Immich cluster mode currently requires PostgreSQL on the local host via unix socket.";
+            }
+            {
+              assertion = config.services.immich.database.user == config.services.immich.user;
+              message = "Immich cluster mode currently requires services.immich.database.user to match services.immich.user.";
+            }
+          ]
           ++ serviceExposure.mkAssertions {
             inherit config;
             optionPrefix = "alanix.cluster.dashboard.expose";
@@ -1195,12 +1449,12 @@ in
           after =
             [ "network-online.target" "sops-nix.service" ]
             ++ lib.optional (cfg.transport == "tailscale") "tailscaled.service"
-            ++ lib.optional invidiousCluster "postgresql.service"
+            ++ lib.optionals (invidiousCluster || immichCluster) [ "postgresql.service" ]
             ++ lib.optional isVoter "etcd.service";
           wants =
             [ "network-online.target" "sops-nix.service" ]
             ++ lib.optional (cfg.transport == "tailscale") "tailscaled.service"
-            ++ lib.optional invidiousCluster "postgresql.service"
+            ++ lib.optionals (invidiousCluster || immichCluster) [ "postgresql.service" ]
             ++ lib.optional isVoter "etcd.service";
           path = with pkgs; [
             coreutils
@@ -1213,7 +1467,7 @@ in
             sqlite
             systemd
             util-linux
-          ] ++ lib.optionals invidiousCluster [ config.services.postgresql.package ];
+          ] ++ lib.optionals (invidiousCluster || immichCluster) [ config.services.postgresql.package ];
           serviceConfig = {
             Type = "simple";
             Restart = "always";
@@ -1260,6 +1514,9 @@ in
           ]
           ++ lib.optionals invidiousCluster [
             "d ${invidiousCfg.backupDir} 0750 invidious ${backupRepoUserGroup} - -"
+          ]
+          ++ lib.optionals immichCluster [
+            "d ${immichCfg.backupDir} 0750 immich ${backupRepoUserGroup} - -"
           ]
           ++ lib.optionals anyCaddyExposure [
             "d /run/alanix-cluster 0755 root root - -"
@@ -1366,11 +1623,13 @@ in
           after =
             lib.optionals vaultwardenCluster [ "vaultwarden.service" ]
             ++ lib.optionals forgejoCluster [ "forgejo.service" ]
-            ++ lib.optionals invidiousCluster [ "invidious.service" ];
+            ++ lib.optionals invidiousCluster [ "invidious.service" ]
+            ++ lib.optionals immichCluster [ "immich-server.service" ];
           wants =
             lib.optionals vaultwardenCluster [ "vaultwarden.service" ]
             ++ lib.optionals forgejoCluster [ "forgejo.service" ]
-            ++ lib.optionals invidiousCluster [ "invidious.service" ];
+            ++ lib.optionals invidiousCluster [ "invidious.service" ]
+            ++ lib.optionals immichCluster [ "immich-server.service" ];
           path =
             [ pkgs.coreutils pkgs.systemd ]
             ++ lib.optionals anyCaddyExposure [ config.services.caddy.package ]
@@ -1408,6 +1667,18 @@ in
         };
 
         systemd.services.invidious-companion = lib.mkIf invidiousCfg.companion.enable {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+      })
+
+      (lib.mkIf immichCluster {
+        systemd.services.immich-server = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.services.immich-machine-learning = lib.mkIf immichCfg.machineLearning.enable {
           wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
           partOf = [ "alanix-cluster-active.target" ];
         };

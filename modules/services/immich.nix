@@ -1,6 +1,7 @@
 { config, lib, pkgs, ... }:
 let
   cfg = config.alanix.immich;
+  clusterCfg = cfg.cluster;
   serviceExposure = import ../../lib/mkServiceExposure.nix { inherit lib pkgs; };
   passwordUsers = import ../../lib/mkPlaintextPasswordUsers.nix { inherit lib; };
   serviceIdentity = import ../../lib/mkServiceIdentity.nix { inherit lib; };
@@ -82,6 +83,26 @@ in
     port = lib.mkOption {
       type = lib.types.nullOr lib.types.port;
       default = null;
+    };
+
+    backupDir = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Optional Immich cluster backup staging directory.";
+    };
+
+    cluster = {
+      enable = lib.mkEnableOption "cluster-manage Immich through alanix.cluster";
+
+      backupInterval = lib.mkOption {
+        type = lib.types.str;
+        default = "15m";
+      };
+
+      maxBackupAge = lib.mkOption {
+        type = lib.types.str;
+        default = "1h";
+      };
     };
 
     mediaLocation = lib.mkOption {
@@ -215,6 +236,14 @@ in
           {
             assertion = lib.hasPrefix "/" (toString cfg.mediaLocation);
             message = "alanix.immich.mediaLocation must be an absolute path.";
+          }
+          {
+            assertion = cfg.backupDir == null || lib.hasPrefix "/" cfg.backupDir;
+            message = "alanix.immich.backupDir must be an absolute path when set.";
+          }
+          {
+            assertion = !clusterCfg.enable || cfg.backupDir != null;
+            message = "alanix.immich.cluster.enable requires alanix.immich.backupDir to be set.";
           }
           {
             assertion = cfg.externalDomain == null || builtins.match "^https?://.+" cfg.externalDomain != null;
@@ -743,7 +772,7 @@ EOF
       };
     }
 
-    (lib.mkIf baseConfigReady (
+    (lib.mkIf (baseConfigReady && !clusterCfg.enable) (
       serviceExposure.mkConfig {
         inherit config endpoint exposeCfg;
         serviceName = "immich";
