@@ -427,9 +427,12 @@ class Controller:
     def promote(self, leader, *, allow_stale=False):
         self.lease_id = leader["lease_id"]
         self.leader_revision = leader["create_revision"]
+        # Promotion can take longer than the lease TTL once restores get large.
+        # Start renewing immediately after we acquire the lease so it stays valid
+        # while we recover local state and start leader-only units.
+        self.start_keepalive(self.lease_id)
         self.recover_services(allow_stale=allow_stale)
         self.start_target()
-        self.start_keepalive(self.lease_id)
         for service_name in self.next_backup_at:
             self.next_backup_at[service_name] = 0.0
         log(f"became active with leader revision {self.leader_revision}")
@@ -437,10 +440,10 @@ class Controller:
     def adopt_existing_leader(self, leader):
         self.lease_id = leader["lease_id"]
         self.leader_revision = leader["create_revision"]
+        self.start_keepalive(self.lease_id)
         if not self.target_is_active():
             self.recover_services(allow_stale=True)
             self.start_target()
-        self.start_keepalive(self.lease_id)
         log(f"adopted existing leadership at revision {self.leader_revision}")
 
     def tick_active(self):
