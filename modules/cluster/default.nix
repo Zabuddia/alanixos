@@ -496,6 +496,21 @@ in
         (vaultwardenCluster && vaultwardenCfg.expose.tor.enable)
         || (forgejoCluster && forgejoCfg.expose.tor.enable);
 
+      # Build a stable Tor URL from the tor exposure options.
+      # Returns null when tor.enable is false or tor.hostname is not set.
+      mkTorUrl =
+        torCfg:
+        let
+          scheme = if torCfg.tls then "https" else "http";
+          port = torCfg.publicPort;
+          defaultPort = if torCfg.tls then 443 else 80;
+          portSuffix = if port != defaultPort then ":${toString port}" else "";
+        in
+        if torCfg.enable && torCfg.hostname != null then
+          "${scheme}://${torCfg.hostname}${portSuffix}/"
+        else
+          null;
+
       vaultwardenLinksByHost = mergeLinksByHost [
         (lib.optionalAttrs (vaultwardenCluster && vaultwardenCfg.expose.tailscale.enable) (
           mkPeerLinksByHost {
@@ -596,10 +611,7 @@ in
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-*/repo";
               localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-*/manifest.json";
               linksByHost = vaultwardenLinksByHost;
-              torHostnameFile = lib.optionalString vaultwardenCfg.expose.tor.enable
-                "/var/lib/tor/alanix-cluster/vaultwarden/hostname";
-              torScheme = if vaultwardenCfg.expose.tor.tls then "https" else "http";
-              torPublicPort = vaultwardenCfg.expose.tor.publicPort;
+              torUrl = mkTorUrl vaultwardenCfg.expose.tor;
             };
           })
           // (lib.optionalAttrs forgejoCluster {
@@ -625,10 +637,7 @@ in
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-*/repo";
               localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-*/manifest.json";
               linksByHost = forgejoLinksByHost;
-              torHostnameFile = lib.optionalString forgejoCfg.expose.tor.enable
-                "/var/lib/tor/alanix-cluster/forgejo/hostname";
-              torScheme = if forgejoCfg.expose.tor.tls then "https" else "http";
-              torPublicPort = forgejoCfg.expose.tor.publicPort;
+              torUrl = mkTorUrl forgejoCfg.expose.tor;
             };
           });
       };

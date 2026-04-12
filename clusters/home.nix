@@ -84,6 +84,7 @@ in
           secretKeyBase64Secret = "tor/vaultwarden/secret-key-base64";
           tls = true;
           tlsName = "ajd4rue7nevdl7rceliwqevkqpgd6tizzgxj7e7vzsd56gil5lvs7hid.onion";
+          hostname = "ajd4rue7nevdl7rceliwqevkqpgd6tizzgxj7e7vzsd56gil5lvs7hid.onion";
         };
 
         tailscale = {
@@ -126,6 +127,7 @@ in
           enable = true;
           publicPort = 80;
           secretKeyBase64Secret = "tor/forgejo/secret-key-base64";
+          hostname = "v75vursfye2nc52psierh35xpeury5x7yxfkdamr3i76vuh3rlh42fyd.onion"
         };
 
         wireguard = {

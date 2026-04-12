@@ -104,15 +104,6 @@ def unique_links(links: list[dict]) -> list[dict]:
     return unique
 
 
-def read_tor_hostname(path: str | None) -> str | None:
-    if not path:
-        return None
-    try:
-        value = Path(path).read_text(encoding="utf-8").strip()
-        return value if value.endswith(".onion") else None
-    except Exception:
-        return None
-
 
 class Dashboard:
     def __init__(self, config_path: str) -> None:
@@ -308,14 +299,10 @@ class Dashboard:
             "activeUnits": service.get("activeUnits", []),
         }
 
-        tor_hostname = read_tor_hostname(service.get("torHostnameFile") or None)
-        if tor_hostname:
-            tor_scheme = service.get("torScheme", "http")
-            tor_port = int(service.get("torPublicPort", 80))
-            default_port = 443 if tor_scheme == "https" else 80
-            port_suffix = f":{tor_port}" if tor_port != default_port else ""
+        tor_url = service.get("torUrl") or None
+        if tor_url:
             result["torLink"] = {
-                "url": f"{tor_scheme}://{tor_hostname}{port_suffix}/",
+                "url": tor_url,
                 "label": f"{service_name.title()} (tor)",
                 "transport": "tor",
             }
