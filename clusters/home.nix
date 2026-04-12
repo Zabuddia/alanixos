@@ -200,6 +200,11 @@ in
           secretKeyBase64Secret = "tor/immich/secret-key-base64";
         };
 
+        tailscale = {
+          enable = true;
+          port = 12283;
+        };
+
         wireguard = {
           enable = true;
           port = 2283;
