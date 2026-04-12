@@ -58,6 +58,12 @@ in
           tor = {
             enable = true;
             publicPort = 80;
+            secretKeyBase64Secret = "tor/cluster-dashboard/${hostname}/secret-key-base64";
+            hostname =
+              if hostname == "alan-big-nixos" then "uu6th6s6ry55vqdp7dbt6znbyedvgeqlmat2venoxkyijq5qk3lipiad.onion"
+              else if hostname == "alan-node" then "u7pemgmtbljkrsc2dyqivx7u4kpy76ajf7hmsnlubmhs33uo4tw5txid.onion"
+              else if hostname == "alan-optiplex" then "6tkxmjarbepvvy5wrlslbarhfkkowmuttnade55tlpsnd2noy44dnzid.onion"
+              else null;
           };
         };
       };
@@ -113,7 +119,6 @@ in
         tailscale = {
           enable = true;
           port = 13000;
-          tls = true;
           tlsName = config.alanix.tailscale.address;
         };
 
@@ -121,6 +126,11 @@ in
           enable = true;
           publicPort = 80;
           secretKeyBase64Secret = "tor/forgejo/secret-key-base64";
+        };
+
+        wireguard = {
+          enable = true;
+          port = 3000;
         };
       };
 

@@ -217,4 +217,11 @@
     group = "root";
     mode = "0400";
   };
+
+  sops.secrets."tor/cluster-dashboard/alan-big-nixos/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
 }

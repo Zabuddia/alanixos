@@ -104,6 +104,16 @@ def unique_links(links: list[dict]) -> list[dict]:
     return unique
 
 
+def read_tor_hostname(path: str | None) -> str | None:
+    if not path:
+        return None
+    try:
+        value = Path(path).read_text(encoding="utf-8").strip()
+        return value if value.endswith(".onion") else None
+    except Exception:
+        return None
+
+
 class Dashboard:
     def __init__(self, config_path: str) -> None:
         with open(config_path, "r", encoding="utf-8") as handle:
@@ -288,7 +298,7 @@ class Dashboard:
         else:
             readiness = {"ready": False, "reason": "no-local-backup"}
 
-        return {
+        result = {
             "freshestManifest": freshest,
             "manifests": manifests,
             "promotionReadiness": readiness,
@@ -297,6 +307,20 @@ class Dashboard:
             "maxBackupAge": service["maxBackupAge"],
             "activeUnits": service.get("activeUnits", []),
         }
+
+        tor_hostname = read_tor_hostname(service.get("torHostnameFile") or None)
+        if tor_hostname:
+            tor_scheme = service.get("torScheme", "http")
+            tor_port = int(service.get("torPublicPort", 80))
+            default_port = 443 if tor_scheme == "https" else 80
+            port_suffix = f":{tor_port}" if tor_port != default_port else ""
+            result["torLink"] = {
+                "url": f"{tor_scheme}://{tor_hostname}{port_suffix}/",
+                "label": f"{service_name} (tor)",
+                "transport": "tor",
+            }
+
+        return result
 
     def recent_controller_events(self) -> list[str]:
         try:
@@ -360,7 +384,11 @@ class Dashboard:
         leader_host = leader.get("host") if leader.get("present") else None
         for service_name, service_state in services.items():
             links_by_host = self.services[service_name].get("linksByHost", {})
-            service_state["activeLinks"] = unique_links(links_by_host.get(leader_host, [])) if leader_host else []
+            tor_link = service_state.pop("torLink", None)
+            active_links = unique_links(links_by_host.get(leader_host, [])) if leader_host else []
+            if tor_link and leader_host:
+                active_links = unique_links(active_links + [tor_link])
+            service_state["activeLinks"] = active_links
 
         members = [
             {
@@ -428,9 +456,12 @@ class Dashboard:
                 "</tr>"
             )
 
+        def link_extra_class(link: dict) -> str:
+            return " chip-link-tor" if link.get("transport") == "tor" else ""
+
         dashboard_links_html = "".join(
             (
-                f"<a class='chip chip-link' href='{html.escape(link['url'])}' target='_blank' rel='noreferrer'>"
+                f"<a class='chip chip-link{link_extra_class(link)}' href='{html.escape(link['url'])}' target='_blank' rel='noreferrer'>"
                 f"{html.escape(link['label'])}"
                 "</a>"
             )
@@ -476,7 +507,7 @@ class Dashboard:
             ) or "<span class='muted'>None</span>"
             active_links_html = "".join(
                 (
-                    f"<a class='chip chip-link' href='{html.escape(link['url'])}' target='_blank' rel='noreferrer'>"
+                    f"<a class='chip chip-link{link_extra_class(link)}' href='{html.escape(link['url'])}' target='_blank' rel='noreferrer'>"
                     f"{html.escape(link['label'])}"
                     "</a>"
                 )
@@ -512,7 +543,6 @@ class Dashboard:
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta http-equiv="refresh" content="10">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Alanix Cluster Dashboard · {html.escape(self.hostname)}</title>
     <style>
@@ -616,6 +646,19 @@ class Dashboard:
       .chip-link:hover {{
         background: rgba(36, 69, 45, 0.14);
       }}
+      .chip-link-tor {{
+        background: rgba(74, 45, 122, 0.09);
+        color: #4a2d7a;
+        border: 1px solid rgba(74, 45, 122, 0.22);
+      }}
+      .chip-link-tor:hover {{
+        background: rgba(74, 45, 122, 0.16);
+      }}
+      .refresh-age {{
+        font-size: 0.78rem;
+        color: var(--muted);
+        margin-left: 0.5rem;
+      }}
       .chip-local {{
         border: 1px solid rgba(36, 69, 45, 0.26);
       }}
@@ -699,7 +742,7 @@ class Dashboard:
       <section class="hero">
         <div>
           <h1>Alanix Cluster Dashboard</h1>
-          <p>{html.escape(self.hostname)} · cluster {html.escape(state["cluster"]["name"])} · refreshed {html.escape(state["generatedAt"])}</p>
+          <p>{html.escape(self.hostname)} · cluster {html.escape(state["cluster"]["name"])} · refreshed {html.escape(state["generatedAt"])} <span class="refresh-age" id="last-refreshed-age"></span></p>
         </div>
         <div>
           <span class="badge {badge_class(role['kind'])}">{html.escape(role['label'])}</span>
@@ -771,6 +814,38 @@ class Dashboard:
         </details>
       </section>
     </main>
+    <script>
+      (function() {{
+        var refreshedAt = Date.now();
+
+        function updateAge() {{
+          var el = document.getElementById('last-refreshed-age');
+          if (!el) return;
+          var s = Math.floor((Date.now() - refreshedAt) / 1000);
+          el.textContent = '(' + s + 's ago)';
+        }}
+        setInterval(updateAge, 1000);
+        updateAge();
+
+        async function refresh() {{
+          try {{
+            var y = window.scrollY;
+            var res = await fetch('/');
+            if (!res.ok) return;
+            var doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+            var newMain = doc.querySelector('main');
+            var curMain = document.querySelector('main');
+            if (newMain && curMain) {{
+              curMain.innerHTML = newMain.innerHTML;
+              window.scrollTo(0, y);
+              refreshedAt = Date.now();
+              updateAge();
+            }}
+          }} catch(e) {{}}
+        }}
+        setInterval(refresh, 10000);
+      }})();
+    </script>
   </body>
 </html>
 """
