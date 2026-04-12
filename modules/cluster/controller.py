@@ -67,6 +67,21 @@ def summarize_error(message: str, *, limit: int = 400) -> str:
     return flattened[: limit - 3] + "..."
 
 
+def format_duration(seconds: float) -> str:
+    seconds = max(0.0, seconds)
+    if seconds < 1.0:
+        return f"{seconds * 1000:.0f}ms"
+    if seconds < 10.0:
+        return f"{seconds:.1f}s"
+    if seconds < 60.0:
+        return f"{seconds:.0f}s"
+    minutes, remainder = divmod(int(seconds), 60)
+    if minutes < 60:
+        return f"{minutes}m {remainder}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes}m"
+
+
 class Controller:
     def __init__(self, config_path: str) -> None:
         with open(config_path, "r", encoding="utf-8") as handle:
@@ -321,13 +336,19 @@ class Controller:
 
     def backup_service(self, service_name):
         service = self.services[service_name]
+        backup_started_at = time.monotonic()
+        target_count = len(service["remoteTargets"])
+        log(f"starting backup for {service_name} to {target_count} target{'s' if target_count != 1 else ''}")
         if service.get("preBackupCommand"):
+            prep_started_at = time.monotonic()
             self.run(service["preBackupCommand"])
+            log(f"{service_name}: prepared backup payload in {format_duration(time.monotonic() - prep_started_at)}")
 
         successful_targets = []
         failed_targets = []
 
         for target in service["remoteTargets"]:
+            target_started_at = time.monotonic()
             try:
                 repo_path = target["repoPath"]
                 remote_uri = f"sftp:{self.repo_user}@{target['address']}:{repo_path}"
@@ -358,6 +379,10 @@ class Controller:
                     input_text=json.dumps(manifest, indent=2) + "\n",
                 )
                 successful_targets.append(target["host"])
+                log(
+                    f"{service_name}: replicated backup to {target['host']} in "
+                    f"{format_duration(time.monotonic() - target_started_at)}"
+                )
             except Exception as exc:
                 failed_targets.append(
                     {
@@ -365,17 +390,29 @@ class Controller:
                         "error": summarize_error(str(exc)),
                     }
                 )
+                log(
+                    f"{service_name}: replication to {target['host']} failed after "
+                    f"{format_duration(time.monotonic() - target_started_at)}: {summarize_error(str(exc))}"
+                )
 
         return {
             "successfulTargets": successful_targets,
             "failedTargets": failed_targets,
             "totalTargets": len(service["remoteTargets"]),
+            "durationSeconds": time.monotonic() - backup_started_at,
         }
 
     def restore_service(self, service_name, manifest):
         service = self.services[service_name]
         repo_path = manifest["repoPath"]
         snapshot_id = manifest["snapshotId"]
+        restore_started_at = time.monotonic()
+        source_host = manifest.get("sourceHost", "unknown")
+        completed_at = manifest.get("completedAt", "unknown")
+        log(
+            f"starting restore for {service_name} from {source_host} "
+            f"(snapshot {snapshot_id}, completed {completed_at})"
+        )
         restore_root = tempfile.mkdtemp(prefix=f"alanix-cluster-{service_name}-", dir="/var/tmp")
         try:
             self.run(
@@ -397,6 +434,10 @@ class Controller:
                     shutil.copy2(source_path, backup_path)
             if service.get("postRestoreCommand"):
                 self.run(service["postRestoreCommand"])
+            log(
+                f"completed restore for {service_name} from {source_host} in "
+                f"{format_duration(time.monotonic() - restore_started_at)}"
+            )
         finally:
             shutil.rmtree(restore_root, ignore_errors=True)
 
@@ -425,8 +466,13 @@ class Controller:
             self.restore_service(service_name, manifest)
 
     def promote(self, leader, *, allow_stale=False):
+        promotion_started_at = time.monotonic()
         self.lease_id = leader["lease_id"]
         self.leader_revision = leader["create_revision"]
+        log(
+            f"won lease for revision {self.leader_revision}; starting promotion "
+            f"(allow_stale={'yes' if allow_stale else 'no'})"
+        )
         # Promotion can take longer than the lease TTL once restores get large.
         # Start renewing immediately after we acquire the lease so it stays valid
         # while we recover local state and start leader-only units.
@@ -435,16 +481,24 @@ class Controller:
         self.start_target()
         for service_name in self.next_backup_at:
             self.next_backup_at[service_name] = 0.0
-        log(f"became active with leader revision {self.leader_revision}")
+        log(
+            f"became active with leader revision {self.leader_revision} in "
+            f"{format_duration(time.monotonic() - promotion_started_at)}"
+        )
 
     def adopt_existing_leader(self, leader):
+        adoption_started_at = time.monotonic()
         self.lease_id = leader["lease_id"]
         self.leader_revision = leader["create_revision"]
+        log(f"recovering local active state for existing leader revision {self.leader_revision}")
         self.start_keepalive(self.lease_id)
         if not self.target_is_active():
             self.recover_services(allow_stale=True)
             self.start_target()
-        log(f"adopted existing leadership at revision {self.leader_revision}")
+        log(
+            f"adopted existing leadership at revision {self.leader_revision} in "
+            f"{format_duration(time.monotonic() - adoption_started_at)}"
+        )
 
     def tick_active(self):
         if self.keepalive_proc is None or self.keepalive_proc.poll() is not None:
@@ -477,7 +531,10 @@ class Controller:
                 self.next_backup_at[service_name] = now + parse_duration_seconds(service["backupInterval"])
                 failed_targets = result["failedTargets"]
                 if not failed_targets:
-                    log(f"completed backup for {service_name}")
+                    log(
+                        f"completed backup for {service_name} in "
+                        f"{format_duration(result['durationSeconds'])}"
+                    )
                     continue
 
                 successful_target_count = len(result["successfulTargets"])
@@ -488,12 +545,14 @@ class Controller:
                     log(
                         f"completed degraded backup for {service_name}: replicated to "
                         f"{successful_target_count}/{result['totalTargets']} targets; "
-                        f"failed targets: {failure_summary}"
+                        f"failed targets: {failure_summary}; "
+                        f"duration {format_duration(result['durationSeconds'])}"
                     )
                 else:
                     log(
                         f"backup for {service_name} failed on all {result['totalTargets']} targets; "
-                        f"keeping leader active while replication is degraded: {failure_summary}"
+                        f"keeping leader active while replication is degraded: {failure_summary}; "
+                        f"duration {format_duration(result['durationSeconds'])}"
                     )
 
     def tick_passive(self):

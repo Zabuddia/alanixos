@@ -648,6 +648,11 @@ class Dashboard:
         margin-bottom: 0.65rem;
       }}
       .section-head h2 {{ margin-bottom: 0; }}
+      .section-actions {{
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+      }}
       h3 {{ font-size: 1rem; }}
       .section {{ margin-bottom: 1.1rem; }}
       .panel {{
@@ -815,25 +820,43 @@ class Dashboard:
       .events-log {{ max-height: 20rem; }}
       .muted {{ color: var(--muted); }}
       .refresh-age {{ font-size: 0.78rem; color: var(--muted); }}
-      .action-button {{
+      .icon-button {{
         appearance: none;
-        border: 1px solid rgba(36,69,45,0.18);
-        background: rgba(255,253,248,0.94);
-        color: var(--accent);
-        border-radius: 999px;
-        padding: 0.3rem 0.7rem;
-        font: inherit;
-        font-size: 0.8rem;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--muted);
+        border-radius: 0.7rem;
+        width: 2rem;
+        height: 2rem;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         cursor: pointer;
+        transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
       }}
-      .action-button:hover {{
+      .icon-button:hover {{
         background: rgba(36,69,45,0.08);
+        border-color: rgba(36,69,45,0.12);
+        color: var(--accent);
       }}
-      .action-button[data-copy-state="copied"] {{
+      .icon-button svg {{
+        width: 1rem;
+        height: 1rem;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }}
+      .icon-button .icon-check {{ display: none; }}
+      .icon-button[data-copy-state="copied"] {{
         border-color: rgba(47,122,69,0.28);
         color: var(--good);
         background: rgba(47,122,69,0.08);
       }}
+      .icon-button[data-copy-state="copied"] .icon-copy {{ display: none; }}
+      .icon-button[data-copy-state="copied"] .icon-check {{ display: inline-flex; }}
       .details-toolbar {{
         display: flex;
         justify-content: flex-end;
@@ -900,24 +923,45 @@ class Dashboard:
       <section class="section">
         <div class="section-head">
           <h2>Recent Events</h2>
-          <button class="action-button" type="button" data-copy-target="recent-events">Copy</button>
+          <div class="section-actions">
+            <button class="icon-button" type="button" data-copy-target="recent-events" aria-label="Copy recent events" title="Copy recent events">
+              <span class="icon-copy" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="9" y="9" width="10" height="10" rx="2"></rect><path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"></path></svg>
+              </span>
+              <span class="icon-check" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7"></path></svg>
+              </span>
+            </button>
+          </div>
         </div>
-        <pre id="recent-events" class="events-log">{events_html}</pre>
+        <pre id="recent-events" class="events-log" data-preserve-scroll="true">{events_html}</pre>
       </section>
 
       <section class="section">
         <details>
           <summary>Raw JSON</summary>
           <div class="details-toolbar">
-            <button class="action-button" type="button" data-copy-target="raw-json">Copy</button>
+            <button class="icon-button" type="button" data-copy-target="raw-json" aria-label="Copy raw JSON" title="Copy raw JSON">
+              <span class="icon-copy" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="9" y="9" width="10" height="10" rx="2"></rect><path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"></path></svg>
+              </span>
+              <span class="icon-check" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7"></path></svg>
+              </span>
+            </button>
           </div>
-          <pre id="raw-json" style="margin-top:0.6rem">{raw_json}</pre>
+          <pre id="raw-json" data-preserve-scroll="true" style="margin-top:0.6rem">{raw_json}</pre>
         </details>
       </section>
     </main>
     <script>
       (function() {{
         var refreshedAt = Date.now();
+        var lastInteractionAt = Date.now();
+
+        function markInteraction() {{
+          lastInteractionAt = Date.now();
+        }}
 
         function updateAge() {{
           var el = document.getElementById('last-refreshed-age');
@@ -927,6 +971,7 @@ class Dashboard:
         }}
 
         async function copyTargetText(button) {{
+          markInteraction();
           var targetId = button.getAttribute('data-copy-target');
           if (!targetId) return;
           var el = document.getElementById(targetId);
@@ -946,15 +991,42 @@ class Dashboard:
               document.execCommand('copy');
               document.body.removeChild(ta);
             }}
-            var old = button.textContent;
-            button.textContent = 'Copied';
+            button.setAttribute('data-copy-label', button.getAttribute('data-copy-label') || button.getAttribute('aria-label') || 'Copy');
             button.setAttribute('data-copy-state', 'copied');
             clearTimeout(button._copyTimer);
             button._copyTimer = setTimeout(function() {{
-              button.textContent = old;
               button.removeAttribute('data-copy-state');
             }}, 1500);
           }} catch (e) {{}}
+        }}
+
+        function preserveScrollState() {{
+          var scrolls = {{}};
+          document.querySelectorAll('[data-preserve-scroll]').forEach(function(el) {{
+            if (el.id) {{
+              scrolls[el.id] = el.scrollTop;
+            }}
+          }});
+          return scrolls;
+        }}
+
+        function restoreScrollState(scrolls) {{
+          Object.keys(scrolls).forEach(function(id) {{
+            var el = document.getElementById(id);
+            if (el) {{
+              el.scrollTop = scrolls[id];
+            }}
+          }});
+        }}
+
+        function userIsReadingScrollable() {{
+          var active = document.activeElement;
+          if (active && active.hasAttribute && active.hasAttribute('data-preserve-scroll')) {{
+            return true;
+          }}
+          return Array.from(document.querySelectorAll('[data-preserve-scroll]')).some(function(el) {{
+            return el.matches(':hover');
+          }});
         }}
 
         document.addEventListener('click', function(ev) {{
@@ -963,15 +1035,24 @@ class Dashboard:
           ev.preventDefault();
           copyTargetText(button);
         }});
+        document.addEventListener('scroll', markInteraction, true);
+        document.addEventListener('wheel', markInteraction, {{ passive: true }});
+        document.addEventListener('touchmove', markInteraction, {{ passive: true }});
+        document.addEventListener('keydown', markInteraction, true);
+        document.addEventListener('pointerdown', markInteraction, true);
 
         setInterval(updateAge, 1000);
         updateAge();
 
         async function refresh() {{
           try {{
+            if (document.hidden) return;
+            if (Date.now() - lastInteractionAt < 4000) return;
+            if (userIsReadingScrollable()) return;
+            var selection = window.getSelection ? window.getSelection().toString() : '';
+            if (selection) return;
             var y = window.scrollY;
-            var eventsEl = document.querySelector('.events-log');
-            var eventsTop = eventsEl ? eventsEl.scrollTop : 0;
+            var preservedScrolls = preserveScrollState();
             var openIdx = new Set();
             document.querySelectorAll('main details').forEach(function(el, i) {{
               if (el.open) openIdx.add(i);
@@ -989,8 +1070,7 @@ class Dashboard:
               refreshedAt = Date.now();
               updateAge();
               requestAnimationFrame(function() {{
-                var newEventsEl = curMain.querySelector('.events-log');
-                if (newEventsEl) newEventsEl.scrollTop = eventsTop;
+                restoreScrollState(preservedScrolls);
                 window.scrollTo(0, y);
               }});
             }}
