@@ -114,8 +114,8 @@ in
             '';
           };
 
-          systemd.services.caddy.after = [ "tailscaled.service" ];
-          systemd.services.caddy.wants = [ "tailscaled.service" ];
+          systemd.services.caddy.after = [ "alanix-tailscale-ready.service" ];
+          systemd.services.caddy.wants = [ "alanix-tailscale-ready.service" ];
         })
 
         (lib.mkIf (!tailscaleCfg.tls) (
@@ -134,12 +134,12 @@ in
             proxyCfg
             {
               systemd.sockets.${socketProxyName} = {
-                after = [ "tailscaled.service" ];
-                wants = [ "tailscaled.service" ];
+                after = [ "alanix-tailscale-ready.service" ];
+                wants = [ "alanix-tailscale-ready.service" ];
               };
               systemd.services.${socketProxyName} = {
-                after = [ "tailscaled.service" ];
-                wants = [ "tailscaled.service" ];
+                after = [ "alanix-tailscale-ready.service" ];
+                wants = [ "alanix-tailscale-ready.service" ];
               };
             }
           ]
