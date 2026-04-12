@@ -909,11 +909,13 @@ class Dashboard:
               curMain.querySelectorAll('details').forEach(function(el, i) {{
                 if (openIdx.has(i)) el.open = true;
               }});
-              var newEventsEl = curMain.querySelector('.events-log');
-              if (newEventsEl) newEventsEl.scrollTop = eventsTop;
-              window.scrollTo(0, y);
               refreshedAt = Date.now();
               updateAge();
+              requestAnimationFrame(function() {{
+                var newEventsEl = curMain.querySelector('.events-log');
+                if (newEventsEl) newEventsEl.scrollTop = eventsTop;
+                window.scrollTo(0, y);
+              }});
             }}
           }} catch(e) {{}}
         }}
