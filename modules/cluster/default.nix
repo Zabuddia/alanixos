@@ -783,6 +783,12 @@ in
               localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-*/manifest.json";
               linksByHost = vaultwardenLinksByHost;
               torUrl = mkTorUrl vaultwardenCfg.expose.tor;
+              tor = {
+                enabled = vaultwardenCfg.expose.tor.enable;
+                tls = vaultwardenCfg.expose.tor.tls;
+                publicPort = vaultwardenCfg.expose.tor.publicPort;
+                stateDirName = "vaultwarden";
+              };
             };
           })
           // (lib.optionalAttrs forgejoCluster {
@@ -809,6 +815,12 @@ in
               localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-*/manifest.json";
               linksByHost = forgejoLinksByHost;
               torUrl = mkTorUrl forgejoCfg.expose.tor;
+              tor = {
+                enabled = forgejoCfg.expose.tor.enable;
+                tls = forgejoCfg.expose.tor.tls;
+                publicPort = forgejoCfg.expose.tor.publicPort;
+                stateDirName = "forgejo";
+              };
             };
           })
           // (lib.optionalAttrs invidiousCluster {
@@ -836,6 +848,12 @@ in
               localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/invidious/from-*/manifest.json";
               linksByHost = invidiousLinksByHost;
               torUrl = mkTorUrl invidiousCfg.expose.tor;
+              tor = {
+                enabled = invidiousCfg.expose.tor.enable;
+                tls = invidiousCfg.expose.tor.tls;
+                publicPort = invidiousCfg.expose.tor.publicPort;
+                stateDirName = "invidious";
+              };
             };
           });
       };
