@@ -26,6 +26,13 @@
     mode = "0400";
   };
 
+  sops.secrets."forgejo-passwords/buddia" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "forgejo";
+    group = "forgejo";
+    mode = "0400";
+  };
+
   sops.secrets."sunshine-web-ui-passwords/alan-node" = {
     owner = "buddia";
     group = "users";
@@ -59,6 +66,13 @@
   };
 
   sops.secrets."tor/vaultwarden/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/forgejo/secret-key-base64" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
     group = "root";

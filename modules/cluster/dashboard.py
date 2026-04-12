@@ -92,6 +92,18 @@ def badge_class(kind: str) -> str:
     }.get(kind, "badge-muted")
 
 
+def unique_links(links: list[dict]) -> list[dict]:
+    seen = set()
+    unique = []
+    for link in links:
+        key = link.get("url")
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique.append(link)
+    return unique
+
+
 class Dashboard:
     def __init__(self, config_path: str) -> None:
         with open(config_path, "r", encoding="utf-8") as handle:
@@ -345,6 +357,10 @@ class Dashboard:
             service_name: self.manifest_state(service_name, service)
             for service_name, service in self.services.items()
         }
+        leader_host = leader.get("host") if leader.get("present") else None
+        for service_name, service_state in services.items():
+            links_by_host = self.services[service_name].get("linksByHost", {})
+            service_state["activeLinks"] = unique_links(links_by_host.get(leader_host, [])) if leader_host else []
 
         members = [
             {
@@ -367,6 +383,7 @@ class Dashboard:
                 "role": role,
                 "activeTarget": self.target,
             },
+            "dashboardLinks": unique_links(self.dashboard.get("links", [])),
             "units": unit_statuses,
             "services": services,
             "recentEvents": self.recent_controller_events(),
@@ -377,6 +394,7 @@ class Dashboard:
         role = state["cluster"]["role"]
         units = state["units"]
         services = state["services"]
+        dashboard_links = state.get("dashboardLinks", [])
 
         leader_summary = "none"
         if leader.get("error"):
@@ -410,12 +428,22 @@ class Dashboard:
                 "</tr>"
             )
 
+        dashboard_links_html = "".join(
+            (
+                f"<a class='chip chip-link' href='{html.escape(link['url'])}' target='_blank' rel='noreferrer'>"
+                f"{html.escape(link['label'])}"
+                "</a>"
+            )
+            for link in dashboard_links
+        ) or "<span class='muted'>No dashboard links configured.</span>"
+
         service_sections = []
         for service_name, service in services.items():
             readiness = service["promotionReadiness"]
             readiness_kind = "good" if readiness["ready"] else "warn"
             freshest = service["freshestManifest"]
             manifests = service["manifests"]
+            active_links = service.get("activeLinks", [])
             freshest_html = "<span class='muted'>No local manifest</span>"
             if freshest is not None:
                 freshest_html = (
@@ -446,6 +474,14 @@ class Dashboard:
             remote_targets = "".join(
                 f"<span class='chip'>{html.escape(host)}</span>" for host in service["remoteTargets"]
             ) or "<span class='muted'>None</span>"
+            active_links_html = "".join(
+                (
+                    f"<a class='chip chip-link' href='{html.escape(link['url'])}' target='_blank' rel='noreferrer'>"
+                    f"{html.escape(link['label'])}"
+                    "</a>"
+                )
+                for link in active_links
+            ) or "<span class='muted'>No active links available yet.</span>"
 
             service_sections.append(
                 "<section class='service-card'>"
@@ -461,6 +497,9 @@ class Dashboard:
                 "</div>"
                 "<div class='chip-row'>"
                 f"{remote_targets}"
+                "</div>"
+                "<div class='chip-row'>"
+                f"{active_links_html}"
                 "</div>"
                 f"{manifests_table}"
                 "</section>"
@@ -569,6 +608,13 @@ class Dashboard:
         background: rgba(36, 69, 45, 0.08);
         color: var(--accent);
         margin: 0 0.35rem 0.35rem 0;
+        text-decoration: none;
+      }}
+      .chip-link {{
+        border: 1px solid rgba(36, 69, 45, 0.18);
+      }}
+      .chip-link:hover {{
+        background: rgba(36, 69, 45, 0.14);
       }}
       .chip-local {{
         border: 1px solid rgba(36, 69, 45, 0.26);
@@ -682,6 +728,11 @@ class Dashboard:
       <section class="panel section">
         <h2>Members</h2>
         <div class="members">{member_chips}</div>
+      </section>
+
+      <section class="panel section">
+        <h2>Dashboards</h2>
+        <div class="members">{dashboard_links_html}</div>
       </section>
 
       <section class="panel section">
