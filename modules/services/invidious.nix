@@ -1,6 +1,7 @@
 { config, lib, pkgs, pkgs-unstable, inputs, ... }:
 let
   cfg = config.alanix.invidious;
+  clusterCfg = cfg.cluster;
   serviceExposure = import ../../lib/mkServiceExposure.nix { inherit lib pkgs; };
   passwordUsers = import ../../lib/mkPlaintextPasswordUsers.nix { inherit lib; };
   serviceIdentity = import ../../lib/mkServiceIdentity.nix { inherit lib; };
@@ -138,6 +139,26 @@ in
       default = false;
     };
 
+    backupDir = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Optional Invidious cluster backup staging directory.";
+    };
+
+    cluster = {
+      enable = lib.mkEnableOption "cluster-manage Invidious through alanix.cluster";
+
+      backupInterval = lib.mkOption {
+        type = lib.types.str;
+        default = "5m";
+      };
+
+      maxBackupAge = lib.mkOption {
+        type = lib.types.str;
+        default = "15m";
+      };
+    };
+
     pruneUndeclaredUsers = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -238,6 +259,10 @@ in
             message = "alanix.invidious.port must be set when alanix.invidious.enable = true.";
           }
           {
+            assertion = cfg.backupDir == null || lib.hasPrefix "/" cfg.backupDir;
+            message = "alanix.invidious.backupDir must be an absolute path when set.";
+          }
+          {
             assertion = !cfg.companion.enable || cfg.companion.secretKeySecret != null;
             message = "alanix.invidious.companion.secretKeySecret must be set when the companion is enabled.";
           }
@@ -256,6 +281,10 @@ in
           {
             assertion = config.services.invidious.database.host == null;
             message = "alanix.invidious declarative users currently require services.invidious.database.host = null.";
+          }
+          {
+            assertion = !clusterCfg.enable || cfg.backupDir != null;
+            message = "alanix.invidious.cluster.enable requires alanix.invidious.backupDir to be set.";
           }
         ]
         ++ serviceExposure.mkAssertions {
@@ -585,7 +614,7 @@ in
       };
     }
 
-    (lib.mkIf baseConfigReady (
+    (lib.mkIf (baseConfigReady && !clusterCfg.enable) (
       serviceExposure.mkConfig {
         inherit config endpoint exposeCfg;
         serviceName = "invidious";

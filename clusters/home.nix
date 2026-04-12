@@ -113,14 +113,13 @@ in
       enable = true;
       listenAddress = "127.0.0.1";
       port = 3000;
-      rootUrl = "https://${config.alanix.tailscale.address}:13000/";
+      rootUrl = "http://${config.alanix.tailscale.address}:13000/";
       backupDir = "/var/backup/forgejo";
 
       expose = {
         tailscale = {
           enable = true;
           port = 13000;
-          tlsName = config.alanix.tailscale.address;
         };
 
         tor = {
@@ -146,6 +145,44 @@ in
         admin = true;
         email = "fife.alan@protonmail.com";
         passwordSecret = "forgejo-passwords/buddia";
+      };
+    };
+
+    alanix.invidious = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 3001;
+      backupDir = "/var/backup/invidious";
+      hmacKeySecret = "invidious/hmac-key";
+      companion.secretKeySecret = "invidious/companion-secret-key";
+
+      expose = {
+        tor = {
+          enable = true;
+          publicPort = 80;
+          secretKeyBase64Secret = "tor/invidious/secret-key-base64";
+        };
+
+        tailscale = {
+          enable = true;
+          port = 13001;
+        };
+
+        wireguard = {
+          enable = true;
+          port = 3001;
+        };
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "5m";
+        maxBackupAge = "15m";
+      };
+
+      users.buddia = {
+        admin = true;
+        passwordSecret = "invidious-passwords/buddia";
       };
     };
   };

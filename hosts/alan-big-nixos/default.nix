@@ -316,32 +316,6 @@
       };
     };
 
-    alanix.invidious = {
-      enable = true;
-      listenAddress = "127.0.0.1";
-      port = 3001;
-      hmacKeySecret = "invidious/hmac-key";
-      companion.secretKeySecret = "invidious/companion-secret-key";
-      expose.tor = {
-        enable = true;
-        publicPort = 80;
-        secretKeyBase64Secret = "tor/invidious/secret-key-base64";
-      };
-      expose.tailscale = {
-        enable = true;
-        port = 13001;
-      };
-      expose.wireguard = {
-        enable = true;
-        address = "10.100.0.1";
-        port = 3001;
-      };
-      users.buddia = {
-        admin = true;
-        passwordSecret = "invidious-passwords/buddia";
-      };
-    };
-
     alanix.immich = {
       enable = true;
       listenAddress = "127.0.0.1";
