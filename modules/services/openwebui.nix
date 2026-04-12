@@ -5,6 +5,67 @@ let
   webSearchCfg = cfg.webSearch;
   serviceExposure = import ../../lib/mkServiceExposure.nix { inherit lib pkgs; };
   passwordUsers = import ../../lib/mkPlaintextPasswordUsers.nix { inherit lib; };
+  upstreamOpenWebUiPackage = pkgs-unstable.open-webui;
+  patchedOpenWebUiSrc =
+    pkgs.runCommand "open-webui-${upstreamOpenWebUiPackage.version}-source-patched"
+      {
+        nativeBuildInputs = [ pkgs.python3 ];
+        passthru = lib.optionalAttrs (upstreamOpenWebUiPackage.src ? tag) {
+          inherit (upstreamOpenWebUiPackage.src) tag;
+        };
+      }
+      ''
+        cp -a ${upstreamOpenWebUiPackage.src} "$out"
+        chmod -R u+w "$out"
+
+        python <<'PY'
+        import pathlib
+        import re
+
+        root = pathlib.Path("${"$"}out") / "src"
+        safe_tags = {
+            "area",
+            "base",
+            "br",
+            "circle",
+            "col",
+            "embed",
+            "ellipse",
+            "hr",
+            "img",
+            "input",
+            "line",
+            "link",
+            "meta",
+            "param",
+            "path",
+            "polygon",
+            "polyline",
+            "rect",
+            "slot",
+            "source",
+            "stop",
+            "track",
+            "wbr",
+        }
+        pattern = re.compile(r"<([a-z][a-z0-9-]*)\\b((?:(?!>).|\\n)*?)\\s*/>", re.S)
+
+        def rewrite(match: re.Match[str]) -> str:
+            tag = match.group(1)
+            if tag in safe_tags:
+                return match.group(0)
+            return f"<{tag}{match.group(2)}></{tag}>"
+
+        for path in root.rglob("*.svelte"):
+            original = path.read_text()
+            updated = pattern.sub(rewrite, original)
+            if updated != original:
+                path.write_text(updated)
+        PY
+      '';
+  defaultOpenWebUiPackage = pkgs-unstable.callPackage "${pkgs-unstable.path}/pkgs/by-name/op/open-webui/package.nix" {
+    fetchFromGitHub = _: patchedOpenWebUiSrc;
+  };
 
   exposeCfg = cfg.expose;
   inherit (passwordUsers) hasValue;
@@ -116,6 +177,13 @@ in
 {
   options.alanix.openwebui = {
     enable = lib.mkEnableOption "Open WebUI (Alanix)";
+
+    package = lib.mkOption {
+      type = lib.types.package;
+      default = defaultOpenWebUiPackage;
+      defaultText = lib.literalExpression "locally patched pkgs-unstable.open-webui";
+      description = "Open WebUI package to run.";
+    };
 
     listenAddress = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
@@ -428,7 +496,7 @@ in
 
       services.open-webui = lib.mkIf baseConfigReady {
         enable = true;
-        package = pkgs-unstable.open-webui;
+        package = cfg.package;
         host = cfg.listenAddress;
         port = cfg.port;
         stateDir = cfg.stateDir;
