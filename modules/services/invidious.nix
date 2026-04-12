@@ -49,11 +49,11 @@ let
       assets = {
         x86_64-linux = {
           url = "https://github.com/iv-org/invidious-companion/releases/download/release-master/invidious_companion-x86_64-unknown-linux-gnu.tar.gz";
-          hash = "sha256-N4iSlMbF647JLNVIhEsIDJk01tYXflQQ6l+cUi0qHSk=";
+          hash = "sha256-mQWqmMaJ0lo9LRbobAyPA7vh7dv59PIUmbSi7SZevRI=";
         };
         aarch64-linux = {
           url = "https://github.com/iv-org/invidious-companion/releases/download/release-master/invidious_companion-aarch64-unknown-linux-gnu.tar.gz";
-          hash = "sha256-+jTGfkq6LrmOyll/Rbfn+vAgMto/5q7ce3l217Q6vP0=";
+          hash = "sha256-8mVTV2grTYj8h4Hh+4GTf4ksABmtH2W1nZ9WFd4o73o=";
         };
       }.${pkgs.stdenv.hostPlatform.system} or (throw "alanix.invidious: unsupported platform for invidious-companion prebuilt package.");
     in
