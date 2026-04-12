@@ -263,6 +263,13 @@ in
           }) cfg.members
         );
 
+      peerDashboardTorHostname =
+        peer:
+        let
+          hostCfg = peerHostCfg peer;
+        in
+        if hostCfg != null then hostCfg.config.alanix.cluster.dashboard.expose.tor.hostname else null;
+
       dashboardLinks =
         lib.optionals dashboardCfg.expose.tailscale.enable (
           map (peer: {
@@ -287,6 +294,17 @@ in
               port = dashboardCfg.expose.wireguard.port;
             };
           }) (lib.filter (peer: peerWireguardAddress peer != null && peerWireguardAddress peer != "") cfg.members)
+        )
+        ++ lib.optionals dashboardCfg.expose.tor.enable (
+          lib.concatMap (peer:
+            let torHostname = peerDashboardTorHostname peer;
+            in lib.optionals (torHostname != null) [{
+              label = "${peer} dashboard (tor)";
+              host = peer;
+              transport = "tor";
+              url = "http://${torHostname}/";
+            }]
+          ) cfg.members
         );
 
       vaultwardenRestoreScript =
@@ -598,6 +616,10 @@ in
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-*/repo";
               localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-*/manifest.json";
               linksByHost = vaultwardenLinksByHost;
+              torHostnameFile = lib.optionalString vaultwardenCfg.expose.tor.enable
+                "/var/lib/tor/alanix-cluster/vaultwarden/hostname";
+              torScheme = if vaultwardenCfg.expose.tor.tls then "https" else "http";
+              torPublicPort = vaultwardenCfg.expose.tor.publicPort;
             };
           })
           // (lib.optionalAttrs forgejoCluster {
@@ -623,6 +645,10 @@ in
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-*/repo";
               localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-*/manifest.json";
               linksByHost = forgejoLinksByHost;
+              torHostnameFile = lib.optionalString forgejoCfg.expose.tor.enable
+                "/var/lib/tor/alanix-cluster/forgejo/hostname";
+              torScheme = if forgejoCfg.expose.tor.tls then "https" else "http";
+              torPublicPort = forgejoCfg.expose.tor.publicPort;
             };
           });
       };

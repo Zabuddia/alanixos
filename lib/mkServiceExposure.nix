@@ -88,6 +88,15 @@ in
             Set this to the onion hostname clients will visit.
           '';
         };
+
+        hostname = lib.mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = ''
+            Known Tor v3 .onion hostname for this service (e.g. abc...xyz.onion).
+            When set, this is used to generate clickable Tor links at build time.
+          '';
+        };
       };
 
       wireguard = {
