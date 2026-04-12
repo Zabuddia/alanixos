@@ -223,6 +223,7 @@ in
 
         serviceConfig = {
           Type = "oneshot";
+          SuccessExitStatus = [ "SIGTERM" ];
           User = config.services.forgejo.user;
           Group = config.services.forgejo.group;
           WorkingDirectory = cfg.stateDir;

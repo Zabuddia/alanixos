@@ -640,6 +640,14 @@ class Dashboard:
         color: var(--muted);
         margin-bottom: 0.65rem;
       }}
+      .section-head {{
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.8rem;
+        margin-bottom: 0.65rem;
+      }}
+      .section-head h2 {{ margin-bottom: 0; }}
       h3 {{ font-size: 1rem; }}
       .section {{ margin-bottom: 1.1rem; }}
       .panel {{
@@ -807,6 +815,30 @@ class Dashboard:
       .events-log {{ max-height: 20rem; }}
       .muted {{ color: var(--muted); }}
       .refresh-age {{ font-size: 0.78rem; color: var(--muted); }}
+      .action-button {{
+        appearance: none;
+        border: 1px solid rgba(36,69,45,0.18);
+        background: rgba(255,253,248,0.94);
+        color: var(--accent);
+        border-radius: 999px;
+        padding: 0.3rem 0.7rem;
+        font: inherit;
+        font-size: 0.8rem;
+        cursor: pointer;
+      }}
+      .action-button:hover {{
+        background: rgba(36,69,45,0.08);
+      }}
+      .action-button[data-copy-state="copied"] {{
+        border-color: rgba(47,122,69,0.28);
+        color: var(--good);
+        background: rgba(47,122,69,0.08);
+      }}
+      .details-toolbar {{
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 0.6rem;
+      }}
       @media (max-width: 680px) {{
         .hero {{ flex-direction: column; align-items: flex-start; }}
         .services {{ grid-template-columns: 1fr; }}
@@ -866,14 +898,20 @@ class Dashboard:
       </section>
 
       <section class="section">
-        <h2>Recent Events</h2>
-        <pre class="events-log">{events_html}</pre>
+        <div class="section-head">
+          <h2>Recent Events</h2>
+          <button class="action-button" type="button" data-copy-target="recent-events">Copy</button>
+        </div>
+        <pre id="recent-events" class="events-log">{events_html}</pre>
       </section>
 
       <section class="section">
         <details>
           <summary>Raw JSON</summary>
-          <pre style="margin-top:0.6rem">{raw_json}</pre>
+          <div class="details-toolbar">
+            <button class="action-button" type="button" data-copy-target="raw-json">Copy</button>
+          </div>
+          <pre id="raw-json" style="margin-top:0.6rem">{raw_json}</pre>
         </details>
       </section>
     </main>
@@ -887,6 +925,45 @@ class Dashboard:
           var s = Math.floor((Date.now() - refreshedAt) / 1000);
           el.textContent = '(' + s + 's ago)';
         }}
+
+        async function copyTargetText(button) {{
+          var targetId = button.getAttribute('data-copy-target');
+          if (!targetId) return;
+          var el = document.getElementById(targetId);
+          if (!el) return;
+          var text = el.textContent || '';
+          try {{
+            if (navigator.clipboard && navigator.clipboard.writeText) {{
+              await navigator.clipboard.writeText(text);
+            }} else {{
+              var ta = document.createElement('textarea');
+              ta.value = text;
+              ta.style.position = 'fixed';
+              ta.style.opacity = '0';
+              document.body.appendChild(ta);
+              ta.focus();
+              ta.select();
+              document.execCommand('copy');
+              document.body.removeChild(ta);
+            }}
+            var old = button.textContent;
+            button.textContent = 'Copied';
+            button.setAttribute('data-copy-state', 'copied');
+            clearTimeout(button._copyTimer);
+            button._copyTimer = setTimeout(function() {{
+              button.textContent = old;
+              button.removeAttribute('data-copy-state');
+            }}, 1500);
+          }} catch (e) {{}}
+        }}
+
+        document.addEventListener('click', function(ev) {{
+          var button = ev.target.closest('[data-copy-target]');
+          if (!button) return;
+          ev.preventDefault();
+          copyTargetText(button);
+        }});
+
         setInterval(updateAge, 1000);
         updateAge();
 
