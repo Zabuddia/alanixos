@@ -47,6 +47,24 @@ in
       default = null;
     };
 
+    rootUser = lib.mkOption {
+      type = lib.types.str;
+      default = "filebrowser";
+      description = "Owner used for the File Browser root tree and managed scope directories.";
+    };
+
+    rootGroup = lib.mkOption {
+      type = lib.types.str;
+      default = "filebrowser";
+      description = "Group used for the File Browser root tree and managed scope directories.";
+    };
+
+    rootMode = lib.mkOption {
+      type = lib.types.str;
+      default = "0770";
+      description = "Mode applied to the File Browser root tree and managed scope directories.";
+    };
+
     database = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -200,11 +218,11 @@ in
       systemd.tmpfiles.rules = lib.mkIf baseConfigReady (
         [
           "d /var/lib/filebrowser 0750 filebrowser filebrowser - -"
-          "d ${cfg.root} 0770 filebrowser filebrowser - -"
-          "d ${cfg.root}/users 0770 filebrowser filebrowser - -"
+          "d ${cfg.root} ${cfg.rootMode} ${cfg.rootUser} ${cfg.rootGroup} - -"
+          "d ${cfg.root}/users ${cfg.rootMode} ${cfg.rootUser} ${cfg.rootGroup} - -"
         ]
         ++ (lib.mapAttrsToList (_: u:
-          "d ${cfg.root}/${u.scope} 0770 filebrowser filebrowser - -"
+          "d ${cfg.root}/${u.scope} ${cfg.rootMode} ${cfg.rootUser} ${cfg.rootGroup} - -"
         ) cfg.users)
       );
 

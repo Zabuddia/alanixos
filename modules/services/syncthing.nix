@@ -117,9 +117,9 @@ let
     "filebrowser-root" = {
       label = "filebrowser";
       path = "/srv/filebrowser";
-      user = "filebrowser";
+      user = "buddia";
       group = "filebrowser";
-      mode = "0770";
+      mode = "2775";
     };
   };
 

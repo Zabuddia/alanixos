@@ -162,6 +162,9 @@ in
       listenAddress = "127.0.0.1";
       port = 8088;
       root = "/srv/filebrowser";
+      rootUser = "buddia";
+      rootGroup = "filebrowser";
+      rootMode = "2775";
       database = "/var/lib/filebrowser/filebrowser.db";
       backupDir = "/var/backup/filebrowser";
 
@@ -170,6 +173,7 @@ in
           enable = true;
           publicPort = 80;
           secretKeyBase64Secret = "tor/filebrowser/secret-key-base64";
+          hostname = "aopakfwm2dgsp7uawi64jkqpmctptlgj2aokov5nb6lgwfv33ru26xqd.onion";
         };
 
         tailscale = {
