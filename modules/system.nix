@@ -110,6 +110,7 @@ in
 
       nixpkgs.config.allowUnfree = cfg.allowUnfree;
       nix.settings.experimental-features = cfg.experimentalFeatures;
+      nix.settings.download-buffer-size = 524288000; # 500 MiB
       programs.nix-ld.enable = cfg.enableNixLd;
 
       networking.networkmanager.enable = cfg.enableNetworkManager;
