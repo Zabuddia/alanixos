@@ -914,6 +914,7 @@ in
               sync_optional_system_value overwriteprotocol "$DESIRED_OVERWRITEPROTOCOL"
               sync_optional_system_value overwritecondaddr "$DESIRED_OVERWRITECONDADDR"
               sync_optional_system_value overwritewebroot "$DESIRED_OVERWRITEWEBROOT"
+              sync_optional_system_value "overwrite.cli.url" "$NEXTCLOUD_PUBLIC_URL"
             }
 
             password_digest() {
@@ -962,7 +963,7 @@ in
             }
 
             nextcloud_users_json() {
-              "$OCC" user:list --output=json --info 2>/dev/null | grep -m1 '^{'
+              "$OCC" user:list --output=json --info 2>/dev/null | { grep -m1 '^{' || echo '{}'; }
             }
 
             have_user() {
