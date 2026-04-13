@@ -120,6 +120,7 @@ let
       user = "buddia";
       group = "filebrowser";
       mode = "2775";
+      ignorePerms = true;
     };
   };
 
@@ -184,14 +185,16 @@ let
             else
               "${cfg.syncRoot}/${folderCfg.relativePath}";
         in
-        lib.nameValuePair folderId {
+        lib.nameValuePair folderId ({
           path = folderPath;
           id = folderId;
           label = folderCfg.label;
           type = "sendreceive";
           devices = remoteMembers;
           fsWatcherEnabled = true;
-        })
+        } // lib.optionalAttrs (folderCfg ? ignorePerms) {
+          ignorePerms = folderCfg.ignorePerms;
+        }))
       folderCatalog.${folderSet};
 
   selectedFolderCatalog =
