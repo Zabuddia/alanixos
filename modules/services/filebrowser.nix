@@ -207,6 +207,8 @@ in
         };
       };
 
+      systemd.services.filebrowser.serviceConfig.UMask = lib.mkIf baseConfigReady "0027";
+
       users.groups.filebrowser = {};
       users.users.filebrowser = {
         isSystemUser = true;
