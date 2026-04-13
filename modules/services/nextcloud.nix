@@ -962,7 +962,7 @@ in
             }
 
             nextcloud_users_json() {
-              "$OCC" user:list --output=json --info
+              "$OCC" user:list --output=json --info 2>/dev/null | grep -m1 '^{'
             }
 
             have_user() {
