@@ -207,7 +207,7 @@ in
         };
       };
 
-      systemd.services.filebrowser.serviceConfig.UMask = lib.mkIf baseConfigReady "0027";
+      systemd.services.filebrowser.serviceConfig.UMask = lib.mkIf baseConfigReady (lib.mkForce "0027");
 
       users.groups.filebrowser = {};
       users.users.filebrowser = {
