@@ -548,6 +548,12 @@ in
               chown -R nextcloud:nextcloud ${lib.escapeShellArg nextcloudDataDir}
             ''}
 
+            # override.config.php is a node-local symlink into the Nix store.
+            # Restoring from another node replaces it with a dangling cross-node path.
+            # Re-apply tmpfiles to recreate the correct local symlink.
+            rm -f ${lib.escapeShellArg "${nextcloudCfg.stateDir}/config/override.config.php"}
+            systemd-tmpfiles --create --prefix=${lib.escapeShellArg "${nextcloudCfg.stateDir}/config/override.config.php"}
+
             if [[ -f "$staged_dump" ]]; then
               restore_dump="$(mktemp /var/tmp/alanix-nextcloud-restore-XXXXXX.pgcustom)"
               trap 'rm -f "$restore_dump"' EXIT
