@@ -1,6 +1,7 @@
 { config, lib, pkgs, ... }:
 let
   cfg = config.alanix.nextcloud;
+  clusterCfg = cfg.cluster;
   serviceExposure = import ../../lib/mkServiceExposure.nix { inherit lib pkgs; };
   passwordUsers = import ../../lib/mkPlaintextPasswordUsers.nix { inherit lib; };
 
@@ -333,7 +334,12 @@ let
       null;
   nextcloudTorHostnameFiles =
     lib.optionals (baseConfigReady && exposeCfg.tor.enable && !exposeCfg.tor.tls) [
-      "${config.services.tor.relay.onionServices.${exposeCfg.tor.onionServiceName}.path}/hostname"
+      (
+        if clusterCfg.enable then
+          "/var/lib/alanix-cluster/tor-hostnames/nextcloud"
+        else
+          "${config.services.tor.relay.onionServices.${exposeCfg.tor.onionServiceName}.path}/hostname"
+      )
     ];
 
   declaredUsernames = builtins.attrNames cfg.users;
@@ -444,6 +450,26 @@ in
       type = lib.types.package;
       default = pkgs.nextcloud32;
       description = "Nextcloud package to use for the Alanix Nextcloud instance.";
+    };
+
+    backupDir = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Optional Nextcloud cluster backup staging directory.";
+    };
+
+    cluster = {
+      enable = lib.mkEnableOption "cluster-manage Nextcloud through alanix.cluster";
+
+      backupInterval = lib.mkOption {
+        type = lib.types.str;
+        default = "15m";
+      };
+
+      maxBackupAge = lib.mkOption {
+        type = lib.types.str;
+        default = "1h";
+      };
     };
 
     rootUrl = lib.mkOption {
@@ -625,6 +651,10 @@ in
             message = "alanix.nextcloud.dataDir must be an absolute path when set.";
           }
           {
+            assertion = cfg.backupDir == null || lib.hasPrefix "/" cfg.backupDir;
+            message = "alanix.nextcloud.backupDir must be an absolute path when set.";
+          }
+          {
             assertion = lib.versionAtLeast cfg.package.version "32.0.0";
             message = "alanix.nextcloud currently requires Nextcloud >= 32.0.0 for declarative bootstrapping without an initial admin user.";
           }
@@ -662,6 +692,10 @@ in
               || cfg.port != collaboraCfg.port
               || !(addressesCollide cfg.listenAddress "127.0.0.1");
             message = "alanix.nextcloud.collabora.port must not collide with the local Nextcloud listener.";
+          }
+          {
+            assertion = !clusterCfg.enable || cfg.backupDir != null;
+            message = "alanix.nextcloud.cluster.enable requires alanix.nextcloud.backupDir to be set.";
           }
         ]
         ++ serviceExposure.mkAssertions {
@@ -1141,7 +1175,7 @@ in
       };
     }
 
-    (lib.mkIf baseConfigReady (
+    (lib.mkIf (baseConfigReady && !clusterCfg.enable) (
       serviceExposure.mkConfig {
         inherit config endpoint exposeCfg;
         serviceName = "nextcloud";
@@ -1149,7 +1183,7 @@ in
       }
     ))
 
-    (lib.mkIf (collaboraCfg.enable && baseConfigReady) (
+    (lib.mkIf (collaboraCfg.enable && baseConfigReady && !clusterCfg.enable) (
       serviceExposure.mkConfig {
         config = config;
         endpoint = collaboraEndpoint;
