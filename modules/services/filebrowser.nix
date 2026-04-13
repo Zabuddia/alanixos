@@ -215,6 +215,19 @@ in
         createHome = true;
       };
 
+      system.activationScripts.alanixFilebrowserPrepareManagedDirs = lib.mkIf baseConfigReady (lib.stringAfter [ "users" ] ''
+        ensure_managed_dir() {
+          local path="$1"
+          install -d -m ${cfg.rootMode} -o ${cfg.rootUser} -g ${cfg.rootGroup} "$path"
+          chown ${cfg.rootUser}:${cfg.rootGroup} "$path"
+          chmod ${cfg.rootMode} "$path"
+        }
+
+        ensure_managed_dir "${cfg.root}"
+        ensure_managed_dir "${cfg.root}/users"
+        ${lib.concatStringsSep "\n" (map (scope: ''ensure_managed_dir "${cfg.root}/${scope}"'') declaredScopes)}
+      '');
+
       systemd.tmpfiles.rules = lib.mkIf baseConfigReady (
         [
           "d /var/lib/filebrowser 0750 filebrowser filebrowser - -"
