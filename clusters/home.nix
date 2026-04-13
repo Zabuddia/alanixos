@@ -337,6 +337,7 @@ in
           enable = true;
           publicPort = 80;
           secretKeyBase64Secret = "tor/nextcloud/secret-key-base64";
+          hostname = "ptptnhzb6idwmzj2lc6fnm4mzgvhzmkdmaut75n26ad6ej4ztytrhoid.onion";
         };
 
         tailscale = {
@@ -354,13 +355,13 @@ in
       collabora = {
         enable = true;
         rootUrl = "http://${config.alanix.tailscale.address}:9980";
-        callbackUrl = "http://${config.alanix.tailscale.address}:8080";
 
         expose = {
           tor = {
             enable = true;
             publicPort = 9980;
             secretKeyBase64Secret = "tor/nextcloud-collabora/secret-key-base64";
+            hostname = "5eputclnz26greh3rvjredwaoiqfjcjzvkx3r65i2lknsyw2br5o5jqd.onion";
           };
 
           tailscale = {
