@@ -1,6 +1,7 @@
 { config, lib, pkgs, ... }:
 let
   cfg = config.alanix.filebrowser;
+  clusterCfg = cfg.cluster;
   serviceExposure = import ../../lib/mkServiceExposure.nix { inherit lib pkgs; };
   passwordUsers = import ../../lib/mkPlaintextPasswordUsers.nix { inherit lib; };
 
@@ -49,6 +50,26 @@ in
     database = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
+    };
+
+    backupDir = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Optional File Browser cluster backup staging directory.";
+    };
+
+    cluster = {
+      enable = lib.mkEnableOption "cluster-manage File Browser through alanix.cluster";
+
+      backupInterval = lib.mkOption {
+        type = lib.types.str;
+        default = "15m";
+      };
+
+      maxBackupAge = lib.mkOption {
+        type = lib.types.str;
+        default = "1h";
+      };
     };
 
     pruneUndeclaredUsers = lib.mkOption {
@@ -120,8 +141,16 @@ in
             message = "alanix.filebrowser.database must be an absolute path.";
           }
           {
+            assertion = cfg.backupDir == null || lib.hasPrefix "/" cfg.backupDir;
+            message = "alanix.filebrowser.backupDir must be an absolute path when set.";
+          }
+          {
             assertion = lib.length declaredScopes == lib.length (lib.unique declaredScopes);
             message = "alanix.filebrowser.users.*.scope must be unique.";
+          }
+          {
+            assertion = !clusterCfg.enable || cfg.backupDir != null;
+            message = "alanix.filebrowser.cluster.enable requires alanix.filebrowser.backupDir to be set.";
           }
         ]
         ++ serviceExposure.mkAssertions {
@@ -325,7 +354,7 @@ in
       ];
     }
 
-    (lib.mkIf baseConfigReady (
+    (lib.mkIf (baseConfigReady && !clusterCfg.enable) (
       serviceExposure.mkConfig {
         inherit config endpoint exposeCfg;
         serviceName = "filebrowser";

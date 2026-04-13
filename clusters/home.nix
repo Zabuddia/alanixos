@@ -69,11 +69,13 @@ in
       };
     };
 
+    alanix.users.accounts.buddia.extraGroups = [ "filebrowser" ];
+
     alanix.syncthing = {
       enable = true;
       transport = "tailscale";
       listenPort = 22000;
-      folderSets = [ "jellyfin-media" ];
+      folderSets = [ "jellyfin-media" "filebrowser-files" ];
     };
 
     alanix.vaultwarden = {
@@ -152,6 +154,54 @@ in
         admin = true;
         email = "fife.alan@protonmail.com";
         passwordSecret = "forgejo-passwords/buddia";
+      };
+    };
+
+    alanix.filebrowser = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 8088;
+      root = "/srv/filebrowser";
+      database = "/var/lib/filebrowser/filebrowser.db";
+      backupDir = "/var/backup/filebrowser";
+
+      expose = {
+        tor = {
+          enable = true;
+          publicPort = 80;
+          secretKeyBase64Secret = "tor/filebrowser/secret-key-base64";
+        };
+
+        tailscale = {
+          enable = true;
+          address = config.alanix.tailscale.address;
+          port = 8088;
+        };
+
+        wireguard = {
+          enable = true;
+          port = 8088;
+        };
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "15m";
+        maxBackupAge = "1h";
+      };
+
+      users = {
+        admin = {
+          admin = true;
+          scope = ".";
+          passwordSecret = "filebrowser-passwords/admin";
+        };
+
+        buddia = {
+          admin = false;
+          scope = "users/buddia";
+          passwordSecret = "filebrowser-passwords/buddia";
+        };
       };
     };
 
