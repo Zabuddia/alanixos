@@ -283,14 +283,16 @@ class Dashboard:
 
         scheme = "https" if tor_cfg.get("tls") else "http"
         port = int(tor_cfg.get("publicPort") or (443 if scheme == "https" else 80))
+        service_label = service.get("label") or service_name.title()
         return {
             "url": build_url(scheme=scheme, host=hostname, port=port),
-            "label": f"{service_name.title()} (tor)",
+            "label": f"{service_label} (tor)",
             "transport": "tor",
         }
 
     def manifest_state(self, service_name: str, service: dict) -> dict:
         recovery_mode = service.get("recoveryMode", "backup")
+        service_label = service.get("label") or service_name.title()
         if recovery_mode == "declarative":
             result = {
                 "freshestManifest": None,
@@ -308,7 +310,7 @@ class Dashboard:
             if tor_url:
                 result["torLink"] = {
                     "url": tor_url,
-                    "label": f"{service_name.title()} (tor)",
+                    "label": f"{service_label} (tor)",
                     "transport": "tor",
                 }
             else:
@@ -376,7 +378,7 @@ class Dashboard:
         if tor_url:
             result["torLink"] = {
                 "url": tor_url,
-                "label": f"{service_name.title()} (tor)",
+                "label": f"{service_label} (tor)",
                 "transport": "tor",
             }
         else:

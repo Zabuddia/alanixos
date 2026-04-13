@@ -151,6 +151,7 @@ in
 
       nextcloudCfg = config.alanix.nextcloud;
       nextcloudCollaboraCfg = nextcloudCfg.collabora;
+      filebrowserCfg = config.alanix.filebrowser;
       vaultwardenCfg = config.alanix.vaultwarden;
       forgejoCfg = config.alanix.forgejo;
       invidiousCfg = config.alanix.invidious;
@@ -159,6 +160,7 @@ in
       openwebuiCfg = config.alanix.openwebui;
       searxngCfg = config.alanix.searxng;
       nextcloudCluster = nextcloudCfg.enable && nextcloudCfg.cluster.enable;
+      filebrowserCluster = filebrowserCfg.enable && filebrowserCfg.cluster.enable;
       vaultwardenCluster = vaultwardenCfg.enable && vaultwardenCfg.cluster.enable;
       forgejoCluster = forgejoCfg.enable && forgejoCfg.cluster.enable;
       invidiousCluster = invidiousCfg.enable && invidiousCfg.cluster.enable;
@@ -332,6 +334,30 @@ in
             mkdir -p "$data_dir"
             cp -a "$backup_dir"/. "$data_dir"/
             chown -R vaultwarden:vaultwarden "$backup_dir" "$data_dir"
+          ''
+        else
+          null;
+
+      filebrowserRestoreScript =
+        if filebrowserCluster then
+          let
+            stagedDatabasePath = "${filebrowserCfg.backupDir}${filebrowserCfg.database}";
+          in
+          pkgs.writeShellScript "alanix-filebrowser-cluster-restore-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg filebrowserCfg.backupDir}
+            db_path=${lib.escapeShellArg filebrowserCfg.database}
+            staged_db_path=${lib.escapeShellArg stagedDatabasePath}
+
+            mkdir -p "$(dirname "$db_path")"
+
+            if [[ -f "$staged_db_path" ]]; then
+              cp -a "$staged_db_path" "$db_path"
+              chown filebrowser:filebrowser "$db_path"
+            fi
+
+            chown -R filebrowser:filebrowser "$backup_dir"
           ''
         else
           null;
@@ -822,10 +848,36 @@ in
               PGHOST="$pg_host" \
               pg_dump \
                 --format=custom \
-                --file="$staged_dump" \
-                "$pg_database"
+                "$pg_database" > "$staged_dump"
 
             chown -R nextcloud:nextcloud "$backup_dir"
+            chgrp -R "$backup_group" "$backup_dir"
+            chmod -R u=rwX,g=rX,o= "$backup_dir"
+          ''
+        else
+          null;
+
+      filebrowserBackupPrepScript =
+        if filebrowserCluster then
+          let
+            stagedDatabasePath = "${filebrowserCfg.backupDir}${filebrowserCfg.database}";
+          in
+          pkgs.writeShellScript "alanix-filebrowser-cluster-backup-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg filebrowserCfg.backupDir}
+            backup_group=${lib.escapeShellArg backupRepoUserGroup}
+            db_path=${lib.escapeShellArg filebrowserCfg.database}
+            staged_db_path=${lib.escapeShellArg stagedDatabasePath}
+
+            rm -rf "$backup_dir"
+            mkdir -p "$(dirname "$staged_db_path")"
+
+            if [[ -f "$db_path" ]]; then
+              sqlite3 "$db_path" ".backup '$staged_db_path'"
+            fi
+
+            chown -R filebrowser:filebrowser "$backup_dir"
             chgrp -R "$backup_group" "$backup_dir"
             chmod -R u=rwX,g=rX,o= "$backup_dir"
           ''
@@ -1031,6 +1083,38 @@ in
       nextcloudCollaboraTorSecretPath =
         if nextcloudCollaboraCfg.expose.tor.secretKeyBase64Secret != null then
           config.sops.secrets.${nextcloudCollaboraCfg.expose.tor.secretKeyBase64Secret}.path
+        else
+          null;
+
+      filebrowserWireguardAddress =
+        if filebrowserCfg.expose.wireguard.address != null then
+          filebrowserCfg.expose.wireguard.address
+        else
+          config.alanix.wireguard.vpnIP;
+
+      filebrowserTailscaleTlsName =
+        if filebrowserCfg.expose.tailscale.tlsName != null then
+          filebrowserCfg.expose.tailscale.tlsName
+        else
+          config.alanix.tailscale.address;
+
+      filebrowserTorTargetAddress =
+        normalizeLocalAddress (
+          if filebrowserCfg.expose.tor.targetAddress != null then
+            filebrowserCfg.expose.tor.targetAddress
+          else
+            filebrowserCfg.listenAddress
+        );
+
+      filebrowserTorTargetPort =
+        if filebrowserCfg.expose.tor.tls then
+          filebrowserCfg.expose.tor.publicPort
+        else
+          filebrowserCfg.port;
+
+      filebrowserTorSecretPath =
+        if filebrowserCfg.expose.tor.secretKeyBase64Secret != null then
+          config.sops.secrets.${filebrowserCfg.expose.tor.secretKeyBase64Secret}.path
         else
           null;
 
@@ -1276,6 +1360,14 @@ in
           )
         )
         || (
+          filebrowserCluster
+          && (
+            filebrowserCfg.expose.tailscale.enable
+            || filebrowserCfg.expose.wireguard.enable
+            || (filebrowserCfg.expose.tor.enable && filebrowserCfg.expose.tor.tls)
+          )
+        )
+        || (
           vaultwardenCluster
           && (
             vaultwardenCfg.expose.tailscale.enable
@@ -1335,6 +1427,7 @@ in
       anyTailscaleCaddyExposure =
         (nextcloudCluster && nextcloudCfg.expose.tailscale.enable)
         || (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.tailscale.enable)
+        || (filebrowserCluster && filebrowserCfg.expose.tailscale.enable)
         || (vaultwardenCluster && vaultwardenCfg.expose.tailscale.enable)
         || (forgejoCluster && forgejoCfg.expose.tailscale.enable)
         || (invidiousCluster && invidiousCfg.expose.tailscale.enable)
@@ -1346,6 +1439,7 @@ in
       anyTorExposure =
         (nextcloudCluster && nextcloudCfg.expose.tor.enable)
         || (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.tor.enable)
+        || (filebrowserCluster && filebrowserCfg.expose.tor.enable)
         || (vaultwardenCluster && vaultwardenCfg.expose.tor.enable)
         || (forgejoCluster && forgejoCfg.expose.tor.enable)
         || (invidiousCluster && invidiousCfg.expose.tor.enable)
@@ -1423,6 +1517,27 @@ in
               url = mkTorUrl nextcloudCollaboraCfg.expose.tor;
             }
           ]
+        ))
+      ];
+
+      filebrowserLinksByHost = mergeLinksByHost [
+        (lib.optionalAttrs (filebrowserCluster && filebrowserCfg.expose.tailscale.enable) (
+          mkPeerLinksByHost {
+            label = "File Browser";
+            transport = "tailscale";
+            scheme = if filebrowserCfg.expose.tailscale.tls then "https" else "http";
+            port = filebrowserCfg.expose.tailscale.port;
+            addressFn = peerTailscaleAddress;
+          }
+        ))
+        (lib.optionalAttrs (filebrowserCluster && filebrowserCfg.expose.wireguard.enable) (
+          mkPeerLinksByHost {
+            label = "File Browser";
+            transport = "wireguard";
+            scheme = if filebrowserCfg.expose.wireguard.tls then "https" else "http";
+            port = filebrowserCfg.expose.wireguard.port;
+            addressFn = peerWireguardAddress;
+          }
         ))
       ];
 
@@ -1644,6 +1759,39 @@ in
               };
             };
           })
+          // (lib.optionalAttrs filebrowserCluster {
+            filebrowser = {
+              name = "filebrowser";
+              label = "File Browser";
+              backupInterval = filebrowserCfg.cluster.backupInterval;
+              maxBackupAge = filebrowserCfg.cluster.maxBackupAge;
+              activeUnits =
+                [ "filebrowser.service" ]
+                ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
+              backupPaths = [ filebrowserCfg.backupDir ];
+              preBackupCommand = [ filebrowserBackupPrepScript ];
+              postRestoreCommand = [ filebrowserRestoreScript ];
+              remoteTargets =
+                map
+                  (peer: {
+                    host = peer;
+                    address = hostTransportAddress peer;
+                    repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/filebrowser/from-${hostname}/repo";
+                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/filebrowser/from-${hostname}/manifest.json";
+                  })
+                  (lib.filter (peer: peer != hostname) cfg.members);
+              localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/filebrowser/from-*/repo";
+              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/filebrowser/from-*/manifest.json";
+              linksByHost = filebrowserLinksByHost;
+              torUrl = mkTorUrl filebrowserCfg.expose.tor;
+              tor = {
+                enabled = filebrowserCfg.expose.tor.enable;
+                tls = filebrowserCfg.expose.tor.tls;
+                publicPort = filebrowserCfg.expose.tor.publicPort;
+                stateDirName = "filebrowser";
+              };
+            };
+          })
           // 
           (lib.optionalAttrs vaultwardenCluster {
             vaultwarden = {
@@ -1842,6 +1990,7 @@ in
           // (lib.optionalAttrs searxngCluster {
             searxng = {
               name = "searxng";
+              label = "SearXNG";
               recoveryMode = "declarative";
               recoveryDescription = "declarative secret";
               activeUnits =
@@ -1992,6 +2141,61 @@ in
             HiddenServiceDir $tor_state_dir/nextcloud-collabora
             HiddenServiceVersion 3
             HiddenServicePort ${toString nextcloudCollaboraCfg.expose.tor.publicPort} ${nextcloudCollaboraTorTargetAddress}:${toString nextcloudCollaboraTorTargetPort}
+
+            EOF
+          ''}
+
+          ${lib.optionalString (filebrowserCluster && filebrowserCfg.expose.tailscale.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if filebrowserCfg.expose.tailscale.tls then "https" else "http"}://${filebrowserTailscaleTlsName}:${toString filebrowserCfg.expose.tailscale.port} {
+              bind $ts_ip
+              ${lib.optionalString filebrowserCfg.expose.tailscale.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress filebrowserCfg.listenAddress}:${toString filebrowserCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (filebrowserCluster && filebrowserCfg.expose.wireguard.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if filebrowserCfg.expose.wireguard.tls then "https" else "http"}://${filebrowserWireguardAddress}:${toString filebrowserCfg.expose.wireguard.port} {
+              bind ${filebrowserWireguardAddress}
+              ${lib.optionalString filebrowserCfg.expose.wireguard.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress filebrowserCfg.listenAddress}:${toString filebrowserCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (filebrowserCluster && filebrowserCfg.expose.tor.enable && filebrowserCfg.expose.tor.tls) ''
+            cat >> "$caddy_file" <<EOF
+            https://${filebrowserCfg.expose.tor.tlsName}:${toString filebrowserCfg.expose.tor.publicPort} {
+              bind ${filebrowserTorTargetAddress}
+              tls internal
+              reverse_proxy ${normalizeLocalAddress filebrowserCfg.listenAddress}:${toString filebrowserCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (filebrowserCluster && filebrowserCfg.expose.tor.enable) ''
+            rm -rf "$tor_state_dir/filebrowser"
+            mkdir -p "$tor_state_dir/filebrowser"
+            chown tor:tor "$tor_state_dir/filebrowser"
+            chmod 0700 "$tor_state_dir/filebrowser"
+          ''}
+
+          ${lib.optionalString (filebrowserCluster && filebrowserCfg.expose.tor.enable && filebrowserTorSecretPath != null) ''
+            base64 --decode ${lib.escapeShellArg filebrowserTorSecretPath} > "$tor_state_dir/filebrowser/hs_ed25519_secret_key"
+            chown tor:tor "$tor_state_dir/filebrowser/hs_ed25519_secret_key"
+            chmod 0600 "$tor_state_dir/filebrowser/hs_ed25519_secret_key"
+          ''}
+
+          ${lib.optionalString (filebrowserCluster && filebrowserCfg.expose.tor.enable) ''
+            cat >> "$tor_file" <<EOF
+            HiddenServiceDir $tor_state_dir/filebrowser
+            HiddenServiceVersion 3
+            HiddenServicePort ${toString filebrowserCfg.expose.tor.publicPort} ${filebrowserTorTargetAddress}:${toString filebrowserTorTargetPort}
 
             EOF
           ''}
@@ -2414,6 +2618,9 @@ in
             ${lib.optionalString (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.tor.enable) ''
               publish_tor_hostname nextcloud-collabora
             ''}
+            ${lib.optionalString (filebrowserCluster && filebrowserCfg.expose.tor.enable) ''
+              publish_tor_hostname filebrowser
+            ''}
             ${lib.optionalString (vaultwardenCluster && vaultwardenCfg.expose.tor.enable) ''
               publish_tor_hostname vaultwarden
             ''}
@@ -2444,6 +2651,7 @@ in
           rm -rf "$tor_state_dir/invidious"
           rm -rf "$tor_state_dir/immich"
           rm -rf "$tor_state_dir/jellyfin"
+          rm -rf "$tor_state_dir/filebrowser"
           rm -rf "$tor_state_dir/nextcloud"
           rm -rf "$tor_state_dir/nextcloud-collabora"
           rm -rf "$tor_state_dir/openwebui"
@@ -2592,6 +2800,20 @@ in
               message = "Nextcloud cluster mode requires alanix.nextcloud.backupDir to be an absolute path.";
             }
           ]
+          ++ lib.optionals filebrowserCluster [
+            {
+              assertion = lib.hasPrefix "/" filebrowserCfg.root;
+              message = "File Browser cluster mode requires alanix.filebrowser.root to be an absolute path.";
+            }
+            {
+              assertion = lib.hasPrefix "/" filebrowserCfg.database;
+              message = "File Browser cluster mode requires alanix.filebrowser.database to be an absolute path.";
+            }
+            {
+              assertion = lib.hasPrefix "/" filebrowserCfg.backupDir;
+              message = "File Browser cluster mode requires alanix.filebrowser.backupDir to be an absolute path.";
+            }
+          ]
           ++ lib.optionals jellyfinCluster [
             {
               assertion = lib.hasPrefix "/" jellyfinCfg.dataDir;
@@ -2704,6 +2926,9 @@ in
           ]
           ++ lib.optionals nextcloudCluster [
             "d ${nextcloudCfg.backupDir} 0750 nextcloud ${backupRepoUserGroup} - -"
+          ]
+          ++ lib.optionals filebrowserCluster [
+            "d ${filebrowserCfg.backupDir} 0750 filebrowser ${backupRepoUserGroup} - -"
           ]
           ++ lib.optionals forgejoCluster [
             "d ${forgejoCfg.backupDir} 0750 forgejo ${backupRepoUserGroup} - -"
@@ -2828,6 +3053,8 @@ in
             lib.optionals nextcloudCluster [ "phpfpm-nextcloud.service" ]
             ++ lib.optionals (nextcloudCluster && nextcloudCollaboraCfg.enable) [ "coolwsd.service" ]
             ++
+            lib.optionals filebrowserCluster [ "filebrowser.service" ]
+            ++
             lib.optionals vaultwardenCluster [ "vaultwarden.service" ]
             ++ lib.optionals forgejoCluster [ "forgejo.service" ]
             ++ lib.optionals invidiousCluster [ "invidious.service" ]
@@ -2838,6 +3065,8 @@ in
           wants =
             lib.optionals nextcloudCluster [ "phpfpm-nextcloud.service" ]
             ++ lib.optionals (nextcloudCluster && nextcloudCollaboraCfg.enable) [ "coolwsd.service" ]
+            ++
+            lib.optionals filebrowserCluster [ "filebrowser.service" ]
             ++
             lib.optionals vaultwardenCluster [ "vaultwarden.service" ]
             ++ lib.optionals forgejoCluster [ "forgejo.service" ]
@@ -2884,6 +3113,13 @@ in
         };
 
         systemd.services.coolwsd = lib.mkIf nextcloudCollaboraCfg.enable {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+      })
+
+      (lib.mkIf filebrowserCluster {
+        systemd.services.filebrowser = {
           wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
           partOf = [ "alanix-cluster-active.target" ];
         };

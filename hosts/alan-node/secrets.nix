@@ -75,6 +75,20 @@
     mode = "0400";
   };
 
+  sops.secrets."filebrowser-passwords/admin" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "filebrowser";
+    group = "filebrowser";
+    mode = "0400";
+  };
+
+  sops.secrets."filebrowser-passwords/buddia" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "filebrowser";
+    group = "filebrowser";
+    mode = "0400";
+  };
+
   sops.secrets."openwebui-passwords/buddia" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
@@ -162,6 +176,13 @@
   };
 
   sops.secrets."tor/jellyfin/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/filebrowser/secret-key-base64" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
     group = "root";

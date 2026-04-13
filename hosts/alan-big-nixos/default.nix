@@ -153,41 +153,6 @@
       linkFolderSets = [ "emulation" ];
     };
 
-    alanix.filebrowser = {
-      enable = true;
-      listenAddress = "127.0.0.1";
-      port = 8088;
-      root = "/srv/filebrowser";
-      database = "/var/lib/filebrowser/filebrowser.db";
-      expose.tor = {
-        enable = true;
-        publicPort = 80;
-        secretKeyBase64Secret = "tor/filebrowser/secret-key-base64";
-      };
-      expose.wireguard = {
-        enable = true;
-        address = "10.100.0.1";
-        port = 8088;
-      };
-      users = {
-        admin = {
-          admin = true;
-          scope = ".";
-          password = null;
-          passwordFile = null;
-          passwordSecret = "filebrowser-passwords/admin";
-        };
-
-        buddia = {
-          admin = false;
-          scope = "users/buddia";
-          password = null;
-          passwordFile = null;
-          passwordSecret = "filebrowser-passwords/buddia";
-        };
-      };
-    };
-
     alanix.tvheadend = {
       enable = true;
       recordingsDir = "/srv/tvheadend/recordings";

@@ -113,9 +113,20 @@ let
     };
   };
 
+  filebrowserFilesFolders = {
+    "filebrowser-root" = {
+      label = "filebrowser";
+      path = "/srv/filebrowser";
+      user = "filebrowser";
+      group = "filebrowser";
+      mode = "0770";
+    };
+  };
+
   folderCatalog = {
     emulation = emulationFolders;
     jellyfin-media = jellyfinMediaFolders;
+    filebrowser-files = filebrowserFilesFolders;
   };
 
   emulationLinks = {
@@ -362,7 +373,7 @@ in
     };
 
     folderSets = lib.mkOption {
-      type = lib.types.listOf (lib.types.enum [ "emulation" "jellyfin-media" ]);
+      type = lib.types.listOf (lib.types.enum [ "emulation" "jellyfin-media" "filebrowser-files" ]);
       default = [ ];
       description = "Named folder sets enabled on this host.";
     };
