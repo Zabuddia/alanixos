@@ -149,6 +149,8 @@ in
       localTransportAddress = hostTransportAddress hostname;
       isVoter = builtins.elem hostname cfg.voters;
 
+      nextcloudCfg = config.alanix.nextcloud;
+      nextcloudCollaboraCfg = nextcloudCfg.collabora;
       vaultwardenCfg = config.alanix.vaultwarden;
       forgejoCfg = config.alanix.forgejo;
       invidiousCfg = config.alanix.invidious;
@@ -156,6 +158,7 @@ in
       jellyfinCfg = config.alanix.jellyfin;
       openwebuiCfg = config.alanix.openwebui;
       searxngCfg = config.alanix.searxng;
+      nextcloudCluster = nextcloudCfg.enable && nextcloudCfg.cluster.enable;
       vaultwardenCluster = vaultwardenCfg.enable && vaultwardenCfg.cluster.enable;
       forgejoCluster = forgejoCfg.enable && forgejoCfg.cluster.enable;
       invidiousCluster = invidiousCfg.enable && invidiousCfg.cluster.enable;
@@ -339,6 +342,12 @@ in
         else
           null;
 
+      nextcloudDataDir = if nextcloudCfg.dataDir != null then nextcloudCfg.dataDir else nextcloudCfg.stateDir;
+      nextcloudClusteredPaths = lib.unique (
+        [ nextcloudCfg.stateDir ]
+        ++ lib.optional (nextcloudDataDir != nextcloudCfg.stateDir) nextcloudDataDir
+      );
+
       jellyfinClusteredPaths =
         [ jellyfinCfg.dataDir ];
 
@@ -452,6 +461,69 @@ in
 
             if [[ -f "$staged_dump" ]]; then
               restore_dump="$(mktemp /var/tmp/alanix-immich-restore-XXXXXX.pgcustom)"
+              trap 'rm -f "$restore_dump"' EXIT
+
+              install -m 0600 -o postgres -g postgres "$staged_dump" "$restore_dump"
+
+              runuser -u postgres -- env \
+                PGHOST="$pg_host" \
+                dropdb --if-exists "$pg_database"
+
+              runuser -u postgres -- env \
+                PGHOST="$pg_host" \
+                createdb --owner="$pg_user" "$pg_database"
+
+              runuser -u postgres -- env \
+                PGHOST="$pg_host" \
+                pg_restore \
+                  --clean \
+                  --if-exists \
+                  --no-privileges \
+                  --exit-on-error \
+                  --dbname="$pg_database" \
+                  "$restore_dump"
+            fi
+          ''
+        else
+          null;
+
+      nextcloudRestoreScript =
+        if nextcloudCluster then
+          let
+            stagedDatabaseDump = "${nextcloudCfg.backupDir}/database/nextcloud.pgcustom";
+          in
+          pkgs.writeShellScript "alanix-nextcloud-cluster-restore-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg nextcloudCfg.backupDir}
+            staged_dump=${lib.escapeShellArg stagedDatabaseDump}
+            pg_host=${lib.escapeShellArg config.services.nextcloud.config.dbhost}
+            pg_user=${lib.escapeShellArg config.services.nextcloud.config.dbuser}
+            pg_database=${lib.escapeShellArg config.services.nextcloud.config.dbname}
+
+            restore_dir() {
+              local target="$1"
+              local staged_dir="$backup_dir$target"
+
+              rm -rf "$target"
+              mkdir -p "$target"
+
+              if [[ -d "$staged_dir" ]]; then
+                cp -a "$staged_dir"/. "$target"/
+              fi
+            }
+
+            ${lib.concatMapStringsSep "\n" (path: ''
+              restore_dir ${lib.escapeShellArg path}
+            '') nextcloudClusteredPaths}
+
+            chown -R nextcloud:nextcloud ${lib.escapeShellArg nextcloudCfg.stateDir}
+            ${lib.optionalString (nextcloudDataDir != nextcloudCfg.stateDir) ''
+              chown -R nextcloud:nextcloud ${lib.escapeShellArg nextcloudDataDir}
+            ''}
+
+            if [[ -f "$staged_dump" ]]; then
+              restore_dump="$(mktemp /var/tmp/alanix-nextcloud-restore-XXXXXX.pgcustom)"
               trap 'rm -f "$restore_dump"' EXIT
 
               install -m 0600 -o postgres -g postgres "$staged_dump" "$restore_dump"
@@ -713,6 +785,53 @@ in
         else
           null;
 
+      nextcloudBackupPrepScript =
+        if nextcloudCluster then
+          let
+            stagedDatabaseDump = "${nextcloudCfg.backupDir}/database/nextcloud.pgcustom";
+          in
+          pkgs.writeShellScript "alanix-nextcloud-cluster-backup-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg nextcloudCfg.backupDir}
+            backup_group=${lib.escapeShellArg backupRepoUserGroup}
+            staged_dump=${lib.escapeShellArg stagedDatabaseDump}
+            pg_host=${lib.escapeShellArg config.services.nextcloud.config.dbhost}
+            pg_database=${lib.escapeShellArg config.services.nextcloud.config.dbname}
+
+            stage_dir() {
+              local source_dir="$1"
+              local staged_dir="$backup_dir$source_dir"
+
+              mkdir -p "$staged_dir"
+
+              if [[ -d "$source_dir" ]]; then
+                rsync -a --delete "$source_dir"/ "$staged_dir"/
+              fi
+            }
+
+            rm -rf "$backup_dir"
+            mkdir -p "$backup_dir" "$(dirname "$staged_dump")"
+            chown -R nextcloud:nextcloud "$backup_dir"
+
+            ${lib.concatMapStringsSep "\n" (path: ''
+              stage_dir ${lib.escapeShellArg path}
+            '') nextcloudClusteredPaths}
+
+            runuser -u postgres -- env \
+              PGHOST="$pg_host" \
+              pg_dump \
+                --format=custom \
+                --file="$staged_dump" \
+                "$pg_database"
+
+            chown -R nextcloud:nextcloud "$backup_dir"
+            chgrp -R "$backup_group" "$backup_dir"
+            chmod -R u=rwX,g=rX,o= "$backup_dir"
+          ''
+        else
+          null;
+
       jellyfinBackupPrepScript =
         if jellyfinCluster then
           pkgs.writeShellScript "alanix-jellyfin-cluster-backup-runtime" ''
@@ -848,6 +967,70 @@ in
             chgrp -R "$backup_group" "$backup_dir"
             chmod -R u=rwX,g=rX,o= "$backup_dir"
           ''
+        else
+          null;
+
+      nextcloudWireguardAddress =
+        if nextcloudCfg.expose.wireguard.address != null then
+          nextcloudCfg.expose.wireguard.address
+        else
+          config.alanix.wireguard.vpnIP;
+
+      nextcloudTailscaleTlsName =
+        if nextcloudCfg.expose.tailscale.tlsName != null then
+          nextcloudCfg.expose.tailscale.tlsName
+        else
+          config.alanix.tailscale.address;
+
+      nextcloudTorTargetAddress =
+        normalizeLocalAddress (
+          if nextcloudCfg.expose.tor.targetAddress != null then
+            nextcloudCfg.expose.tor.targetAddress
+          else
+            nextcloudCfg.listenAddress
+        );
+
+      nextcloudTorTargetPort =
+        if nextcloudCfg.expose.tor.tls then
+          nextcloudCfg.expose.tor.publicPort
+        else
+          nextcloudCfg.port;
+
+      nextcloudTorSecretPath =
+        if nextcloudCfg.expose.tor.secretKeyBase64Secret != null then
+          config.sops.secrets.${nextcloudCfg.expose.tor.secretKeyBase64Secret}.path
+        else
+          null;
+
+      nextcloudCollaboraWireguardAddress =
+        if nextcloudCollaboraCfg.expose.wireguard.address != null then
+          nextcloudCollaboraCfg.expose.wireguard.address
+        else
+          config.alanix.wireguard.vpnIP;
+
+      nextcloudCollaboraTailscaleTlsName =
+        if nextcloudCollaboraCfg.expose.tailscale.tlsName != null then
+          nextcloudCollaboraCfg.expose.tailscale.tlsName
+        else
+          config.alanix.tailscale.address;
+
+      nextcloudCollaboraTorTargetAddress =
+        normalizeLocalAddress (
+          if nextcloudCollaboraCfg.expose.tor.targetAddress != null then
+            nextcloudCollaboraCfg.expose.tor.targetAddress
+          else
+            "127.0.0.1"
+        );
+
+      nextcloudCollaboraTorTargetPort =
+        if nextcloudCollaboraCfg.expose.tor.tls then
+          nextcloudCollaboraCfg.expose.tor.publicPort
+        else
+          nextcloudCollaboraCfg.port;
+
+      nextcloudCollaboraTorSecretPath =
+        if nextcloudCollaboraCfg.expose.tor.secretKeyBase64Secret != null then
+          config.sops.secrets.${nextcloudCollaboraCfg.expose.tor.secretKeyBase64Secret}.path
         else
           null;
 
@@ -1077,6 +1260,22 @@ in
 
       anyCaddyExposure =
         (
+          nextcloudCluster
+          && (
+            nextcloudCfg.expose.tailscale.enable
+            || nextcloudCfg.expose.wireguard.enable
+            || (nextcloudCfg.expose.tor.enable && nextcloudCfg.expose.tor.tls)
+            || (
+              nextcloudCollaboraCfg.enable
+              && (
+                nextcloudCollaboraCfg.expose.tailscale.enable
+                || nextcloudCollaboraCfg.expose.wireguard.enable
+                || (nextcloudCollaboraCfg.expose.tor.enable && nextcloudCollaboraCfg.expose.tor.tls)
+              )
+            )
+          )
+        )
+        || (
           vaultwardenCluster
           && (
             vaultwardenCfg.expose.tailscale.enable
@@ -1134,7 +1333,9 @@ in
         );
 
       anyTailscaleCaddyExposure =
-        (vaultwardenCluster && vaultwardenCfg.expose.tailscale.enable)
+        (nextcloudCluster && nextcloudCfg.expose.tailscale.enable)
+        || (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.tailscale.enable)
+        || (vaultwardenCluster && vaultwardenCfg.expose.tailscale.enable)
         || (forgejoCluster && forgejoCfg.expose.tailscale.enable)
         || (invidiousCluster && invidiousCfg.expose.tailscale.enable)
         || (immichCluster && immichCfg.expose.tailscale.enable)
@@ -1143,7 +1344,9 @@ in
         || (searxngCluster && searxngCfg.expose.tailscale.enable);
 
       anyTorExposure =
-        (vaultwardenCluster && vaultwardenCfg.expose.tor.enable)
+        (nextcloudCluster && nextcloudCfg.expose.tor.enable)
+        || (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.tor.enable)
+        || (vaultwardenCluster && vaultwardenCfg.expose.tor.enable)
         || (forgejoCluster && forgejoCfg.expose.tor.enable)
         || (invidiousCluster && invidiousCfg.expose.tor.enable)
         || (immichCluster && immichCfg.expose.tor.enable)
@@ -1165,6 +1368,63 @@ in
           "${scheme}://${torCfg.hostname}${portSuffix}/"
         else
           null;
+
+      nextcloudLinksByHost = mergeLinksByHost [
+        (lib.optionalAttrs (nextcloudCluster && nextcloudCfg.expose.tailscale.enable) (
+          mkPeerLinksByHost {
+            label = "Nextcloud";
+            transport = "tailscale";
+            scheme = if nextcloudCfg.expose.tailscale.tls then "https" else "http";
+            port = nextcloudCfg.expose.tailscale.port;
+            addressFn = peerTailscaleAddress;
+          }
+        ))
+        (lib.optionalAttrs (nextcloudCluster && nextcloudCfg.expose.wireguard.enable) (
+          mkPeerLinksByHost {
+            label = "Nextcloud";
+            transport = "wireguard";
+            scheme = if nextcloudCfg.expose.wireguard.tls then "https" else "http";
+            port = nextcloudCfg.expose.wireguard.port;
+            addressFn = peerWireguardAddress;
+          }
+        ))
+        (lib.optionalAttrs (nextcloudCluster && nextcloudCfg.expose.tor.enable && nextcloudCfg.expose.tor.hostname != null) (
+          mkConstantLinksByHost [
+            {
+              label = "Nextcloud (tor)";
+              transport = "tor";
+              url = mkTorUrl nextcloudCfg.expose.tor;
+            }
+          ]
+        ))
+        (lib.optionalAttrs (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.tailscale.enable) (
+          mkPeerLinksByHost {
+            label = "Collabora";
+            transport = "tailscale";
+            scheme = if nextcloudCollaboraCfg.expose.tailscale.tls then "https" else "http";
+            port = nextcloudCollaboraCfg.expose.tailscale.port;
+            addressFn = peerTailscaleAddress;
+          }
+        ))
+        (lib.optionalAttrs (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.wireguard.enable) (
+          mkPeerLinksByHost {
+            label = "Collabora";
+            transport = "wireguard";
+            scheme = if nextcloudCollaboraCfg.expose.wireguard.tls then "https" else "http";
+            port = nextcloudCollaboraCfg.expose.wireguard.port;
+            addressFn = peerWireguardAddress;
+          }
+        ))
+        (lib.optionalAttrs (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.tor.enable && nextcloudCollaboraCfg.expose.tor.hostname != null) (
+          mkConstantLinksByHost [
+            {
+              label = "Collabora (tor)";
+              transport = "tor";
+              url = mkTorUrl nextcloudCollaboraCfg.expose.tor;
+            }
+          ]
+        ))
+      ];
 
       vaultwardenLinksByHost = mergeLinksByHost [
         (lib.optionalAttrs (vaultwardenCluster && vaultwardenCfg.expose.tailscale.enable) (
@@ -1348,6 +1608,43 @@ in
           links = dashboardLinks;
         };
         services =
+          (lib.optionalAttrs nextcloudCluster {
+            nextcloud = {
+              name = "nextcloud";
+              backupInterval = nextcloudCfg.cluster.backupInterval;
+              maxBackupAge = nextcloudCfg.cluster.maxBackupAge;
+              activeUnits =
+                [
+                  "phpfpm-nextcloud.service"
+                  "nextcloud-cron.timer"
+                ]
+                ++ lib.optionals nextcloudCollaboraCfg.enable [ "coolwsd.service" ]
+                ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
+              backupPaths = [ nextcloudCfg.backupDir ];
+              preBackupCommand = [ nextcloudBackupPrepScript ];
+              postRestoreCommand = [ nextcloudRestoreScript ];
+              remoteTargets =
+                map
+                  (peer: {
+                    host = peer;
+                    address = hostTransportAddress peer;
+                    repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/nextcloud/from-${hostname}/repo";
+                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/nextcloud/from-${hostname}/manifest.json";
+                  })
+                  (lib.filter (peer: peer != hostname) cfg.members);
+              localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/nextcloud/from-*/repo";
+              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/nextcloud/from-*/manifest.json";
+              linksByHost = nextcloudLinksByHost;
+              torUrl = mkTorUrl nextcloudCfg.expose.tor;
+              tor = {
+                enabled = nextcloudCfg.expose.tor.enable;
+                tls = nextcloudCfg.expose.tor.tls;
+                publicPort = nextcloudCfg.expose.tor.publicPort;
+                stateDirName = "nextcloud";
+              };
+            };
+          })
+          // 
           (lib.optionalAttrs vaultwardenCluster {
             vaultwarden = {
               name = "vaultwarden";
@@ -1587,6 +1884,116 @@ in
               echo "failed to determine Tailscale IPv4 address" >&2
               exit 1
             fi
+          ''}
+
+          ${lib.optionalString (nextcloudCluster && nextcloudCfg.expose.tailscale.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if nextcloudCfg.expose.tailscale.tls then "https" else "http"}://${nextcloudTailscaleTlsName}:${toString nextcloudCfg.expose.tailscale.port} {
+              bind $ts_ip
+              ${lib.optionalString nextcloudCfg.expose.tailscale.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress nextcloudCfg.listenAddress}:${toString nextcloudCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (nextcloudCluster && nextcloudCfg.expose.wireguard.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if nextcloudCfg.expose.wireguard.tls then "https" else "http"}://${nextcloudWireguardAddress}:${toString nextcloudCfg.expose.wireguard.port} {
+              bind ${nextcloudWireguardAddress}
+              ${lib.optionalString nextcloudCfg.expose.wireguard.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress nextcloudCfg.listenAddress}:${toString nextcloudCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (nextcloudCluster && nextcloudCfg.expose.tor.enable && nextcloudCfg.expose.tor.tls) ''
+            cat >> "$caddy_file" <<EOF
+            https://${nextcloudCfg.expose.tor.tlsName}:${toString nextcloudCfg.expose.tor.publicPort} {
+              bind ${nextcloudTorTargetAddress}
+              tls internal
+              reverse_proxy ${normalizeLocalAddress nextcloudCfg.listenAddress}:${toString nextcloudCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (nextcloudCluster && nextcloudCfg.expose.tor.enable) ''
+            rm -rf "$tor_state_dir/nextcloud"
+            mkdir -p "$tor_state_dir/nextcloud"
+            chown tor:tor "$tor_state_dir/nextcloud"
+            chmod 0700 "$tor_state_dir/nextcloud"
+          ''}
+
+          ${lib.optionalString (nextcloudCluster && nextcloudCfg.expose.tor.enable && nextcloudTorSecretPath != null) ''
+            base64 --decode ${lib.escapeShellArg nextcloudTorSecretPath} > "$tor_state_dir/nextcloud/hs_ed25519_secret_key"
+            chown tor:tor "$tor_state_dir/nextcloud/hs_ed25519_secret_key"
+            chmod 0600 "$tor_state_dir/nextcloud/hs_ed25519_secret_key"
+          ''}
+
+          ${lib.optionalString (nextcloudCluster && nextcloudCfg.expose.tor.enable) ''
+            cat >> "$tor_file" <<EOF
+            HiddenServiceDir $tor_state_dir/nextcloud
+            HiddenServiceVersion 3
+            HiddenServicePort ${toString nextcloudCfg.expose.tor.publicPort} ${nextcloudTorTargetAddress}:${toString nextcloudTorTargetPort}
+
+            EOF
+          ''}
+
+          ${lib.optionalString (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.tailscale.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if nextcloudCollaboraCfg.expose.tailscale.tls then "https" else "http"}://${nextcloudCollaboraTailscaleTlsName}:${toString nextcloudCollaboraCfg.expose.tailscale.port} {
+              bind $ts_ip
+              ${lib.optionalString nextcloudCollaboraCfg.expose.tailscale.tls "tls internal"}
+              reverse_proxy 127.0.0.1:${toString nextcloudCollaboraCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.wireguard.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if nextcloudCollaboraCfg.expose.wireguard.tls then "https" else "http"}://${nextcloudCollaboraWireguardAddress}:${toString nextcloudCollaboraCfg.expose.wireguard.port} {
+              bind ${nextcloudCollaboraWireguardAddress}
+              ${lib.optionalString nextcloudCollaboraCfg.expose.wireguard.tls "tls internal"}
+              reverse_proxy 127.0.0.1:${toString nextcloudCollaboraCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.tor.enable && nextcloudCollaboraCfg.expose.tor.tls) ''
+            cat >> "$caddy_file" <<EOF
+            https://${nextcloudCollaboraCfg.expose.tor.tlsName}:${toString nextcloudCollaboraCfg.expose.tor.publicPort} {
+              bind ${nextcloudCollaboraTorTargetAddress}
+              tls internal
+              reverse_proxy 127.0.0.1:${toString nextcloudCollaboraCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.tor.enable) ''
+            rm -rf "$tor_state_dir/nextcloud-collabora"
+            mkdir -p "$tor_state_dir/nextcloud-collabora"
+            chown tor:tor "$tor_state_dir/nextcloud-collabora"
+            chmod 0700 "$tor_state_dir/nextcloud-collabora"
+          ''}
+
+          ${lib.optionalString (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.tor.enable && nextcloudCollaboraTorSecretPath != null) ''
+            base64 --decode ${lib.escapeShellArg nextcloudCollaboraTorSecretPath} > "$tor_state_dir/nextcloud-collabora/hs_ed25519_secret_key"
+            chown tor:tor "$tor_state_dir/nextcloud-collabora/hs_ed25519_secret_key"
+            chmod 0600 "$tor_state_dir/nextcloud-collabora/hs_ed25519_secret_key"
+          ''}
+
+          ${lib.optionalString (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.tor.enable) ''
+            cat >> "$tor_file" <<EOF
+            HiddenServiceDir $tor_state_dir/nextcloud-collabora
+            HiddenServiceVersion 3
+            HiddenServicePort ${toString nextcloudCollaboraCfg.expose.tor.publicPort} ${nextcloudCollaboraTorTargetAddress}:${toString nextcloudCollaboraTorTargetPort}
+
+            EOF
           ''}
 
           ${lib.optionalString (vaultwardenCluster && vaultwardenCfg.expose.tailscale.enable) ''
@@ -2001,6 +2408,12 @@ in
               return 0
             }
 
+            ${lib.optionalString (nextcloudCluster && nextcloudCfg.expose.tor.enable) ''
+              publish_tor_hostname nextcloud
+            ''}
+            ${lib.optionalString (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.tor.enable) ''
+              publish_tor_hostname nextcloud-collabora
+            ''}
             ${lib.optionalString (vaultwardenCluster && vaultwardenCfg.expose.tor.enable) ''
               publish_tor_hostname vaultwarden
             ''}
@@ -2031,6 +2444,8 @@ in
           rm -rf "$tor_state_dir/invidious"
           rm -rf "$tor_state_dir/immich"
           rm -rf "$tor_state_dir/jellyfin"
+          rm -rf "$tor_state_dir/nextcloud"
+          rm -rf "$tor_state_dir/nextcloud-collabora"
           rm -rf "$tor_state_dir/openwebui"
           rm -rf "$tor_state_dir/searxng"
 
@@ -2151,6 +2566,32 @@ in
               message = "Immich cluster mode currently requires services.immich.database.user to match services.immich.user.";
             }
           ]
+          ++ lib.optionals nextcloudCluster [
+            {
+              assertion = config.services.nextcloud.database.createLocally;
+              message = "Nextcloud cluster mode currently requires a locally managed PostgreSQL database.";
+            }
+            {
+              assertion = config.services.nextcloud.config.dbtype == "pgsql";
+              message = "Nextcloud cluster mode currently requires PostgreSQL.";
+            }
+            {
+              assertion = lib.hasPrefix "/" config.services.nextcloud.config.dbhost;
+              message = "Nextcloud cluster mode currently requires PostgreSQL on the local host via unix socket.";
+            }
+            {
+              assertion = lib.hasPrefix "/" nextcloudCfg.stateDir;
+              message = "Nextcloud cluster mode requires alanix.nextcloud.stateDir to be an absolute path.";
+            }
+            {
+              assertion = nextcloudCfg.dataDir == null || lib.hasPrefix "/" nextcloudCfg.dataDir;
+              message = "Nextcloud cluster mode requires alanix.nextcloud.dataDir to be null or an absolute path.";
+            }
+            {
+              assertion = lib.hasPrefix "/" nextcloudCfg.backupDir;
+              message = "Nextcloud cluster mode requires alanix.nextcloud.backupDir to be an absolute path.";
+            }
+          ]
           ++ lib.optionals jellyfinCluster [
             {
               assertion = lib.hasPrefix "/" jellyfinCfg.dataDir;
@@ -2201,12 +2642,12 @@ in
           after =
             [ "network-online.target" "sops-nix.service" ]
             ++ lib.optional (cfg.transport == "tailscale") "tailscaled.service"
-            ++ lib.optionals (invidiousCluster || immichCluster) [ "postgresql.service" ]
+            ++ lib.optionals (invidiousCluster || immichCluster || nextcloudCluster) [ "postgresql.service" ]
             ++ lib.optional isVoter "etcd.service";
           wants =
             [ "network-online.target" "sops-nix.service" ]
             ++ lib.optional (cfg.transport == "tailscale") "tailscaled.service"
-            ++ lib.optionals (invidiousCluster || immichCluster) [ "postgresql.service" ]
+            ++ lib.optionals (invidiousCluster || immichCluster || nextcloudCluster) [ "postgresql.service" ]
             ++ lib.optional isVoter "etcd.service";
           path = with pkgs; [
             coreutils
@@ -2219,7 +2660,7 @@ in
             sqlite
             systemd
             util-linux
-          ] ++ lib.optionals (invidiousCluster || immichCluster) [ config.services.postgresql.package ];
+          ] ++ lib.optionals (invidiousCluster || immichCluster || nextcloudCluster) [ config.services.postgresql.package ];
           serviceConfig = {
             Type = "simple";
             Restart = "always";
@@ -2260,6 +2701,9 @@ in
         systemd.tmpfiles.rules =
           [
             "d ${cfg.backup.repoBaseDir} 0700 ${cfg.backup.repoUser} users - -"
+          ]
+          ++ lib.optionals nextcloudCluster [
+            "d ${nextcloudCfg.backupDir} 0750 nextcloud ${backupRepoUserGroup} - -"
           ]
           ++ lib.optionals forgejoCluster [
             "d ${forgejoCfg.backupDir} 0750 forgejo ${backupRepoUserGroup} - -"
@@ -2381,6 +2825,9 @@ in
           wantedBy = [ "alanix-cluster-active.target" ];
           partOf = [ "alanix-cluster-active.target" ];
           after =
+            lib.optionals nextcloudCluster [ "phpfpm-nextcloud.service" ]
+            ++ lib.optionals (nextcloudCluster && nextcloudCollaboraCfg.enable) [ "coolwsd.service" ]
+            ++
             lib.optionals vaultwardenCluster [ "vaultwarden.service" ]
             ++ lib.optionals forgejoCluster [ "forgejo.service" ]
             ++ lib.optionals invidiousCluster [ "invidious.service" ]
@@ -2389,6 +2836,9 @@ in
             ++ lib.optionals openwebuiCluster [ "open-webui.service" ]
             ++ lib.optionals searxngCluster [ "searx.service" ];
           wants =
+            lib.optionals nextcloudCluster [ "phpfpm-nextcloud.service" ]
+            ++ lib.optionals (nextcloudCluster && nextcloudCollaboraCfg.enable) [ "coolwsd.service" ]
+            ++
             lib.optionals vaultwardenCluster [ "vaultwarden.service" ]
             ++ lib.optionals forgejoCluster [ "forgejo.service" ]
             ++ lib.optionals invidiousCluster [ "invidious.service" ]
@@ -2407,6 +2857,35 @@ in
             SuccessExitStatus = [ "SIGTERM" ];
             ExecStop = "${exposureScript} stop";
           };
+        };
+      })
+
+      (lib.mkIf nextcloudCluster {
+        systemd.services.nextcloud-setup = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.services.phpfpm-nextcloud = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.timers.nextcloud-cron = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.services.nextcloud-cron.partOf = [ "alanix-cluster-active.target" ];
+
+        systemd.services.nextcloud-reconcile = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.services.coolwsd = lib.mkIf nextcloudCollaboraCfg.enable {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
         };
       })
 

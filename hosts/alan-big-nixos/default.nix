@@ -188,54 +188,6 @@
       };
     };
 
-    alanix.nextcloud = {
-      enable = true;
-      listenAddress = "127.0.0.1";
-      port = 8080;
-      rootUrl = "http://alan-big-nixos:8080";
-      trustedDomains = [ "alan-big-nixos" ];
-      expose.tor = {
-        enable = true;
-        publicPort = 80;
-        secretKeyBase64Secret = "tor/nextcloud/secret-key-base64";
-      };
-      expose.tailscale = {
-        enable = true;
-        address = "100.97.81.46";
-        port = 8080;
-      };
-      expose.wireguard = {
-        enable = true;
-        address = "10.100.0.1";
-        port = 8080;
-      };
-      users.buddia = {
-        admin = true;
-        displayName = "Alan Fife";
-        email = "fife.alan@protonmail.com";
-        passwordSecret = "nextcloud-passwords/buddia";
-      };
-      collabora = {
-        enable = true;
-        rootUrl = "http://alan-big-nixos:9980";
-        expose.tor = {
-          enable = true;
-          publicPort = 9980;
-          secretKeyBase64Secret = "tor/nextcloud-collabora/secret-key-base64";
-        };
-        expose.tailscale = {
-          enable = true;
-          address = "100.97.81.46";
-          port = 9980;
-        };
-        expose.wireguard = {
-          enable = true;
-          address = "10.100.0.1";
-          port = 9980;
-        };
-      };
-    };
-
     alanix.tvheadend = {
       enable = true;
       recordingsDir = "/srv/tvheadend/recordings";

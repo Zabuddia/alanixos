@@ -325,6 +325,71 @@ in
       };
     };
 
+    alanix.nextcloud = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 8080;
+      backupDir = "/var/backup/nextcloud";
+      rootUrl = "http://${config.alanix.tailscale.address}:8080";
+
+      expose = {
+        tor = {
+          enable = true;
+          publicPort = 80;
+          secretKeyBase64Secret = "tor/nextcloud/secret-key-base64";
+        };
+
+        tailscale = {
+          enable = true;
+          address = config.alanix.tailscale.address;
+          port = 8080;
+        };
+
+        wireguard = {
+          enable = true;
+          port = 8080;
+        };
+      };
+
+      collabora = {
+        enable = true;
+        rootUrl = "http://${config.alanix.tailscale.address}:9980";
+        callbackUrl = "http://${config.alanix.tailscale.address}:8080";
+
+        expose = {
+          tor = {
+            enable = true;
+            publicPort = 9980;
+            secretKeyBase64Secret = "tor/nextcloud-collabora/secret-key-base64";
+          };
+
+          tailscale = {
+            enable = true;
+            address = config.alanix.tailscale.address;
+            port = 9980;
+          };
+
+          wireguard = {
+            enable = true;
+            port = 9980;
+          };
+        };
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "15m";
+        maxBackupAge = "1h";
+      };
+
+      users.buddia = {
+        admin = true;
+        displayName = "Alan Fife";
+        email = "fife.alan@protonmail.com";
+        passwordSecret = "nextcloud-passwords/buddia";
+      };
+    };
+
     alanix.searxng = {
       enable = true;
       listenAddress = "127.0.0.1";
