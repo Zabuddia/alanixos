@@ -869,13 +869,12 @@ in
             backup_group=${lib.escapeShellArg backupRepoUserGroup}
             db_path=${lib.escapeShellArg filebrowserCfg.database}
             staged_db_path=${lib.escapeShellArg stagedDatabasePath}
-            sqlite3=${lib.escapeShellArg "${pkgs.sqlite}/bin/sqlite3"}
 
             rm -rf "$backup_dir"
             mkdir -p "$(dirname "$staged_db_path")"
 
             if [[ -f "$db_path" ]]; then
-              "$sqlite3" "$db_path" ".backup '$staged_db_path'"
+              cp -a "$db_path" "$staged_db_path"
             fi
 
             chown -R filebrowser:filebrowser "$backup_dir"
