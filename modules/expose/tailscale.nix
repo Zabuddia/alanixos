@@ -135,7 +135,7 @@ in
             {
               systemd.sockets.${socketProxyName} = {
                 after = [ "alanix-tailscale-ready.service" ];
-                wants = [ "alanix-tailscale-ready.service" ];
+                partOf = [ "alanix-tailscale-ready.service" ];
               };
               systemd.services.${socketProxyName} = {
                 after = [ "alanix-tailscale-ready.service" ];

@@ -223,4 +223,9 @@
     group = "root";
     mode = "0400";
   };
+
+  sops.secrets."wifi-passwords/cinnamon-tree" = {
+    owner = "root";
+    mode = "0400";
+  };
 }
