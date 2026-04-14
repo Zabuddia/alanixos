@@ -64,6 +64,11 @@
         group = "root";
         mode = "0400";
       };
+
+      "wifi-passwords/cinnamon-tree" = {
+        owner = "root";
+        mode = "0400";
+      };
     }
   ];
 

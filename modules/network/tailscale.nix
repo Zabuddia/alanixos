@@ -50,6 +50,8 @@ in
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
+          Restart = "on-failure";
+          RestartSec = "30s";
         };
         script = ''
           set -euo pipefail

@@ -207,6 +207,10 @@
       operator = "buddia";
     };
 
+    alanix.wifi.networks = [
+      { ssid = "Cinnamon Tree"; pskSecret = "wifi-passwords/cinnamon-tree"; }
+    ];
+
     alanix.syncthing.deviceId = "OXKT6UP-LWKYRF4-XJ6YR5P-MOHU27R-5ZSHMVI-O4XJK2T-2IHVMFO-OKZC3AO";
 
     alanix.remote-desktop = {
