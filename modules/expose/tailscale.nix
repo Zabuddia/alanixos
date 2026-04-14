@@ -134,8 +134,11 @@ in
             proxyCfg
             {
               systemd.sockets.${socketProxyName} = {
-                after = [ "alanix-tailscale-ready.service" ];
-                partOf = [ "alanix-tailscale-ready.service" ];
+                after = [
+                  "alanix-tailscale-ready.service"
+                  "sys-subsystem-net-devices-${interfaceName}.device"
+                ];
+                bindsTo = [ "sys-subsystem-net-devices-${interfaceName}.device" ];
               };
               systemd.services.${socketProxyName} = {
                 after = [ "alanix-tailscale-ready.service" ];
