@@ -129,16 +129,19 @@ in
               bindToDevice = interfaceName;
               freeBind = true;
             };
+            deviceUnit = "sys-subsystem-net-devices-${interfaceName}.device";
           in
           lib.mkMerge [
             proxyCfg
             {
               systemd.sockets.${socketProxyName} = {
-                after = [
-                  "alanix-tailscale-ready.service"
-                  "sys-subsystem-net-devices-${interfaceName}.device"
-                ];
-                bindsTo = [ "sys-subsystem-net-devices-${interfaceName}.device" ];
+                # Start when the tailscale interface appears, not at boot.
+                # This avoids a 90s hang when tailscale isn't up yet, and
+                # auto-starts the socket whenever tailscale connects (even
+                # if it wasn't available at boot).
+                wantedBy = lib.mkForce [ deviceUnit ];
+                after = [ "alanix-tailscale-ready.service" deviceUnit ];
+                bindsTo = [ deviceUnit ];
               };
               systemd.services.${socketProxyName} = {
                 after = [ "alanix-tailscale-ready.service" ];
