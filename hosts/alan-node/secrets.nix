@@ -68,6 +68,20 @@
     mode = "0400";
   };
 
+  sops.secrets."nextcloud-passwords/fifefam" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "nextcloud";
+    group = "nextcloud";
+    mode = "0400";
+  };
+
+  sops.secrets."nextcloud-passwords/waffleiron" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "nextcloud";
+    group = "nextcloud";
+    mode = "0400";
+  };
+
   sops.secrets."nextcloud-passwords/buddia" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "nextcloud";
