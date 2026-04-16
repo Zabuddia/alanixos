@@ -472,11 +472,25 @@ in
         maxBackupAge = "1h";
       };
 
-      users.buddia = {
-        admin = true;
-        displayName = "Alan Fife";
-        email = "fife.alan@protonmail.com";
-        passwordSecret = "nextcloud-passwords/buddia";
+      users = {
+        fifefam = {
+          admin = false;
+          displayName = "Fife Family";
+          email = "fifefam@gmail.com";
+          passwordSecret = "nextcloud-passwords/fifefam";
+        };
+        waffleiron = {
+          admin = false;
+          displayName = "Randy Fife";
+          email = "fife.randy@protonmail.com";
+          passwordSecret = "nextcloud-passwords/waffleiron";
+        };
+        buddia = {
+          admin = true;
+          displayName = "Alan Fife";
+          email = "fife.alan@protonmail.com";
+          passwordSecret = "nextcloud-passwords/buddia";
+        };
       };
     };
 
