@@ -944,17 +944,40 @@ in
 
             wait_for_server() {
               local attempts=120
+              local auth_attempts=30
+              local code
 
               while [ "$attempts" -gt 0 ]; do
                 if curl -sS -f "$BASE_URL/System/Ping" >/dev/null 2>&1; then
-                  return 0
+                  break
                 fi
 
                 sleep 1
                 attempts=$((attempts - 1))
               done
 
-              echo "Timed out waiting for Jellyfin to become ready." >&2
+              if [ "$attempts" -eq 0 ]; then
+                echo "Timed out waiting for Jellyfin to become ready." >&2
+                return 1
+              fi
+
+              while [ "$auth_attempts" -gt 0 ]; do
+                code="$(curl -sS -o /dev/null -w '%{http_code}' \
+                  -H "Authorization: $AUTHORIZATION_HEADER" \
+                  -H 'Content-Type: application/json' \
+                  -X POST \
+                  -d '{"Username":"_readiness_probe_","Pw":""}' \
+                  "$BASE_URL/Users/AuthenticateByName" 2>/dev/null || true)"
+
+                if [ "$code" = "401" ] || [ "$code" = "200" ]; then
+                  return 0
+                fi
+
+                sleep 1
+                auth_attempts=$((auth_attempts - 1))
+              done
+
+              echo "Timed out waiting for Jellyfin auth to become ready." >&2
               return 1
             }
 
