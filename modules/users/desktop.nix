@@ -215,6 +215,20 @@ in
           tray = "auto";
         };
 
+        systemd.user.services.swayosd-server = {
+          Unit = {
+            Description = "SwayOSD server";
+            After = [ "graphical-session.target" ];
+            PartOf = [ "graphical-session.target" ];
+          };
+          Service = {
+            ExecStart = "${pkgs.swayosd}/bin/swayosd-server";
+            Restart = "always";
+            RestartSec = 2;
+          };
+          Install.WantedBy = [ "graphical-session.target" ];
+        };
+
         programs.wlogout = {
           enable = true;
           layout = [
@@ -400,7 +414,6 @@ in
             startup = [
               { command = "waybar"; }
               { command = "blueman-applet"; }
-              { command = "pkill -x swayosd-server; swayosd-server"; always = true; }
               { command = "sleep 2 && swaymsg workspace number 1"; always = false; }
             ];
             keybindings = lib.mkOptionDefault {
