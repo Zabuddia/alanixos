@@ -1,12 +1,14 @@
 { config, ... }:
 
 {
+
   sops = {
-    defaultSopsFile = ../../secrets/secrets.yaml;
+    defaultSopsFile = (import ../../secrets/files.nix).users;
     age.keyFile = "/var/lib/sops-nix/key.txt";
   };
 
   sops.secrets."password-hashes/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).users;
     neededForUsers = true;
     owner = "root";
     group = "root";
@@ -14,6 +16,7 @@
   };
 
   sops.secrets."cloudflare/api-token" = {
+    sopsFile = (import ../../secrets/files.nix).network;
     owner = "root";
     group = "root";
     mode = "0400";
@@ -25,13 +28,14 @@
   };
 
   sops.secrets."wireguard-private-keys/alan-optiplex" = {
-    sopsFile = ../../secrets/secrets.yaml;
+    sopsFile = (import ../../secrets/files.nix).network;
     owner = "root";
     group = "root";
     mode = "0400";
   };
 
   sops.secrets."ssh-private-keys/alan-optiplex" = {
+    sopsFile = (import ../../secrets/files.nix).users;
     owner = "buddia";
     group = "users";
     mode = "0600";
@@ -39,6 +43,7 @@
   };
 
   sops.secrets."ssh-host-keys/alan-optiplex" = {
+    sopsFile = (import ../../secrets/files.nix).network;
     owner = "root";
     group = "root";
     mode = "0600";
@@ -46,24 +51,28 @@
   };
 
   sops.secrets."syncthing-certs/alan-optiplex" = {
+    sopsFile = (import ../../secrets/files.nix).syncthing;
     owner = "root";
     group = "root";
     mode = "0400";
   };
 
   sops.secrets."syncthing-keys/alan-optiplex" = {
+    sopsFile = (import ../../secrets/files.nix).syncthing;
     owner = "root";
     group = "root";
     mode = "0400";
   };
 
   sops.secrets."sunshine-web-ui-passwords/alan-optiplex" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
     owner = "buddia";
     group = "users";
     mode = "0400";
   };
 
   sops.secrets."wifi-passwords/cinnamon-tree" = {
+    sopsFile = (import ../../secrets/files.nix).network;
     owner = "root";
     mode = "0400";
   };

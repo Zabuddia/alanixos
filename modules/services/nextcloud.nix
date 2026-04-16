@@ -922,6 +922,18 @@ in
               sha256sum "$passfile" | awk '{print $1}'
             }
 
+            run_occ_with_password() {
+              local passfile="$1"
+              shift
+
+              OC_PASS="$(tr -d '\r\n' < "$passfile")" \
+                ${lib.getExe' pkgs.util-linux "runuser"} \
+                  --whitelist-environment=OC_PASS \
+                  --user=nextcloud \
+                  -- \
+                  "$OCC" "$@"
+            }
+
             current_password_digest() {
               local name="$1"
 
@@ -1089,10 +1101,7 @@ in
 
               if have_user "$name"; then
                 if [ "$desired_digest" != "$current_digest" ]; then
-                  export NC_PASS
-                  NC_PASS="$(tr -d '\r\n' < "$passfile")"
-                  "$OCC" user:resetpassword --password-from-env "$name" >/dev/null
-                  unset NC_PASS
+                  run_occ_with_password "$passfile" user:resetpassword --password-from-env "$name" >/dev/null
                 fi
               else
                 create_args=(user:add --password-from-env "$name" "--display-name=$display_name")
@@ -1109,10 +1118,7 @@ in
                   create_args+=("--group=admin")
                 fi
 
-                export NC_PASS
-                NC_PASS="$(tr -d '\r\n' < "$passfile")"
-                "$OCC" "''${create_args[@]}" >/dev/null
-                unset NC_PASS
+                run_occ_with_password "$passfile" "''${create_args[@]}" >/dev/null
               fi
 
               set_display_name "$name" "$display_name"
