@@ -83,6 +83,10 @@
 
     alanix.desktop = {
       enable = true;
+      autoLogin = {
+        enable = true;
+        user = "buddia";
+      };
       createHeadlessOutput = true;
       swayOutputRules = [
         "output HEADLESS-1 resolution 1920x1080"
