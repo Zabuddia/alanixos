@@ -21,6 +21,7 @@
     ./services/nextcloud.nix
     ./services/openclaw.nix
     ./services/openwebui.nix
+    ./services/radicale.nix
     ./services/remote-desktop.nix
     ./services/searxng.nix
     ./services/sunshine.nix

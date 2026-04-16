@@ -152,6 +152,7 @@ in
       nextcloudCfg = config.alanix.nextcloud;
       nextcloudCollaboraCfg = nextcloudCfg.collabora;
       filebrowserCfg = config.alanix.filebrowser;
+      radicaleCfg = config.alanix.radicale;
       vaultwardenCfg = config.alanix.vaultwarden;
       forgejoCfg = config.alanix.forgejo;
       invidiousCfg = config.alanix.invidious;
@@ -161,6 +162,7 @@ in
       searxngCfg = config.alanix.searxng;
       nextcloudCluster = nextcloudCfg.enable && nextcloudCfg.cluster.enable;
       filebrowserCluster = filebrowserCfg.enable && filebrowserCfg.cluster.enable;
+      radicaleCluster = radicaleCfg.enable && radicaleCfg.cluster.enable;
       vaultwardenCluster = vaultwardenCfg.enable && vaultwardenCfg.cluster.enable;
       forgejoCluster = forgejoCfg.enable && forgejoCfg.cluster.enable;
       invidiousCluster = invidiousCfg.enable && invidiousCfg.cluster.enable;
@@ -358,6 +360,30 @@ in
             fi
 
             chown -R filebrowser:filebrowser "$backup_dir"
+          ''
+        else
+          null;
+
+      radicaleRestoreScript =
+        if radicaleCluster then
+          let
+            stagedStorageDir = "${radicaleCfg.backupDir}${radicaleCfg.storageDir}";
+          in
+          pkgs.writeShellScript "alanix-radicale-cluster-restore-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg radicaleCfg.backupDir}
+            storage_dir=${lib.escapeShellArg radicaleCfg.storageDir}
+            staged_storage_dir=${lib.escapeShellArg stagedStorageDir}
+
+            rm -rf "$storage_dir"
+            mkdir -p "$storage_dir"
+
+            if [[ -d "$staged_storage_dir" ]]; then
+              cp -a "$staged_storage_dir"/. "$storage_dir"/
+            fi
+
+            chown -R radicale:radicale "$backup_dir" "$storage_dir"
           ''
         else
           null;
@@ -895,6 +921,33 @@ in
         else
           null;
 
+      radicaleBackupPrepScript =
+        if radicaleCluster then
+          let
+            stagedStorageDir = "${radicaleCfg.backupDir}${radicaleCfg.storageDir}";
+          in
+          pkgs.writeShellScript "alanix-radicale-cluster-backup-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg radicaleCfg.backupDir}
+            backup_group=${lib.escapeShellArg backupRepoUserGroup}
+            storage_dir=${lib.escapeShellArg radicaleCfg.storageDir}
+            staged_storage_dir=${lib.escapeShellArg stagedStorageDir}
+
+            rm -rf "$backup_dir"
+            mkdir -p "$staged_storage_dir"
+
+            if [[ -d "$storage_dir" ]]; then
+              rsync -a --delete "$storage_dir"/ "$staged_storage_dir"/
+            fi
+
+            chown -R radicale:radicale "$backup_dir"
+            chgrp -R "$backup_group" "$backup_dir"
+            chmod -R u=rwX,g=rX,o= "$backup_dir"
+          ''
+        else
+          null;
+
       jellyfinBackupPrepScript =
         if jellyfinCluster then
           pkgs.writeShellScript "alanix-jellyfin-cluster-backup-runtime" ''
@@ -1126,6 +1179,38 @@ in
       filebrowserTorSecretPath =
         if filebrowserCfg.expose.tor.secretKeyBase64Secret != null then
           config.sops.secrets.${filebrowserCfg.expose.tor.secretKeyBase64Secret}.path
+        else
+          null;
+
+      radicaleWireguardAddress =
+        if radicaleCfg.expose.wireguard.address != null then
+          radicaleCfg.expose.wireguard.address
+        else
+          config.alanix.wireguard.vpnIP;
+
+      radicaleTailscaleTlsName =
+        if radicaleCfg.expose.tailscale.tlsName != null then
+          radicaleCfg.expose.tailscale.tlsName
+        else
+          config.alanix.tailscale.address;
+
+      radicaleTorTargetAddress =
+        normalizeLocalAddress (
+          if radicaleCfg.expose.tor.targetAddress != null then
+            radicaleCfg.expose.tor.targetAddress
+          else
+            radicaleCfg.listenAddress
+        );
+
+      radicaleTorTargetPort =
+        if radicaleCfg.expose.tor.tls then
+          radicaleCfg.expose.tor.publicPort
+        else
+          radicaleCfg.port;
+
+      radicaleTorSecretPath =
+        if radicaleCfg.expose.tor.secretKeyBase64Secret != null then
+          config.sops.secrets.${radicaleCfg.expose.tor.secretKeyBase64Secret}.path
         else
           null;
 
@@ -1379,6 +1464,14 @@ in
           )
         )
         || (
+          radicaleCluster
+          && (
+            radicaleCfg.expose.tailscale.enable
+            || radicaleCfg.expose.wireguard.enable
+            || (radicaleCfg.expose.tor.enable && radicaleCfg.expose.tor.tls)
+          )
+        )
+        || (
           vaultwardenCluster
           && (
             vaultwardenCfg.expose.tailscale.enable
@@ -1439,6 +1532,7 @@ in
         (nextcloudCluster && nextcloudCfg.expose.tailscale.enable)
         || (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.tailscale.enable)
         || (filebrowserCluster && filebrowserCfg.expose.tailscale.enable)
+        || (radicaleCluster && radicaleCfg.expose.tailscale.enable)
         || (vaultwardenCluster && vaultwardenCfg.expose.tailscale.enable)
         || (forgejoCluster && forgejoCfg.expose.tailscale.enable)
         || (invidiousCluster && invidiousCfg.expose.tailscale.enable)
@@ -1451,6 +1545,7 @@ in
         (nextcloudCluster && nextcloudCfg.expose.tor.enable)
         || (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.tor.enable)
         || (filebrowserCluster && filebrowserCfg.expose.tor.enable)
+        || (radicaleCluster && radicaleCfg.expose.tor.enable)
         || (vaultwardenCluster && vaultwardenCfg.expose.tor.enable)
         || (forgejoCluster && forgejoCfg.expose.tor.enable)
         || (invidiousCluster && invidiousCfg.expose.tor.enable)
@@ -1547,6 +1642,27 @@ in
             transport = "wireguard";
             scheme = if filebrowserCfg.expose.wireguard.tls then "https" else "http";
             port = filebrowserCfg.expose.wireguard.port;
+            addressFn = peerWireguardAddress;
+          }
+        ))
+      ];
+
+      radicaleLinksByHost = mergeLinksByHost [
+        (lib.optionalAttrs (radicaleCluster && radicaleCfg.expose.tailscale.enable) (
+          mkPeerLinksByHost {
+            label = "Radicale";
+            transport = "tailscale";
+            scheme = if radicaleCfg.expose.tailscale.tls then "https" else "http";
+            port = radicaleCfg.expose.tailscale.port;
+            addressFn = peerTailscaleAddress;
+          }
+        ))
+        (lib.optionalAttrs (radicaleCluster && radicaleCfg.expose.wireguard.enable) (
+          mkPeerLinksByHost {
+            label = "Radicale";
+            transport = "wireguard";
+            scheme = if radicaleCfg.expose.wireguard.tls then "https" else "http";
+            port = radicaleCfg.expose.wireguard.port;
             addressFn = peerWireguardAddress;
           }
         ))
@@ -1800,6 +1916,39 @@ in
                 tls = filebrowserCfg.expose.tor.tls;
                 publicPort = filebrowserCfg.expose.tor.publicPort;
                 stateDirName = "filebrowser";
+              };
+            };
+          })
+          // (lib.optionalAttrs radicaleCluster {
+            radicale = {
+              name = "radicale";
+              label = "Radicale";
+              backupInterval = radicaleCfg.cluster.backupInterval;
+              maxBackupAge = radicaleCfg.cluster.maxBackupAge;
+              activeUnits =
+                [ "radicale.service" ]
+                ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
+              backupPaths = [ radicaleCfg.backupDir ];
+              preBackupCommand = [ radicaleBackupPrepScript ];
+              postRestoreCommand = [ radicaleRestoreScript ];
+              remoteTargets =
+                map
+                  (peer: {
+                    host = peer;
+                    address = hostTransportAddress peer;
+                    repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/radicale/from-${hostname}/repo";
+                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/radicale/from-${hostname}/manifest.json";
+                  })
+                  (lib.filter (peer: peer != hostname) cfg.members);
+              localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/radicale/from-*/repo";
+              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/radicale/from-*/manifest.json";
+              linksByHost = radicaleLinksByHost;
+              torUrl = mkTorUrl radicaleCfg.expose.tor;
+              tor = {
+                enabled = radicaleCfg.expose.tor.enable;
+                tls = radicaleCfg.expose.tor.tls;
+                publicPort = radicaleCfg.expose.tor.publicPort;
+                stateDirName = "radicale";
               };
             };
           })
@@ -2207,6 +2356,61 @@ in
             HiddenServiceDir $tor_state_dir/filebrowser
             HiddenServiceVersion 3
             HiddenServicePort ${toString filebrowserCfg.expose.tor.publicPort} ${filebrowserTorTargetAddress}:${toString filebrowserTorTargetPort}
+
+            EOF
+          ''}
+
+          ${lib.optionalString (radicaleCluster && radicaleCfg.expose.tailscale.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if radicaleCfg.expose.tailscale.tls then "https" else "http"}://${radicaleTailscaleTlsName}:${toString radicaleCfg.expose.tailscale.port} {
+              bind $ts_ip
+              ${lib.optionalString radicaleCfg.expose.tailscale.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress radicaleCfg.listenAddress}:${toString radicaleCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (radicaleCluster && radicaleCfg.expose.wireguard.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if radicaleCfg.expose.wireguard.tls then "https" else "http"}://${radicaleWireguardAddress}:${toString radicaleCfg.expose.wireguard.port} {
+              bind ${radicaleWireguardAddress}
+              ${lib.optionalString radicaleCfg.expose.wireguard.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress radicaleCfg.listenAddress}:${toString radicaleCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (radicaleCluster && radicaleCfg.expose.tor.enable && radicaleCfg.expose.tor.tls) ''
+            cat >> "$caddy_file" <<EOF
+            https://${radicaleCfg.expose.tor.tlsName}:${toString radicaleCfg.expose.tor.publicPort} {
+              bind ${radicaleTorTargetAddress}
+              tls internal
+              reverse_proxy ${normalizeLocalAddress radicaleCfg.listenAddress}:${toString radicaleCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (radicaleCluster && radicaleCfg.expose.tor.enable) ''
+            rm -rf "$tor_state_dir/radicale"
+            mkdir -p "$tor_state_dir/radicale"
+            chown tor:tor "$tor_state_dir/radicale"
+            chmod 0700 "$tor_state_dir/radicale"
+          ''}
+
+          ${lib.optionalString (radicaleCluster && radicaleCfg.expose.tor.enable && radicaleTorSecretPath != null) ''
+            base64 --decode ${lib.escapeShellArg radicaleTorSecretPath} > "$tor_state_dir/radicale/hs_ed25519_secret_key"
+            chown tor:tor "$tor_state_dir/radicale/hs_ed25519_secret_key"
+            chmod 0600 "$tor_state_dir/radicale/hs_ed25519_secret_key"
+          ''}
+
+          ${lib.optionalString (radicaleCluster && radicaleCfg.expose.tor.enable) ''
+            cat >> "$tor_file" <<EOF
+            HiddenServiceDir $tor_state_dir/radicale
+            HiddenServiceVersion 3
+            HiddenServicePort ${toString radicaleCfg.expose.tor.publicPort} ${radicaleTorTargetAddress}:${toString radicaleTorTargetPort}
 
             EOF
           ''}
@@ -2632,6 +2836,9 @@ in
             ${lib.optionalString (filebrowserCluster && filebrowserCfg.expose.tor.enable) ''
               publish_tor_hostname filebrowser
             ''}
+            ${lib.optionalString (radicaleCluster && radicaleCfg.expose.tor.enable) ''
+              publish_tor_hostname radicale
+            ''}
             ${lib.optionalString (vaultwardenCluster && vaultwardenCfg.expose.tor.enable) ''
               publish_tor_hostname vaultwarden
             ''}
@@ -2663,6 +2870,7 @@ in
           rm -rf "$tor_state_dir/immich"
           rm -rf "$tor_state_dir/jellyfin"
           rm -rf "$tor_state_dir/filebrowser"
+          rm -rf "$tor_state_dir/radicale"
           rm -rf "$tor_state_dir/nextcloud"
           rm -rf "$tor_state_dir/nextcloud-collabora"
           rm -rf "$tor_state_dir/openwebui"
@@ -2825,6 +3033,16 @@ in
               message = "File Browser cluster mode requires alanix.filebrowser.backupDir to be an absolute path.";
             }
           ]
+          ++ lib.optionals radicaleCluster [
+            {
+              assertion = lib.hasPrefix "/" radicaleCfg.storageDir;
+              message = "Radicale cluster mode requires alanix.radicale.storageDir to be an absolute path.";
+            }
+            {
+              assertion = lib.hasPrefix "/" radicaleCfg.backupDir;
+              message = "Radicale cluster mode requires alanix.radicale.backupDir to be an absolute path.";
+            }
+          ]
           ++ lib.optionals jellyfinCluster [
             {
               assertion = lib.hasPrefix "/" jellyfinCfg.dataDir;
@@ -2943,6 +3161,9 @@ in
           ]
           ++ lib.optionals filebrowserCluster [
             "d ${filebrowserCfg.backupDir} 0750 filebrowser ${backupRepoUserGroup} - -"
+          ]
+          ++ lib.optionals radicaleCluster [
+            "d ${radicaleCfg.backupDir} 0750 radicale ${backupRepoUserGroup} - -"
           ]
           ++ lib.optionals forgejoCluster [
             "d ${forgejoCfg.backupDir} 0750 forgejo ${backupRepoUserGroup} - -"
@@ -3069,6 +3290,8 @@ in
             ++
             lib.optionals filebrowserCluster [ "filebrowser.service" ]
             ++
+            lib.optionals radicaleCluster [ "radicale.service" ]
+            ++
             lib.optionals vaultwardenCluster [ "vaultwarden.service" ]
             ++ lib.optionals forgejoCluster [ "forgejo.service" ]
             ++ lib.optionals invidiousCluster [ "invidious.service" ]
@@ -3081,6 +3304,8 @@ in
             ++ lib.optionals (nextcloudCluster && nextcloudCollaboraCfg.enable) [ "coolwsd.service" ]
             ++
             lib.optionals filebrowserCluster [ "filebrowser.service" ]
+            ++
+            lib.optionals radicaleCluster [ "radicale.service" ]
             ++
             lib.optionals vaultwardenCluster [ "vaultwarden.service" ]
             ++ lib.optionals forgejoCluster [ "forgejo.service" ]
@@ -3134,6 +3359,13 @@ in
 
       (lib.mkIf filebrowserCluster {
         systemd.services.filebrowser = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+      })
+
+      (lib.mkIf radicaleCluster {
+        systemd.services.radicale = {
           wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
           partOf = [ "alanix-cluster-active.target" ];
         };
