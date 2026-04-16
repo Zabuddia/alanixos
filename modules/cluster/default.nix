@@ -622,6 +622,11 @@ in
             chown -R jellyfin:jellyfin ${lib.escapeShellArg jellyfinCfg.dataDir}
             ${mediaFolderOwnershipFixups}
             ${recordingOwnershipFixup}
+
+            system_xml=${lib.escapeShellArg "${jellyfinCfg.dataDir}/config/system.xml"}
+            if [[ -f "$system_xml" ]]; then
+              ${pkgs.gnused}/bin/sed -i 's|<ServerName>[^<]*</ServerName>|<ServerName>${hostname}</ServerName>|' "$system_xml"
+            fi
           ''
         else
           null;
