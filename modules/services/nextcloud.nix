@@ -717,6 +717,10 @@ in
           usernameMessage = uname: "alanix.nextcloud.users.${uname}: usernames may contain only letters, digits, underscore, hyphen, and @.";
           passwordSourceMessage = uname: "alanix.nextcloud.users.${uname}: set exactly one of password, passwordFile, or passwordSecret.";
           passwordSecretMessage = uname: "alanix.nextcloud.users.${uname}.passwordSecret must reference a declared sops secret.";
+          extraAssertions = uname: u: lib.optional (u.password != null) {
+            assertion = builtins.stringLength u.password >= 10;
+            message = "alanix.nextcloud.users.${uname}.password must be at least 10 characters long (Nextcloud minimum).";
+          };
         };
 
       services.nextcloud = lib.mkIf (baseConfigReady && nextcloudVhostName != null) {
