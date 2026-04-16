@@ -400,7 +400,7 @@ in
             startup = [
               { command = "waybar"; }
               { command = "blueman-applet"; }
-              { command = "swayosd-server"; }
+              { command = "pkill -x swayosd-server; swayosd-server"; always = true; }
               { command = "sleep 2 && swaymsg workspace number 1"; always = false; }
             ];
             keybindings = lib.mkOptionDefault {
