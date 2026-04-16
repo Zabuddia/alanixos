@@ -152,6 +152,7 @@
         "alan-optiplex"
         "alan-framework"
         "alan-framework-laptop"
+        "randy-big-nixos"
       ];
       folderSets = [ "emulation" ];
       linkFolderSets = [ "emulation" ];
