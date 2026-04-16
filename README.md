@@ -5,7 +5,7 @@ How to set up a new machine from this flake repo.
 - User: `buddia`
 - Repo: `https://github.com/Zabuddia/alanixos`
 - Flake path: `~/.nixos`
-- Secrets: `secrets/secrets.yaml` (encrypted with age via sops-nix)
+- Secrets: `secrets/*.yaml` (encrypted with age via sops-nix)
 - Prerequisite: another machine that is already set up and can decrypt secrets
 
 ---
@@ -85,12 +85,12 @@ git push
 ```bash
 cd ~/.nixos
 git pull
-sops updatekeys --yes secrets/secrets.yaml
+sops updatekeys --yes secrets/*.yaml
 
 # If the already-set-up machine is not a workstation then do:
-sudo SOPS_AGE_KEY_FILE="/var/lib/sops-nix/key.txt" sops updatekeys --yes secrets/secrets.yaml
+sudo SOPS_AGE_KEY_FILE="/var/lib/sops-nix/key.txt" sops updatekeys --yes secrets/*.yaml
 
-git add secrets/secrets.yaml
+git add secrets/*.yaml
 git commit -m "Re-encrypt secrets for <hostname>"
 git push
 ```
