@@ -321,7 +321,7 @@ in
         tvheadend.sources.local = {
           enable = true;
           friendlyName = "alan-big-nixos TVHeadend";
-          baseUrl = "http://alan-big-nixos:9981";
+          baseUrl = "http://alan-big-nixos:19981";
           playlistPath = "/playlist/channels";
           xmltvPath = "/xmltv/channels";
         };
