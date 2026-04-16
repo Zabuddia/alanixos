@@ -209,6 +209,41 @@ in
       };
     };
 
+    alanix.radicale = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 5232;
+      storageDir = "/var/lib/radicale/collections";
+      backupDir = "/var/backup/radicale";
+
+      expose = {
+        tor = {
+          enable = true;
+          publicPort = 80;
+          secretKeyBase64Secret = "tor/radicale/secret-key-base64";
+          hostname = "kyc2dv6gfdf7nkcyprdhxu2wv3wmjka3rzkoknglvsc7ezhuqhl4c6id.onion";
+        };
+
+        tailscale = {
+          enable = true;
+          port = 15232;
+        };
+
+        wireguard = {
+          enable = true;
+          port = 5232;
+        };
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "15m";
+        maxBackupAge = "1h";
+      };
+
+      users.buddia.passwordSecret = "radicale-passwords/buddia";
+    };
+
     alanix.invidious = {
       enable = true;
       listenAddress = "127.0.0.1";

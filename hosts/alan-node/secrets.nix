@@ -75,6 +75,13 @@
     mode = "0400";
   };
 
+  sops.secrets."radicale-passwords/buddia" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "radicale";
+    group = "radicale";
+    mode = "0400";
+  };
+
   sops.secrets."filebrowser-passwords/admin" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "filebrowser";
@@ -197,6 +204,13 @@
   };
 
   sops.secrets."tor/nextcloud-collabora/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/radicale/secret-key-base64" = {
     sopsFile = ../../secrets/secrets.yaml;
     owner = "root";
     group = "root";
