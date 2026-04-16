@@ -2853,16 +2853,19 @@ in
           description = "Alanix cluster active target";
         };
 
-        system.activationScripts.alanixClusterTor = lib.mkIf anyTorExposure ''
-          mkdir -p /var/lib/tor/alanix-cluster
-          chown root:tor /var/lib/tor/alanix-cluster
-          chmod 0750 /var/lib/tor/alanix-cluster
-          if [ ! -e /var/lib/tor/alanix-cluster/cluster.conf ]; then
-            touch /var/lib/tor/alanix-cluster/cluster.conf
-          fi
-          chown root:tor /var/lib/tor/alanix-cluster/cluster.conf
-          chmod 0640 /var/lib/tor/alanix-cluster/cluster.conf
-        '';
+        system.activationScripts.alanixClusterTor = lib.mkIf anyTorExposure {
+          deps = [ "users" ];
+          text = ''
+            mkdir -p /var/lib/tor/alanix-cluster
+            chown root:tor /var/lib/tor/alanix-cluster
+            chmod 0750 /var/lib/tor/alanix-cluster
+            if [ ! -e /var/lib/tor/alanix-cluster/cluster.conf ]; then
+              touch /var/lib/tor/alanix-cluster/cluster.conf
+            fi
+            chown root:tor /var/lib/tor/alanix-cluster/cluster.conf
+            chmod 0640 /var/lib/tor/alanix-cluster/cluster.conf
+          '';
+        };
 
         systemd.services."alanix-cluster-controller" = {
           description = "Alanix cluster controller";
