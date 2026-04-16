@@ -83,13 +83,22 @@
 
     alanix.desktop = {
       enable = true;
-      createHeadlessOutput = false;
-      swayOutputRules = [ ];
+      createHeadlessOutput = true;
+      swayOutputRules = [
+        "output HEADLESS-1 resolution 1920x1080"
+      ];
       idle = {
         lockSeconds = null;
         displayOffSeconds = null;
         suspendSeconds = null;
       };
+    };
+
+    alanix.remote-desktop = {
+      enable = true;
+      autoStart = true;
+      port = 5900;
+      output = "HEADLESS-1";
     };
 
     alanix.ssh = {
