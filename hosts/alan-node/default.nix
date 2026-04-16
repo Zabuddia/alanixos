@@ -140,6 +140,7 @@
       peers = [
         "alan-big-nixos"
         "alan-optiplex"
+        "randy-big-nixos"
       ];
     };
 

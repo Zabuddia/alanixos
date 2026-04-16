@@ -57,4 +57,151 @@
     mode = "0400";
   };
 
+  sops.secrets."cluster/restic-password" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "buddia";
+    group = "users";
+    mode = "0400";
+  };
+
+  sops.secrets."forgejo-passwords/buddia" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "forgejo";
+    group = "forgejo";
+    mode = "0400";
+  };
+
+  sops.secrets."invidious/hmac-key" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "invidious";
+    group = "invidious";
+    mode = "0400";
+  };
+
+  sops.secrets."invidious/companion-secret-key" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."invidious-passwords/buddia" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "invidious";
+    group = "invidious";
+    mode = "0400";
+  };
+
+  sops.secrets."immich-passwords/buddia" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "immich";
+    group = "immich";
+    mode = "0400";
+  };
+
+  sops.secrets."jellyfin-passwords/buddia" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."nextcloud-passwords/buddia" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "nextcloud";
+    group = "nextcloud";
+    mode = "0400";
+  };
+
+  sops.secrets."filebrowser-passwords/admin" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "filebrowser";
+    group = "filebrowser";
+    mode = "0400";
+  };
+
+  sops.secrets."filebrowser-passwords/buddia" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "filebrowser";
+    group = "filebrowser";
+    mode = "0400";
+  };
+
+  sops.secrets."searxng-app/secret-key" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/vaultwarden/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/forgejo/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/invidious/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/immich/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/jellyfin/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/filebrowser/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/nextcloud/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/nextcloud-collabora/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/searxng/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/cluster-dashboard/randy-big-nixos/secret-key-base64" = {
+    sopsFile = ../../secrets/secrets.yaml;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
 }
