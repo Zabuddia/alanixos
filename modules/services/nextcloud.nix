@@ -924,14 +924,36 @@ in
 
             run_occ_with_password() {
               local passfile="$1"
+              local output
+              local status
               shift
 
-              OC_PASS="$(tr -d '\r\n' < "$passfile")" \
+              set +e
+              output="$(
                 ${lib.getExe' pkgs.util-linux "runuser"} \
-                  --whitelist-environment=OC_PASS \
                   --user=nextcloud \
                   -- \
-                  "$OCC" "$@"
+                  ${lib.getExe pkgs.bash} -c '
+                    set -euo pipefail
+                    passfile="$1"
+                    shift
+                    export OC_PASS
+                    OC_PASS="$(${lib.getExe' pkgs.coreutils "tr"} -d "\r\n" < "$passfile")"
+                    export NC_PASS="$OC_PASS"
+                    export USER=nextcloud
+                    exec "$@"
+                  ' nextcloud-occ-password "$passfile" "$OCC" "$@" 2>&1
+              )"
+              status=$?
+              set -e
+
+              if [ "$status" -ne 0 ]; then
+                printf 'nextcloud reconcile: occ password command failed (%s): %s\n' "$status" "$*" >&2
+                printf '%s\n' "$output" >&2
+                return "$status"
+              fi
+
+              printf '%s\n' "$output"
             }
 
             current_password_digest() {
