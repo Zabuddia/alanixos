@@ -338,6 +338,14 @@ in
               url = "http://${torHostname}/";
             }]
           ) cfg.members
+        )
+        ++ lib.optionals dashboardCfg.expose.wan.enable (
+          map (peer: {
+            label = "${peer} dashboard (wan)";
+            host = peer;
+            transport = "wan";
+            url = "https://${dashboardCfg.expose.wan.domain}/";
+          }) cfg.members
         );
 
       vaultwardenRestoreScript =
@@ -1626,6 +1634,15 @@ in
             }
           ]
         ))
+        (lib.optionalAttrs (nextcloudCluster && nextcloudCfg.expose.wan.enable) (
+          mkConstantLinksByHost [
+            {
+              label = "Nextcloud (wan)";
+              transport = "wan";
+              url = "https://${nextcloudCfg.expose.wan.domain}/";
+            }
+          ]
+        ))
         (lib.optionalAttrs (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.tailscale.enable) (
           mkPeerLinksByHost {
             label = "Collabora";
@@ -1653,6 +1670,15 @@ in
             }
           ]
         ))
+        (lib.optionalAttrs (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.wan.enable) (
+          mkConstantLinksByHost [
+            {
+              label = "Collabora (wan)";
+              transport = "wan";
+              url = "https://${nextcloudCollaboraCfg.expose.wan.domain}/";
+            }
+          ]
+        ))
       ];
 
       filebrowserLinksByHost = mergeLinksByHost [
@@ -1673,6 +1699,15 @@ in
             port = filebrowserCfg.expose.wireguard.port;
             addressFn = peerWireguardAddress;
           }
+        ))
+        (lib.optionalAttrs (filebrowserCluster && filebrowserCfg.expose.wan.enable) (
+          mkConstantLinksByHost [
+            {
+              label = "File Browser (wan)";
+              transport = "wan";
+              url = "https://${filebrowserCfg.expose.wan.domain}/";
+            }
+          ]
         ))
       ];
 
@@ -1695,6 +1730,15 @@ in
             addressFn = peerWireguardAddress;
           }
         ))
+        (lib.optionalAttrs (radicaleCluster && radicaleCfg.expose.wan.enable) (
+          mkConstantLinksByHost [
+            {
+              label = "Radicale (wan)";
+              transport = "wan";
+              url = "https://${radicaleCfg.expose.wan.domain}/";
+            }
+          ]
+        ))
       ];
 
       vaultwardenLinksByHost = mergeLinksByHost [
@@ -1715,6 +1759,15 @@ in
             port = vaultwardenCfg.expose.wireguard.port;
             addressFn = peerWireguardAddress;
           }
+        ))
+        (lib.optionalAttrs (vaultwardenCluster && vaultwardenCfg.expose.wan.enable) (
+          mkConstantLinksByHost [
+            {
+              label = "Vaultwarden (wan)";
+              transport = "wan";
+              url = "https://${vaultwardenCfg.expose.wan.domain}/";
+            }
+          ]
         ))
       ];
 
@@ -1737,6 +1790,15 @@ in
             addressFn = peerWireguardAddress;
           }
         ))
+        (lib.optionalAttrs (forgejoCluster && forgejoCfg.expose.wan.enable) (
+          mkConstantLinksByHost [
+            {
+              label = "Forgejo (wan)";
+              transport = "wan";
+              url = "https://${forgejoCfg.expose.wan.domain}/";
+            }
+          ]
+        ))
       ];
 
       invidiousLinksByHost = mergeLinksByHost [
@@ -1757,6 +1819,15 @@ in
             port = invidiousCfg.expose.wireguard.port;
             addressFn = peerWireguardAddress;
           }
+        ))
+        (lib.optionalAttrs (invidiousCluster && invidiousCfg.expose.wan.enable) (
+          mkConstantLinksByHost [
+            {
+              label = "Invidious (wan)";
+              transport = "wan";
+              url = "https://${invidiousCfg.expose.wan.domain}/";
+            }
+          ]
         ))
       ];
 
@@ -1779,6 +1850,15 @@ in
             addressFn = peerWireguardAddress;
           }
         ))
+        (lib.optionalAttrs (immichCluster && immichCfg.expose.wan.enable) (
+          mkConstantLinksByHost [
+            {
+              label = "Immich (wan)";
+              transport = "wan";
+              url = "https://${immichCfg.expose.wan.domain}/";
+            }
+          ]
+        ))
       ];
 
       jellyfinLinksByHost = mergeLinksByHost [
@@ -1799,6 +1879,15 @@ in
             port = jellyfinCfg.expose.wireguard.port;
             addressFn = peerWireguardAddress;
           }
+        ))
+        (lib.optionalAttrs (jellyfinCluster && jellyfinCfg.expose.wan.enable) (
+          mkConstantLinksByHost [
+            {
+              label = "Jellyfin (wan)";
+              transport = "wan";
+              url = "https://${jellyfinCfg.expose.wan.domain}/";
+            }
+          ]
         ))
       ];
 
@@ -1841,6 +1930,15 @@ in
             port = searxngCfg.expose.wireguard.port;
             addressFn = peerWireguardAddress;
           }
+        ))
+        (lib.optionalAttrs (searxngCluster && searxngCfg.expose.wan.enable) (
+          mkConstantLinksByHost [
+            {
+              label = "SearXNG (wan)";
+              transport = "wan";
+              url = "https://${searxngCfg.expose.wan.domain}/";
+            }
+          ]
         ))
       ];
 
