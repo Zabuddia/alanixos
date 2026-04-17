@@ -141,6 +141,21 @@ in
         defaultPublicPort = 80;
       };
     };
+
+    ddns = {
+      enable = lib.mkEnableOption "cluster-leader-tracking Cloudflare DDNS";
+
+      domains = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "Domains to point at the current cluster leader via Cloudflare DDNS.";
+      };
+
+      credentialsFile = lib.mkOption {
+        type = types.path;
+        description = "Path to file containing CLOUDFLARE_API_TOKEN=<token>.";
+      };
+    };
   };
 
   config = lib.mkIf cfg.enable (
@@ -171,6 +186,7 @@ in
       openwebuiCluster = openwebuiCfg.enable && openwebuiCfg.cluster.enable;
       searxngCluster = searxngCfg.enable && searxngCfg.cluster.enable;
       dashboardCfg = cfg.dashboard;
+      ddnsCfg = cfg.ddns;
       dashboardEndpoint = {
         address = dashboardCfg.listenAddress;
         port = dashboardCfg.port;
@@ -1526,7 +1542,20 @@ in
             || searxngCfg.expose.wireguard.enable
             || (searxngCfg.expose.tor.enable && searxngCfg.expose.tor.tls)
           )
-        );
+        )
+        || anyWanExposure;
+
+      anyWanExposure =
+        (nextcloudCluster && nextcloudCfg.expose.wan.enable)
+        || (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.wan.enable)
+        || (filebrowserCluster && filebrowserCfg.expose.wan.enable)
+        || (radicaleCluster && radicaleCfg.expose.wan.enable)
+        || (vaultwardenCluster && vaultwardenCfg.expose.wan.enable)
+        || (forgejoCluster && forgejoCfg.expose.wan.enable)
+        || (invidiousCluster && invidiousCfg.expose.wan.enable)
+        || (immichCluster && immichCfg.expose.wan.enable)
+        || (jellyfinCluster && jellyfinCfg.expose.wan.enable)
+        || (searxngCluster && searxngCfg.expose.wan.enable);
 
       anyTailscaleCaddyExposure =
         (nextcloudCluster && nextcloudCfg.expose.tailscale.enable)
@@ -2800,6 +2829,96 @@ in
             EOF
           ''}
 
+          ${lib.optionalString (filebrowserCluster && filebrowserCfg.expose.wan.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${filebrowserCfg.expose.wan.domain} {
+              reverse_proxy ${normalizeLocalAddress filebrowserCfg.listenAddress}:${toString filebrowserCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (radicaleCluster && radicaleCfg.expose.wan.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${radicaleCfg.expose.wan.domain} {
+              reverse_proxy ${normalizeLocalAddress radicaleCfg.listenAddress}:${toString radicaleCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (vaultwardenCluster && vaultwardenCfg.expose.wan.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${vaultwardenCfg.expose.wan.domain} {
+              reverse_proxy ${normalizeLocalAddress vaultwardenCfg.listenAddress}:${toString vaultwardenCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (forgejoCluster && forgejoCfg.expose.wan.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${forgejoCfg.expose.wan.domain} {
+              reverse_proxy ${normalizeLocalAddress forgejoCfg.listenAddress}:${toString forgejoCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (invidiousCluster && invidiousCfg.expose.wan.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${invidiousCfg.expose.wan.domain} {
+              reverse_proxy ${normalizeLocalAddress invidiousCfg.listenAddress}:${toString invidiousCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (immichCluster && immichCfg.expose.wan.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${immichCfg.expose.wan.domain} {
+              reverse_proxy ${normalizeLocalAddress immichCfg.listenAddress}:${toString immichCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (jellyfinCluster && jellyfinCfg.expose.wan.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${jellyfinCfg.expose.wan.domain} {
+              reverse_proxy ${normalizeLocalAddress jellyfinCfg.listenAddress}:${toString jellyfinCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (nextcloudCluster && nextcloudCfg.expose.wan.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${nextcloudCfg.expose.wan.domain} {
+              reverse_proxy ${normalizeLocalAddress nextcloudCfg.listenAddress}:${toString nextcloudCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.wan.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${nextcloudCollaboraCfg.expose.wan.domain} {
+              reverse_proxy 127.0.0.1:${toString nextcloudCollaboraCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (searxngCluster && searxngCfg.expose.wan.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${searxngCfg.expose.wan.domain} {
+              reverse_proxy ${normalizeLocalAddress searxngCfg.listenAddress}:${toString searxngCfg.port}
+            }
+
+            EOF
+          ''}
+
           ${lib.optionalString anyCaddyExposure ''
             systemctl start caddy.service
             systemctl reload caddy.service
@@ -3272,6 +3391,39 @@ in
         services.caddy.extraConfig = lib.mkAfter ''
           import /run/alanix-cluster/caddy/cluster.caddy
         '';
+      })
+
+      (lib.mkIf anyWanExposure {
+        networking.firewall.allowedTCPPorts = [ 80 443 ];
+      })
+
+      (lib.mkIf ddnsCfg.enable {
+        systemd.services.alanix-cluster-ddns = {
+          description = "Alanix cluster leader DDNS (Cloudflare)";
+          wantedBy = [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+          after = [
+            "alanix-cluster-active.target"
+            "network-online.target"
+            "sops-nix.service"
+          ];
+          wants = [ "network-online.target" ];
+          environment = {
+            DOMAINS = lib.concatStringsSep " " ddnsCfg.domains;
+            IP4_PROVIDER = "cloudflare.trace";
+            IP6_PROVIDER = "none";
+            UPDATE_CRON = "@every 5m";
+            UPDATE_ON_START = "true";
+            DELETE_ON_STOP = "false";
+            TTL = "1";
+          };
+          serviceConfig = {
+            ExecStart = "${pkgs.cloudflare-ddns}/bin/ddns";
+            EnvironmentFile = ddnsCfg.credentialsFile;
+            Restart = "on-failure";
+            RestartSec = 10;
+          };
+        };
       })
 
       (lib.mkIf anyTorExposure {

@@ -10,6 +10,11 @@ let
 in
 {
   config = lib.mkIf isMember {
+    sops.templates."cloudflare-env-cluster" = {
+      content = "CLOUDFLARE_API_TOKEN=${config.sops.placeholder."cloudflare/api-token"}";
+      owner = "root";
+    };
+
     alanix.cluster = {
       enable = true;
       name = "home";
@@ -45,6 +50,11 @@ in
         recentEvents = 40;
 
         expose = {
+          wan = {
+            enable = true;
+            domain = "dashboard.fifefin.com";
+          };
+
           tailscale = {
             enable = true;
             port = 19842;
@@ -67,6 +77,24 @@ in
           };
         };
       };
+
+      ddns = {
+        enable = true;
+        credentialsFile = config.sops.templates."cloudflare-env-cluster".path;
+        domains = [
+          "dashboard.fifefin.com"
+          "filebrowser.fifefin.com"
+          "forgejo.fifefin.com"
+          "nextcloud.fifefin.com"
+          "collabora.fifefin.com"
+          "immich.fifefin.com"
+          "invidious.fifefin.com"
+          "vaultwarden.fifefin.com"
+          "jellyfin.fifefin.com"
+          "radicale.fifefin.com"
+          "searxng.fifefin.com"
+        ];
+      };
     };
 
     alanix.users.accounts.buddia.extraGroups = [ "filebrowser" ];
@@ -87,6 +115,11 @@ in
       backupDir = "/var/backup/vaultwarden";
 
       expose = {
+        wan = {
+          enable = true;
+          domain = "vaultwarden.fifefin.com";
+        };
+
         tor = {
           enable = true;
           publicPort = 443;
@@ -126,6 +159,11 @@ in
       backupDir = "/var/backup/forgejo";
 
       expose = {
+        wan = {
+          enable = true;
+          domain = "forgejo.fifefin.com";
+        };
+
         tailscale = {
           enable = true;
           port = 13000;
@@ -169,6 +207,11 @@ in
       backupDir = "/var/backup/filebrowser";
 
       expose = {
+        wan = {
+          enable = true;
+          domain = "filebrowser.fifefin.com";
+        };
+
         tor = {
           enable = true;
           publicPort = 80;
@@ -217,6 +260,11 @@ in
       backupDir = "/var/backup/radicale";
 
       expose = {
+        wan = {
+          enable = true;
+          domain = "radicale.fifefin.com";
+        };
+
         tor = {
           enable = true;
           publicPort = 80;
@@ -253,6 +301,11 @@ in
       companion.secretKeySecret = "invidious/companion-secret-key";
 
       expose = {
+        wan = {
+          enable = true;
+          domain = "invidious.fifefin.com";
+        };
+
         tor = {
           enable = true;
           publicPort = 80;
@@ -290,6 +343,11 @@ in
       backupDir = "/var/backup/immich";
 
       expose = {
+        wan = {
+          enable = true;
+          domain = "immich.fifefin.com";
+        };
+
         tor = {
           enable = true;
           publicPort = 80;
@@ -363,6 +421,11 @@ in
       };
 
       expose = {
+        wan = {
+          enable = true;
+          domain = "jellyfin.fifefin.com";
+        };
+
         tor = {
           enable = true;
           publicPort = 80;
@@ -419,9 +482,14 @@ in
       listenAddress = "127.0.0.1";
       port = 8080;
       backupDir = "/var/backup/nextcloud";
-      rootUrl = "http://${config.alanix.tailscale.address}:8080";
+      rootUrl = "https://nextcloud.fifefin.com";
 
       expose = {
+        wan = {
+          enable = true;
+          domain = "nextcloud.fifefin.com";
+        };
+
         tor = {
           enable = true;
           publicPort = 80;
@@ -443,9 +511,14 @@ in
 
       collabora = {
         enable = true;
-        rootUrl = "http://${config.alanix.tailscale.address}:9980";
+        rootUrl = "https://collabora.fifefin.com";
 
         expose = {
+          wan = {
+            enable = true;
+            domain = "collabora.fifefin.com";
+          };
+
           tor = {
             enable = true;
             publicPort = 9980;
@@ -505,6 +578,11 @@ in
       ];
 
       expose = {
+        wan = {
+          enable = true;
+          domain = "searxng.fifefin.com";
+        };
+
         tor = {
           enable = true;
           publicPort = 80;
