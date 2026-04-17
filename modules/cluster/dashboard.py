@@ -503,7 +503,12 @@ class Dashboard:
             leader_summary = leader["host"]
 
         def link_extra_class(link: dict) -> str:
-            return " chip-link-tor" if link.get("transport") == "tor" else ""
+            transport = link.get("transport")
+            if transport == "tor":
+                return " chip-link-tor"
+            if transport == "wan":
+                return " chip-link-wan"
+            return ""
 
         # Group dashboard links by member host so each row in the Cluster table
         # shows that host's transport links inline — replaces the separate Dashboards panel.
@@ -666,6 +671,7 @@ class Dashboard:
         --info: #245f8d;
         --accent: #24452d;
         --tor: #4a2d7a;
+        --wan: #1a6b8a;
       }}
       * {{ box-sizing: border-box; }}
       body {{
@@ -771,6 +777,12 @@ class Dashboard:
         border: 1px solid rgba(74,45,122,0.22);
       }}
       .chip-link-tor:hover {{ background: rgba(74,45,122,0.16); }}
+      .chip-link-wan {{
+        background: rgba(26,107,138,0.09);
+        color: var(--wan);
+        border: 1px solid rgba(26,107,138,0.22);
+      }}
+      .chip-link-wan:hover {{ background: rgba(26,107,138,0.16); }}
       /* Cluster member table */
       .member-table {{ width: 100%; border-collapse: collapse; }}
       .member-table td {{
