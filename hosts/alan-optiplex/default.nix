@@ -63,6 +63,7 @@
           files = { };
           packages = with pkgs; [
             handbrake
+            tmux
           ];
           unstablePackages = with pkgs-unstable; [ yt-dlp ];
           modules = [ ];

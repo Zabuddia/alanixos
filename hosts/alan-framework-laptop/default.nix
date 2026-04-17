@@ -79,6 +79,7 @@
             hyprpicker
             zoom-us
             usbimager
+            tmux
           ];
           unstablePackages = with pkgs-unstable; [
             yt-dlp

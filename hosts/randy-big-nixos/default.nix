@@ -60,7 +60,9 @@
           directory = "/home/buddia";
           stateVersion = "25.11";
           files = { };
-          packages = [ ];
+          packages = with pkgs; [
+            tmux
+          ];
           unstablePackages = with pkgs-unstable; [ yt-dlp ];
           modules = [ ];
         };
