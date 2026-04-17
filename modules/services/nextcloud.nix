@@ -753,6 +753,10 @@ in
               port = cfg.port;
             }
           ];
+          # TLS is handled externally (Caddy/reverse proxy); nginx must serve plain HTTP
+          # so Caddy can proxy to it. Override forceSSL/addSSL set by services.nextcloud.https.
+          forceSSL = lib.mkForce false;
+          addSSL = lib.mkForce false;
           serverAliases = nextcloudServerAliases;
           locations."~ \\.php(?:$|/)".extraConfig = lib.mkAfter ''
             # Preserve the caller's host so multi-origin access does not collapse
