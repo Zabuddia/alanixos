@@ -541,8 +541,8 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "15m";
-        maxBackupAge = "1h";
+        backupInterval = "12h";
+        maxBackupAge = "24h";
       };
 
       users = {

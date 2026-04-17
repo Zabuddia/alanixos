@@ -112,6 +112,15 @@ in
         type = types.str;
         default = "cluster/restic-password";
       };
+
+      maxConcurrent = lib.mkOption {
+        type = types.ints.positive;
+        default = 2;
+        description = ''
+          Maximum number of service backups the active cluster node may run at once.
+          Backups for the same service are never overlapped.
+        '';
+      };
     };
 
     dashboard = {
@@ -1960,6 +1969,7 @@ in
             repoUser = cfg.backup.repoUser;
             repoBaseDir = cfg.backup.repoBaseDir;
             passwordFile = config.sops.secrets.${cfg.backup.passwordSecret}.path;
+            maxConcurrent = cfg.backup.maxConcurrent;
           };
           endpoints =
             map
