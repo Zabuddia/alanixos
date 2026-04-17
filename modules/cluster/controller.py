@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import base64
+import concurrent.futures
 import glob
 import json
 import math
@@ -10,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -94,6 +96,7 @@ class Controller:
         self.target = self.cluster["activeTarget"]
         self.repo_user = self.cluster["backup"]["repoUser"]
         self.password_file = self.cluster["backup"]["passwordFile"]
+        self.max_concurrent_backups = max(1, int(self.cluster["backup"].get("maxConcurrent", 2)))
         self.endpoints = self.cluster["endpoints"]
         self.bootstrap_host = self.cluster["bootstrapHost"]
         self.priority = self.cluster["priority"]
@@ -106,6 +109,13 @@ class Controller:
         self.leader_revision = None
         self.last_leader_absent_at = None
         self.next_backup_at = {name: 0.0 for name in self.services}
+        self.backup_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.max_concurrent_backups,
+            thread_name_prefix="alanix-backup",
+        )
+        self.running_backups = {}
+        self.backup_generation = 0
+        self.backup_generation_lock = threading.Lock()
 
     def run(self, cmd, *, check=True, input_text=None, env=None):
         merged_env = os.environ.copy()
@@ -233,6 +243,7 @@ class Controller:
 
     def demote(self, reason):
         log(f"demoting: {reason}")
+        self.advance_backup_generation()
         self.stop_keepalive()
         self.stop_target()
         if self.lease_id is not None:
@@ -240,6 +251,19 @@ class Controller:
         self.lease_id = None
         self.leader_revision = None
         self.last_leader_absent_at = None
+
+    def advance_backup_generation(self):
+        with self.backup_generation_lock:
+            self.backup_generation += 1
+            return self.backup_generation
+
+    def backup_generation_is_current(self, generation):
+        with self.backup_generation_lock:
+            return generation == self.backup_generation and self.lease_id is not None
+
+    def ensure_backup_generation_current(self, generation, service_name):
+        if not self.backup_generation_is_current(generation):
+            raise RuntimeError(f"{service_name}: backup cancelled because leadership changed")
 
     def local_manifests_for_service(self, service_name):
         service = self.services[service_name]
@@ -345,20 +369,23 @@ class Controller:
         payload.sort(key=lambda item: item.get("time", ""))
         return payload[-1]["short_id"]
 
-    def backup_service(self, service_name):
+    def backup_service(self, service_name, generation):
         service = self.services[service_name]
         backup_started_at = time.monotonic()
         target_count = len(service["remoteTargets"])
+        self.ensure_backup_generation_current(generation, service_name)
         log(f"starting backup for {service_name} to {target_count} target{'s' if target_count != 1 else ''}")
         if service.get("preBackupCommand"):
             prep_started_at = time.monotonic()
             self.run(service["preBackupCommand"])
+            self.ensure_backup_generation_current(generation, service_name)
             log(f"{service_name}: prepared backup payload in {format_duration(time.monotonic() - prep_started_at)}")
 
         successful_targets = []
         failed_targets = []
 
         for target in service["remoteTargets"]:
+            self.ensure_backup_generation_current(generation, service_name)
             target_started_at = time.monotonic()
             try:
                 repo_path = target["repoPath"]
@@ -371,7 +398,9 @@ class Controller:
                     ["ssh", target["address"], f"mkdir -p {shlex.quote(remote_dir)} {shlex.quote(manifest_dir)}"]
                 )
                 self.ensure_restic_repo(remote_uri)
+                self.ensure_backup_generation_current(generation, service_name)
                 self.run_as_backup_user(["restic", "-r", remote_uri, "backup"] + service["backupPaths"])
+                self.ensure_backup_generation_current(generation, service_name)
 
                 snapshot_id = self.latest_snapshot_id(remote_uri)
                 if snapshot_id is None:
@@ -385,6 +414,7 @@ class Controller:
                     "snapshotId": snapshot_id,
                     "repoPath": repo_path,
                 }
+                self.ensure_backup_generation_current(generation, service_name)
                 self.run_as_backup_user(
                     ["ssh", target["address"], f"cat > {shlex.quote(manifest_path)}"],
                     input_text=json.dumps(manifest, indent=2) + "\n",
@@ -484,6 +514,7 @@ class Controller:
         promotion_started_at = time.monotonic()
         self.lease_id = leader["lease_id"]
         self.leader_revision = leader["create_revision"]
+        self.advance_backup_generation()
         log(
             f"won lease for revision {self.leader_revision}; starting promotion "
             f"(allow_stale={'yes' if allow_stale else 'no'})"
@@ -505,6 +536,7 @@ class Controller:
         adoption_started_at = time.monotonic()
         self.lease_id = leader["lease_id"]
         self.leader_revision = leader["create_revision"]
+        self.advance_backup_generation()
         log(f"recovering local active state for existing leader revision {self.leader_revision}")
         self.start_keepalive(self.lease_id)
         if not self.target_is_active():
@@ -514,6 +546,90 @@ class Controller:
             f"adopted existing leadership at revision {self.leader_revision} in "
             f"{format_duration(time.monotonic() - adoption_started_at)}"
         )
+
+    def schedule_backup(self, service_name):
+        generation = self.backup_generation
+        future = self.backup_executor.submit(self.backup_service, service_name, generation)
+        self.running_backups[service_name] = {
+            "future": future,
+            "generation": generation,
+            "startedAt": time.monotonic(),
+        }
+
+    def schedule_due_backups(self, now):
+        available_slots = self.max_concurrent_backups - len(self.running_backups)
+        if available_slots <= 0:
+            return
+
+        for service_name, service in self.services.items():
+            if available_slots <= 0:
+                return
+            if service.get("recoveryMode") == "declarative":
+                continue
+            if service_name in self.running_backups:
+                continue
+            if now < self.next_backup_at[service_name]:
+                continue
+
+            self.schedule_backup(service_name)
+            available_slots -= 1
+
+    def collect_finished_backups(self):
+        for service_name, running in list(self.running_backups.items()):
+            future = running["future"]
+            if not future.done():
+                continue
+
+            del self.running_backups[service_name]
+            generation = running["generation"]
+            if generation != self.backup_generation:
+                try:
+                    future.result()
+                except Exception as exc:
+                    log(f"discarded backup result for {service_name} from previous leadership: {summarize_error(str(exc))}")
+                else:
+                    log(f"discarded completed backup result for {service_name} from previous leadership")
+                continue
+
+            service = self.services[service_name]
+            next_due = time.monotonic() + parse_duration_seconds(service["backupInterval"])
+
+            try:
+                result = future.result()
+            except Exception as exc:
+                self.next_backup_at[service_name] = next_due
+                log(
+                    f"backup for {service_name} failed; keeping leader active while replication is degraded: "
+                    f"{summarize_error(str(exc))}"
+                )
+                continue
+
+            self.next_backup_at[service_name] = next_due
+            failed_targets = result["failedTargets"]
+            if not failed_targets:
+                log(
+                    f"completed backup for {service_name} in "
+                    f"{format_duration(result['durationSeconds'])}"
+                )
+                continue
+
+            successful_target_count = len(result["successfulTargets"])
+            failure_summary = "; ".join(
+                f"{item['host']}: {item['error']}" for item in failed_targets
+            )
+            if successful_target_count > 0:
+                log(
+                    f"completed degraded backup for {service_name}: replicated to "
+                    f"{successful_target_count}/{result['totalTargets']} targets; "
+                    f"failed targets: {failure_summary}; "
+                    f"duration {format_duration(result['durationSeconds'])}"
+                )
+            else:
+                log(
+                    f"backup for {service_name} failed on all {result['totalTargets']} targets; "
+                    f"keeping leader active while replication is degraded: {failure_summary}; "
+                    f"duration {format_duration(result['durationSeconds'])}"
+                )
 
     def tick_active(self):
         if self.keepalive_proc is None or self.keepalive_proc.poll() is not None:
@@ -532,45 +648,7 @@ class Controller:
             return
 
         now = time.monotonic()
-        for service_name, service in self.services.items():
-            if service.get("recoveryMode") == "declarative":
-                continue
-            if now >= self.next_backup_at[service_name]:
-                try:
-                    result = self.backup_service(service_name)
-                except Exception as exc:
-                    self.next_backup_at[service_name] = now + parse_duration_seconds(service["backupInterval"])
-                    log(
-                        f"backup for {service_name} failed; keeping leader active while replication is degraded: "
-                        f"{summarize_error(str(exc))}"
-                    )
-                    continue
-                self.next_backup_at[service_name] = now + parse_duration_seconds(service["backupInterval"])
-                failed_targets = result["failedTargets"]
-                if not failed_targets:
-                    log(
-                        f"completed backup for {service_name} in "
-                        f"{format_duration(result['durationSeconds'])}"
-                    )
-                    continue
-
-                successful_target_count = len(result["successfulTargets"])
-                failure_summary = "; ".join(
-                    f"{item['host']}: {item['error']}" for item in failed_targets
-                )
-                if successful_target_count > 0:
-                    log(
-                        f"completed degraded backup for {service_name}: replicated to "
-                        f"{successful_target_count}/{result['totalTargets']} targets; "
-                        f"failed targets: {failure_summary}; "
-                        f"duration {format_duration(result['durationSeconds'])}"
-                    )
-                else:
-                    log(
-                        f"backup for {service_name} failed on all {result['totalTargets']} targets; "
-                        f"keeping leader active while replication is degraded: {failure_summary}; "
-                        f"duration {format_duration(result['durationSeconds'])}"
-                    )
+        self.schedule_due_backups(now)
 
     def tick_passive(self):
         leader = self.get_leader()
@@ -615,6 +693,7 @@ class Controller:
     def run_forever(self):
         while True:
             try:
+                self.collect_finished_backups()
                 if self.lease_id is None:
                     self.tick_passive()
                 else:
