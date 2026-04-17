@@ -96,6 +96,13 @@ let
   isOnionHost = host: host != null && lib.hasSuffix ".onion" host;
 
   uniqueValues = values: lib.unique (lib.filter hasValue values);
+  cspFrameAncestorSource =
+    url:
+    let
+      scheme = urlScheme url;
+      host = urlHost url;
+    in
+    if scheme == null || host == null then null else "${scheme}://${urlHostLiteral host}:*";
 
   tailscaleHosts =
     backendCfg:
@@ -279,6 +286,15 @@ let
   collaboraPrimaryNextcloudUrlBase =
     if collaboraAllowedNextcloudUrlBases == [ ] then null else builtins.head collaboraAllowedNextcloudUrlBases;
 
+  collaboraFrameAncestorSources = uniqueValues (
+    builtins.map cspFrameAncestorSource ([ collaboraPublicUrlBase ] ++ collaboraAllowedNextcloudUrlBases)
+  );
+  collaboraContentSecurityPolicy =
+    if collaboraFrameAncestorSources == [ ] then
+      null
+    else
+      "frame-ancestors ${lib.concatStringsSep " " collaboraFrameAncestorSources}";
+
   collaboraInternalUrlBase =
     mkOriginUrl {
       scheme = "http";
@@ -398,10 +414,14 @@ let
 
   defaultCollaboraSettings =
     {
-      net = {
-        listen = "loopback";
-        proto = "IPv4";
-      };
+      net =
+        {
+          listen = "loopback";
+          proto = "IPv4";
+        }
+        // lib.optionalAttrs (collaboraContentSecurityPolicy != null) {
+          content_security_policy = collaboraContentSecurityPolicy;
+        };
 
       server_name = lib.mkDefault (urlAuthority collaboraPublicUrlBase);
 
