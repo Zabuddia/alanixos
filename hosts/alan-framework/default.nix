@@ -67,7 +67,9 @@
               executable = null;
             };
           };
-          packages = [ ];
+          packages = with pkgs; [
+            tmux
+          ];
           unstablePackages = with pkgs-unstable; [ yt-dlp ];
           modules = [
             {
