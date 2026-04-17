@@ -410,7 +410,10 @@ let
         termination = (urlScheme collaboraPublicUrlBase) == "https";
       };
 
-      storage.wopi."@allow" = true;
+      storage.wopi = {
+        "@allow" = true;
+        alias_groups."@mode" = "groups";
+      };
     };
 
   nextcloudVhostName = effectiveHostName;
