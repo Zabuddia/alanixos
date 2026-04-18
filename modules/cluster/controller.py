@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import base64
+import collections
 import concurrent.futures
 import glob
 import json
@@ -84,6 +85,10 @@ def format_duration(seconds: float) -> str:
     return f"{hours}h {minutes}m"
 
 
+class EtcdUnavailable(RuntimeError):
+    pass
+
+
 class Controller:
     def __init__(self, config_path: str) -> None:
         with open(config_path, "r", encoding="utf-8") as handle:
@@ -105,9 +110,16 @@ class Controller:
         self.acquisition_step = parse_duration_seconds(self.cluster["etcd"]["acquisitionStep"])
 
         self.keepalive_proc = None
+        self.keepalive_reader = None
+        self.keepalive_last_ack_at = None
+        self.keepalive_output = collections.deque(maxlen=20)
+        self.keepalive_lock = threading.Lock()
         self.lease_id = None
         self.leader_revision = None
         self.last_leader_absent_at = None
+        self.last_active_etcd_warning_at = 0.0
+        self.last_passive_etcd_warning_at = 0.0
+        self.last_lease_grant_warning_at = 0.0
         self.next_backup_at = {name: 0.0 for name in self.services}
         self.backup_executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=self.max_concurrent_backups,
@@ -141,6 +153,12 @@ class Controller:
         cmd = ["etcdctl", f"--endpoints={','.join(self.endpoints)}", "--write-out=json"] + args
         return self.run(cmd, check=check, input_text=input_text)
 
+    def log_every(self, attr, interval, message):
+        now = time.monotonic()
+        if now - getattr(self, attr) >= interval:
+            log(message)
+            setattr(self, attr, now)
+
     def run_as_backup_user(self, args, *, check=True, input_text=None):
         cmd = ["runuser", "-u", self.repo_user, "--"] + args
         env = {
@@ -151,8 +169,12 @@ class Controller:
     def get_leader(self):
         proc = self.etcdctl(["get", self.leader_key], check=False)
         if proc.returncode != 0:
-            return None
-        payload = json.loads(proc.stdout or "{}")
+            detail = summarize_error(proc.stderr or proc.stdout or "no etcdctl output")
+            raise EtcdUnavailable(f"leader query failed ({proc.returncode}): {detail}")
+        try:
+            payload = json.loads(proc.stdout or "{}")
+        except json.JSONDecodeError as exc:
+            raise EtcdUnavailable(f"leader query returned invalid json: {summarize_error(str(exc))}") from exc
         kvs = payload.get("kvs", [])
         if not kvs:
             return None
@@ -172,7 +194,15 @@ class Controller:
         self.etcdctl(["lease", "revoke", lease_id_arg(lease_id)], check=False)
 
     def acquire_lease(self):
-        lease_id = self.grant_lease()
+        try:
+            lease_id = self.grant_lease()
+        except Exception as exc:
+            self.log_every(
+                "last_lease_grant_warning_at",
+                30.0,
+                f"cannot acquire leadership because etcd lease grant failed: {summarize_error(str(exc))}",
+            )
+            return None
         txn = (
             f'version("{self.leader_key}") = "0"\n\n'
             f"put {self.leader_key} {self.hostname} --lease={lease_id_arg(lease_id)}\n\n"
@@ -181,7 +211,12 @@ class Controller:
         txn_proc = self.etcdctl(["txn", "-i"], check=False, input_text=txn)
         if txn_proc.returncode != 0:
             log(f"failed lease acquisition transaction: {txn_proc.stderr.strip() or txn_proc.stdout.strip()}")
-        leader = self.get_leader()
+        try:
+            leader = self.get_leader()
+        except EtcdUnavailable as exc:
+            log(f"leader check after lease acquisition failed: {summarize_error(str(exc))}")
+            self.revoke_lease(lease_id)
+            return None
         if leader and leader["host"] == self.hostname and leader["lease_id"] == lease_id:
             return leader
         self.revoke_lease(lease_id)
@@ -189,6 +224,9 @@ class Controller:
 
     def start_keepalive(self, lease_id):
         self.stop_keepalive()
+        with self.keepalive_lock:
+            self.keepalive_last_ack_at = time.monotonic()
+            self.keepalive_output.clear()
         cmd = [
             "etcdctl",
             f"--endpoints={','.join(self.endpoints)}",
@@ -199,11 +237,40 @@ class Controller:
         env = os.environ.copy()
         self.keepalive_proc = subprocess.Popen(
             cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
             env=env,
         )
+        self.keepalive_reader = threading.Thread(
+            target=self.read_keepalive_output,
+            args=(self.keepalive_proc,),
+            daemon=True,
+        )
+        self.keepalive_reader.start()
+
+    def read_keepalive_output(self, proc):
+        if proc.stdout is None:
+            return
+        for raw_line in proc.stdout:
+            line = raw_line.strip()
+            if not line:
+                continue
+            lower_line = line.lower()
+            with self.keepalive_lock:
+                self.keepalive_output.append(line)
+                if proc is self.keepalive_proc and ("keepalived" in lower_line or '"ttl"' in lower_line):
+                    self.keepalive_last_ack_at = time.monotonic()
+
+    def keepalive_ack_age(self):
+        with self.keepalive_lock:
+            if self.keepalive_last_ack_at is None:
+                return None
+            return time.monotonic() - self.keepalive_last_ack_at
+
+    def recent_keepalive_output(self):
+        with self.keepalive_lock:
+            return " | ".join(self.keepalive_output)
 
     def stop_keepalive(self):
         if self.keepalive_proc is not None:
@@ -213,6 +280,7 @@ class Controller:
             except subprocess.TimeoutExpired:
                 self.keepalive_proc.kill()
             self.keepalive_proc = None
+            self.keepalive_reader = None
 
     def target_is_active(self):
         return self.run(["systemctl", "is-active", "--quiet", self.target], check=False).returncode == 0
@@ -633,13 +701,30 @@ class Controller:
 
     def tick_active(self):
         if self.keepalive_proc is None or self.keepalive_proc.poll() is not None:
-            stderr = ""
-            if self.keepalive_proc is not None and self.keepalive_proc.stderr is not None:
-                stderr = self.keepalive_proc.stderr.read()
-            self.demote(f"lease keepalive exited: {stderr.strip()}")
+            output = self.recent_keepalive_output()
+            self.demote(f"lease keepalive exited: {output}")
             return
 
-        leader = self.get_leader()
+        try:
+            leader = self.get_leader()
+        except EtcdUnavailable as exc:
+            ack_age = self.keepalive_ack_age()
+            keepalive_fresh_for = max(5.0, self.lease_ttl * 0.75)
+            if ack_age is not None and ack_age <= keepalive_fresh_for:
+                self.log_every(
+                    "last_active_etcd_warning_at",
+                    30.0,
+                    f"leader check failed but keepalive was acknowledged {format_duration(ack_age)} ago; "
+                    f"staying active and pausing new backup scheduling: {summarize_error(str(exc))}",
+                )
+                return
+            ack_summary = "never" if ack_age is None else f"{format_duration(ack_age)} ago"
+            output = self.recent_keepalive_output()
+            self.demote(
+                "leader check failed and keepalive is not recently acknowledged "
+                f"(last ack {ack_summary}): {summarize_error(str(exc))}; keepalive output: {output}"
+            )
+            return
         if leader is None:
             self.demote("leader key disappeared")
             return
@@ -651,7 +736,19 @@ class Controller:
         self.schedule_due_backups(now)
 
     def tick_passive(self):
-        leader = self.get_leader()
+        try:
+            leader = self.get_leader()
+        except EtcdUnavailable as exc:
+            self.last_leader_absent_at = None
+            self.log_every(
+                "last_passive_etcd_warning_at",
+                30.0,
+                f"cannot check cluster leader because etcd is unavailable; staying passive: {summarize_error(str(exc))}",
+            )
+            if self.any_managed_unit_active():
+                log("stopping active target because this node is passive and etcd leader state is unavailable")
+                self.stop_target()
+            return
         if leader is not None:
             self.last_leader_absent_at = None
             if leader["host"] == self.hostname:
