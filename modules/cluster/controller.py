@@ -103,6 +103,8 @@ class Controller:
         self.password_file = self.cluster["backup"]["passwordFile"]
         self.max_concurrent_backups = max(1, int(self.cluster["backup"].get("maxConcurrent", 2)))
         self.endpoints = self.cluster["endpoints"]
+        self.etcd_endpoint_index = 0
+        self.etcd_endpoint_lock = threading.Lock()
         self.bootstrap_host = self.cluster["bootstrapHost"]
         self.priority = self.cluster["priority"]
         self.priority_index = self.priority.index(self.hostname)
@@ -149,9 +151,53 @@ class Controller:
             )
         return proc
 
+    def current_etcd_endpoint(self):
+        with self.etcd_endpoint_lock:
+            return self.endpoints[self.etcd_endpoint_index]
+
+    def ordered_etcd_endpoints(self):
+        with self.etcd_endpoint_lock:
+            start = self.etcd_endpoint_index
+        return [
+            (index % len(self.endpoints), self.endpoints[index % len(self.endpoints)])
+            for index in range(start, start + len(self.endpoints))
+        ]
+
+    def mark_etcd_endpoint_good(self, index):
+        with self.etcd_endpoint_lock:
+            self.etcd_endpoint_index = index
+
     def etcdctl(self, args, *, check=True, input_text=None):
-        cmd = ["etcdctl", f"--endpoints={','.join(self.endpoints)}", "--write-out=json"] + args
-        return self.run(cmd, check=check, input_text=input_text)
+        errors = []
+        last_proc = None
+        last_cmd = None
+
+        for index, endpoint in self.ordered_etcd_endpoints():
+            cmd = ["etcdctl", f"--endpoints={endpoint}", "--write-out=json"] + args
+            proc = self.run(cmd, check=False, input_text=input_text)
+            if proc.returncode == 0:
+                self.mark_etcd_endpoint_good(index)
+                return proc
+
+            last_proc = proc
+            last_cmd = cmd
+            errors.append(f"{endpoint}: {summarize_error(proc.stderr or proc.stdout or 'no etcdctl output')}")
+
+        stderr = "all etcd endpoints failed: " + "; ".join(errors)
+        if last_proc is None:
+            last_cmd = ["etcdctl"] + args
+            last_proc = subprocess.CompletedProcess(last_cmd, 1, "", stderr)
+        else:
+            last_proc = subprocess.CompletedProcess(last_cmd, last_proc.returncode, last_proc.stdout, stderr)
+
+        if check:
+            raise RuntimeError(
+                f"command failed ({last_proc.returncode}): {' '.join(shlex.quote(part) for part in last_cmd)}\n"
+                f"stdout:\n{last_proc.stdout}\n"
+                f"stderr:\n{last_proc.stderr}"
+            )
+
+        return last_proc
 
     def log_every(self, attr, interval, message):
         now = time.monotonic()
@@ -224,12 +270,13 @@ class Controller:
 
     def start_keepalive(self, lease_id):
         self.stop_keepalive()
+        endpoint = self.current_etcd_endpoint()
         with self.keepalive_lock:
             self.keepalive_last_ack_at = time.monotonic()
             self.keepalive_output.clear()
         cmd = [
             "etcdctl",
-            f"--endpoints={','.join(self.endpoints)}",
+            f"--endpoints={endpoint}",
             "lease",
             "keep-alive",
             lease_id_arg(lease_id),
@@ -248,6 +295,7 @@ class Controller:
             daemon=True,
         )
         self.keepalive_reader.start()
+        log(f"started lease keepalive via {endpoint}")
 
     def read_keepalive_output(self, proc):
         if proc.stdout is None:
@@ -731,6 +779,15 @@ class Controller:
         if leader["host"] != self.hostname or leader["lease_id"] != self.lease_id:
             self.demote(f"leadership moved to {leader['host']}")
             return
+
+        ack_age = self.keepalive_ack_age()
+        keepalive_restart_after = max(5.0, self.lease_ttl / 2.0)
+        if ack_age is not None and ack_age > keepalive_restart_after:
+            log(
+                f"lease keepalive has not been acknowledged for {format_duration(ack_age)}; "
+                f"restarting keepalive via {self.current_etcd_endpoint()}"
+            )
+            self.start_keepalive(self.lease_id)
 
         now = time.monotonic()
         self.schedule_due_backups(now)
