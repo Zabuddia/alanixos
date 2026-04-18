@@ -95,6 +95,18 @@ in
         type = types.str;
         default = "5s";
       };
+
+      dialTimeout = lib.mkOption {
+        type = types.str;
+        default = "1s";
+        description = "Per-endpoint etcdctl dial timeout used by the cluster controller.";
+      };
+
+      commandTimeout = lib.mkOption {
+        type = types.str;
+        default = "3s";
+        description = "Per-endpoint etcdctl command timeout used by the cluster controller.";
+      };
     };
 
     backup = {
@@ -1964,6 +1976,8 @@ in
             leaseTtl = cfg.etcd.leaseTtl;
             renewEvery = cfg.etcd.renewEvery;
             acquisitionStep = cfg.etcd.acquisitionStep;
+            dialTimeout = cfg.etcd.dialTimeout;
+            commandTimeout = cfg.etcd.commandTimeout;
           };
           backup = {
             repoUser = cfg.backup.repoUser;

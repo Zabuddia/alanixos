@@ -70,6 +70,29 @@ def summarize_error(message: str, *, limit: int = 400) -> str:
     return flattened[: limit - 3] + "..."
 
 
+def summarize_etcdctl_output(output: str, *, limit: int = 180) -> str:
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    parsed_errors = []
+
+    for line in lines:
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        error = payload.get("error")
+        if error:
+            parsed_errors.append(error)
+
+    if parsed_errors:
+        unique_errors = []
+        for error in parsed_errors:
+            if error not in unique_errors:
+                unique_errors.append(error)
+        return summarize_error("; ".join(unique_errors), limit=limit)
+
+    return summarize_error(output or "no etcdctl output", limit=limit)
+
+
 def format_duration(seconds: float) -> str:
     seconds = max(0.0, seconds)
     if seconds < 1.0:
@@ -103,6 +126,8 @@ class Controller:
         self.password_file = self.cluster["backup"]["passwordFile"]
         self.max_concurrent_backups = max(1, int(self.cluster["backup"].get("maxConcurrent", 2)))
         self.endpoints = self.cluster["endpoints"]
+        self.etcd_dial_timeout = self.cluster["etcd"].get("dialTimeout", "1s")
+        self.etcd_command_timeout = self.cluster["etcd"].get("commandTimeout", "3s")
         self.etcd_endpoint_index = 0
         self.etcd_endpoint_lock = threading.Lock()
         self.bootstrap_host = self.cluster["bootstrapHost"]
@@ -173,7 +198,13 @@ class Controller:
         last_cmd = None
 
         for index, endpoint in self.ordered_etcd_endpoints():
-            cmd = ["etcdctl", f"--endpoints={endpoint}", "--write-out=json"] + args
+            cmd = [
+                "etcdctl",
+                f"--dial-timeout={self.etcd_dial_timeout}",
+                f"--command-timeout={self.etcd_command_timeout}",
+                f"--endpoints={endpoint}",
+                "--write-out=json",
+            ] + args
             proc = self.run(cmd, check=False, input_text=input_text)
             if proc.returncode == 0:
                 self.mark_etcd_endpoint_good(index)
@@ -181,7 +212,7 @@ class Controller:
 
             last_proc = proc
             last_cmd = cmd
-            errors.append(f"{endpoint}: {summarize_error(proc.stderr or proc.stdout or 'no etcdctl output')}")
+            errors.append(f"{endpoint}: {summarize_etcdctl_output(proc.stderr or proc.stdout)}")
 
         stderr = "all etcd endpoints failed: " + "; ".join(errors)
         if last_proc is None:

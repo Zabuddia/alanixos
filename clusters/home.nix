@@ -32,7 +32,7 @@ in
         bootstrapGeneration = 3;
         heartbeatInterval = "500ms";
         electionTimeout = "5s";
-        leaseTtl = "30s";
+        leaseTtl = "3m";
         renewEvery = "5s";
         acquisitionStep = "5s";
       };
