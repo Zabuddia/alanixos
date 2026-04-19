@@ -290,12 +290,6 @@ in
       };
 
       users.buddia.passwordSecret = "radicale-passwords/buddia";
-
-      calendars.buddia.personal = {
-        displayName = "Personal";
-        description = "Personal calendar";
-        color = "#2563eb";
-      };
     };
 
     alanix.invidious = {
