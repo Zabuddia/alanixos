@@ -10,6 +10,7 @@ in
     ./storage.nix
     ./audio.nix
     ./bluetooth.nix
+    ./flatpak.nix
   ];
 
   options.alanix.desktop = {

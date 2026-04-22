@@ -12,6 +12,9 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # Declarative Flatpak app management
+    nix-flatpak.url = "github:gmodena/nix-flatpak/?ref=v0.7.0";
+
     # Secrets management
     sops-nix = {
       url = "github:Mic92/sops-nix";
