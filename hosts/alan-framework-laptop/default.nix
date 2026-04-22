@@ -158,6 +158,9 @@
         displayOffSeconds = 330;
         suspendSeconds = null;
       };
+      flatpak.packages = [
+        "app.openbubbles.OpenBubbles"
+      ];
     };
 
     alanix.power = {
