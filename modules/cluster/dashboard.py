@@ -8,7 +8,6 @@ import json
 import os
 import secrets
 import shlex
-import shutil
 import subprocess
 import sys
 import threading
@@ -180,12 +179,49 @@ class Dashboard:
         admin_toggle = self.admin.get("enable")
         if admin_toggle is None:
             admin_toggle = self.admin.get("enabled")
-        self.admin_enabled = bool(admin_toggle) and bool(self.admin.get("hashedPasswordFile"))
+        self.admin_enabled = bool(admin_toggle) and bool(self.admin.get("passwordFile"))
         self.admin_username = self.admin.get("username") or "buddia"
-        self.admin_password_file = self.admin.get("hashedPasswordFile")
+        self.admin_password_file = self.admin.get("passwordFile")
         self.admin_session_ttl = parse_duration_seconds(self.admin.get("sessionTtl", "12h"))
         self.sessions = {}
         self.sessions_lock = threading.Lock()
+
+        self._state_cond = threading.Condition()
+        self._state_seq: int = 0
+        self._cached_state: dict | None = None
+        t = threading.Thread(target=self._state_collector_loop, daemon=True)
+        t.start()
+
+    def _state_collector_loop(self) -> None:
+        last_mtime: int | None = None
+        last_collect_at: float = 0.0
+        PERIODIC_INTERVAL = 5.0
+
+        while True:
+            now = time.time()
+            try:
+                mtime = (
+                    self.runtime_state_file.stat().st_mtime_ns
+                    if self.runtime_state_file.exists()
+                    else 0
+                )
+            except OSError:
+                mtime = 0
+
+            if mtime != last_mtime or now - last_collect_at >= PERIODIC_INTERVAL:
+                try:
+                    state = self.collect()
+                except Exception:
+                    time.sleep(1.0)
+                    continue
+                with self._state_cond:
+                    self._cached_state = state
+                    self._state_seq += 1
+                    self._state_cond.notify_all()
+                last_mtime = mtime
+                last_collect_at = now
+
+            time.sleep(0.25)
 
     def run(
         self,
@@ -238,83 +274,22 @@ class Dashboard:
             )
             return False
 
-        candidates = self.password_hash_candidates(username)
-        if not candidates:
-            print(
-                f"alanix-dashboard auth: no password hashes available for {username!r}",
-                file=sys.stderr,
-                flush=True,
-            )
+        try:
+            expected = Path(self.admin_password_file).read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            print(f"alanix-dashboard auth: could not read password file: {exc}", file=sys.stderr, flush=True)
             return False
 
-        for source, hashed in candidates:
-            normalized = self.normalize_password_hash(hashed)
-            if not normalized:
-                continue
-            try:
-                proc = self.run(
-                    ["mkpasswd", "-S", normalized, "-s"],
-                    timeout=5.0,
-                    check=False,
-                    input_text=password + "\n",
-                )
-            except Exception:
-                print(
-                    f"alanix-dashboard auth: verifier execution failed for source={source}",
-                    file=sys.stderr,
-                    flush=True,
-                )
-                continue
-            if proc.returncode == 0 and secrets.compare_digest(proc.stdout.strip(), normalized):
-                print(
-                    f"alanix-dashboard auth: successful login for {username!r} via {source}",
-                    file=sys.stderr,
-                    flush=True,
-                )
-                return True
-        print(
-            f"alanix-dashboard auth: password mismatch for {username!r}; sources={[source for source, _ in candidates]}",
-            file=sys.stderr,
-            flush=True,
-        )
+        if not expected:
+            print("alanix-dashboard auth: password file is empty", file=sys.stderr, flush=True)
+            return False
+
+        if secrets.compare_digest(password, expected):
+            print(f"alanix-dashboard auth: successful login for {username!r}", file=sys.stderr, flush=True)
+            return True
+
+        print(f"alanix-dashboard auth: password mismatch for {username!r}", file=sys.stderr, flush=True)
         return False
-
-    def password_hash_candidates(self, username: str) -> list[tuple[str, str]]:
-        candidates = []
-
-        getent_path = shutil.which("getent")
-        if not getent_path:
-            fallback_getent = Path("/run/current-system/sw/bin/getent")
-            if fallback_getent.exists():
-                getent_path = str(fallback_getent)
-
-        if getent_path:
-            try:
-                proc = self.run([getent_path, "shadow", username], timeout=5.0, check=False)
-            except Exception:
-                proc = None
-            if proc is not None and proc.returncode == 0:
-                parts = proc.stdout.strip().split(":")
-                if len(parts) >= 2:
-                    shadow_hash = parts[1].strip()
-                    if shadow_hash and shadow_hash not in {"!", "*", "x"}:
-                        candidates.append(("shadow", shadow_hash))
-
-        if self.admin_password_file:
-            try:
-                hashed = Path(self.admin_password_file).read_text(encoding="utf-8").strip()
-            except OSError:
-                hashed = ""
-            if hashed and hashed not in {"!", "*", "x"} and hashed not in [value for _, value in candidates]:
-                candidates.append(("configured", hashed))
-
-        return candidates
-
-    def normalize_password_hash(self, hashed: str) -> str:
-        cleaned = hashed.strip()
-        while cleaned.startswith(("!", "*")):
-            cleaned = cleaned[1:]
-        return cleaned
 
     def create_session(self, username: str) -> dict:
         session_id = secrets.token_urlsafe(32)
@@ -1952,20 +1927,26 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_header("Connection", "keep-alive")
         self.end_headers()
 
-        last_runtime_mtime = None
-        last_ping_at = 0.0
+        last_sent_seq = -1
+        last_ping_at = time.time()
 
         try:
             while True:
-                runtime_exists = self.dashboard.runtime_state_file.exists()
-                runtime_mtime = (
-                    self.dashboard.runtime_state_file.stat().st_mtime_ns
-                    if runtime_exists
-                    else 0
-                )
-                if runtime_mtime != last_runtime_mtime:
+                with self.dashboard._state_cond:
+                    new_ready = self.dashboard._state_cond.wait_for(
+                        lambda: (
+                            self.dashboard._state_seq > last_sent_seq
+                            and self.dashboard._cached_state is not None
+                        ),
+                        timeout=15.0,
+                    )
+                    if new_ready:
+                        seq = self.dashboard._state_seq
+                        state = self.dashboard._cached_state
+
+                now = time.time()
+                if new_ready:
                     session = self.current_session()
-                    state = self.dashboard.collect()
                     payload = json.dumps(
                         {
                             "updatedAt": state.get("generatedAt") or iso_timestamp(),
@@ -1977,13 +1958,12 @@ class RequestHandler(BaseHTTPRequestHandler):
                     self.wfile.write(payload)
                     self.wfile.write(b"\n\n")
                     self.wfile.flush()
-                    last_runtime_mtime = runtime_mtime
-                    last_ping_at = time.time()
-                elif time.time() - last_ping_at >= 15.0:
+                    last_sent_seq = seq
+                    last_ping_at = now
+                else:
                     self.wfile.write(b"event: ping\ndata: {}\n\n")
                     self.wfile.flush()
-                    last_ping_at = time.time()
-                time.sleep(0.25)
+                    last_ping_at = now
         except (BrokenPipeError, ConnectionResetError):
             return
 
@@ -1994,13 +1974,17 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         session = self.current_session()
-        state = self.dashboard.collect()
         if path == "/api/status":
+            state = self.dashboard.collect()
             payload = json.dumps(state, indent=2).encode("utf-8")
             self.respond_bytes(200, payload, "application/json; charset=utf-8")
             return
 
         if path in {"/", ""}:
+            with self.dashboard._state_cond:
+                state = self.dashboard._cached_state
+            if state is None:
+                state = self.dashboard.collect()
             payload = self.dashboard.render_html(state, session=session).encode("utf-8")
             self.respond_bytes(200, payload, "text/html; charset=utf-8")
             return

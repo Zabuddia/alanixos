@@ -48,6 +48,7 @@ in
         listenAddress = "127.0.0.1";
         port = 9842;
         recentEvents = 40;
+        admin.passwordFile = config.sops.secrets."cluster/dashboard-password".path;
 
         expose = {
           wan = {

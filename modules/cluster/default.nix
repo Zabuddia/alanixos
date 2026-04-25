@@ -169,10 +169,10 @@ in
           description = "Username shown and accepted by the dashboard admin login.";
         };
 
-        hashedPasswordFile = lib.mkOption {
+        passwordFile = lib.mkOption {
           type = types.nullOr types.path;
-          default = lib.attrByPath [ "alanix" "users" "accounts" cfg.backup.repoUser "hashedPasswordFile" ] null config;
-          description = "Path to a shadow-format password hash used for dashboard admin login.";
+          default = null;
+          description = "Path to a file containing the plaintext password for dashboard admin login.";
         };
 
         sessionTtl = lib.mkOption {
@@ -2034,7 +2034,7 @@ in
           admin = {
             enable = dashboardCfg.admin.enable;
             username = dashboardCfg.admin.username;
-            hashedPasswordFile = dashboardCfg.admin.hashedPasswordFile;
+            passwordFile = dashboardCfg.admin.passwordFile;
             sessionTtl = dashboardCfg.admin.sessionTtl;
           };
         };
@@ -3428,7 +3428,6 @@ in
             etcd
             python3
             systemd
-            whois
           ];
           serviceConfig = {
             Type = "simple";

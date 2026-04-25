@@ -29,6 +29,13 @@
     mode = "0400";
   };
 
+  sops.secrets."cluster/dashboard-password" = {
+    sopsFile = (import ../../secrets/files.nix).cluster;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."forgejo-passwords/buddia" = {
     sopsFile = (import ../../secrets/files.nix).servicePasswords;
     owner = "forgejo";
