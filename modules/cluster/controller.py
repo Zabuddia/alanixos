@@ -879,6 +879,20 @@ class Controller:
         payload.sort(key=lambda item: item.get("time", ""))
         return payload[-1]["short_id"]
 
+    def restic_snapshot_size(self, repo_uri: str, snapshot_id: str) -> int | None:
+        try:
+            proc = self.run_as_backup_user(
+                ["restic", "--json", "-r", repo_uri, "stats", "--mode", "restore-size", snapshot_id],
+                check=False,
+            )
+            if proc.returncode != 0:
+                return None
+            payload = json.loads(proc.stdout or "{}")
+            size = payload.get("total_size")
+            return int(size) if size is not None else None
+        except Exception:
+            return None
+
     def _prune_local_manifests(self, manifest_dir: str, retain_days: int) -> None:
         cutoff = time.time() - retain_days * 86400
         for p in Path(manifest_dir).glob("manifest-*.json"):
@@ -967,6 +981,7 @@ class Controller:
                     snapshot_id = self.latest_snapshot_id(repo_path)
                     if snapshot_id is None:
                         raise RuntimeError(f"no snapshot found after local backup for {service_name}")
+                    snap_size = self.restic_snapshot_size(repo_path, snapshot_id)
                     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
                     manifest_path = os.path.join(manifest_dir, f"manifest-{timestamp}.json")
                     manifest = {
@@ -976,6 +991,8 @@ class Controller:
                         "completedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
                         "snapshotId": snapshot_id,
                         "repoPath": repo_path,
+                        "repoUri": repo_path,
+                        "snapshotSizeBytes": snap_size,
                     }
                     atomic_write_json(Path(manifest_path), manifest)
                     self._prune_local_manifests(manifest_dir, retain_days)
@@ -1014,6 +1031,7 @@ class Controller:
                     snapshot_id = self.latest_snapshot_id(remote_uri)
                     if snapshot_id is None:
                         raise RuntimeError(f"no snapshot found after backing up {service_name} to {target['host']}")
+                    snap_size = self.restic_snapshot_size(remote_uri, snapshot_id)
                     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
                     manifest_path = os.path.join(manifest_dir, f"manifest-{timestamp}.json")
                     manifest = {
@@ -1023,6 +1041,8 @@ class Controller:
                         "completedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
                         "snapshotId": snapshot_id,
                         "repoPath": repo_path,
+                        "repoUri": remote_uri,
+                        "snapshotSizeBytes": snap_size,
                     }
                     self.ensure_backup_generation_current(generation, service_name)
                     self.run_as_backup_user(
@@ -1266,6 +1286,47 @@ class Controller:
         )
         return record
 
+    def delete_manifest(self, service_name: str, manifest: dict, *, requested_by: str | None = None) -> dict:
+        manifest_path = manifest["_path"]
+        snapshot_id = manifest.get("snapshotId")
+        repo_path = manifest.get("repoPath")
+
+        if self.read_pin_record(service_name, manifest_path) is not None:
+            raise RuntimeError("cannot delete a pinned manifest; unpin it first")
+
+        if not snapshot_id:
+            raise RuntimeError("manifest is missing snapshotId; cannot delete backup safely")
+        if not repo_path:
+            raise RuntimeError("manifest is missing repoPath; cannot delete backup safely")
+
+        log(f"{service_name}: forgetting snapshot {snapshot_id} from {repo_path}")
+        proc = self.run_as_backup_user(
+            ["restic", "-r", repo_path, "forget", "--prune", snapshot_id],
+            check=False,
+        )
+        if proc.returncode != 0:
+            detail = summarize_error(proc.stderr or proc.stdout or "restic forget failed")
+            raise RuntimeError(f"failed to delete snapshot {snapshot_id}: {detail}")
+
+        Path(manifest_path).unlink(missing_ok=True)
+        log(f"{service_name}: deleted manifest {manifest_path}")
+
+        result = {
+            "service": service_name,
+            "manifestPath": manifest_path,
+            "snapshotId": snapshot_id,
+            "repoPath": repo_path,
+        }
+        self.record_operation_history({
+            "service": service_name,
+            "action": "delete-manifest",
+            "status": "completed",
+            "message": f"deleted snapshot {snapshot_id}",
+            "requestedBy": requested_by,
+            "details": result,
+        })
+        return result
+
     def execute_admin_request(self, request):
         action = request["action"]
         service_name = request.get("service")
@@ -1289,6 +1350,10 @@ class Controller:
         if action == "unpin-manifest":
             manifest = self.find_manifest(service_name, request["manifestPath"])
             return self.unpin_manifest(service_name, manifest, requested_by=requested_by)
+
+        if action == "delete-manifest":
+            manifest = self.find_manifest(service_name, request["manifestPath"])
+            return self.delete_manifest(service_name, manifest, requested_by=requested_by)
 
         raise RuntimeError(f"unsupported admin action: {action}")
 
@@ -1468,14 +1533,14 @@ class Controller:
         requested_by = request.get("requestedBy")
         submitted_at = request.get("submittedAt") or iso_timestamp()
 
-        if action in {"backup-now", "verify-manifest", "restore-manifest", "pin-manifest", "unpin-manifest"}:
+        if action in {"backup-now", "verify-manifest", "restore-manifest", "pin-manifest", "unpin-manifest", "delete-manifest"}:
             if not service_name or service_name not in self.services:
                 raise RuntimeError(f"unknown service for {action}: {service_name!r}")
 
         if action == "backup-now" and self.lease_id is None:
             raise RuntimeError("manual backups may only run on the current leader")
 
-        if action in {"backup-now", "verify-manifest", "restore-manifest"} and self.running_backups:
+        if action in {"backup-now", "verify-manifest", "restore-manifest", "delete-manifest"} and self.running_backups:
             raise RuntimeError("another backup is already running; wait for it to finish and try again")
 
         state = {

@@ -185,6 +185,10 @@ class Dashboard:
         self.admin_session_ttl = parse_duration_seconds(self.admin.get("sessionTtl", "12h"))
         self.sessions = {}
         self.sessions_lock = threading.Lock()
+        self.restic_password_file = self.cluster["backup"]["passwordFile"]
+        self.snapshot_size_probes_per_collect = 2
+        self.snapshot_size_retry_seconds = 300.0
+        self.snapshot_size_retry_at: dict[str, float] = {}
 
         self._state_cond = threading.Condition()
         self._state_seq: int = 0
@@ -505,7 +509,47 @@ class Dashboard:
             "transport": "tor",
         }
 
-    def manifest_state(self, service_name: str, service: dict) -> dict:
+    def restic_snapshot_size(self, repo_path: str, snapshot_id: str) -> int | None:
+        try:
+            proc = self.run(
+                ["restic", "--json", "-r", repo_path, "stats", "--mode", "restore-size", snapshot_id],
+                env={"RESTIC_PASSWORD_FILE": self.restic_password_file},
+                timeout=10.0,
+                check=False,
+            )
+            if proc.returncode != 0:
+                return None
+            payload = json.loads(proc.stdout or "{}")
+            size = payload.get("total_size")
+            return int(size) if size is not None else None
+        except Exception:
+            return None
+
+    def populate_manifest_snapshot_size(self, manifest_path: Path, payload: dict, *, probe_budget: list[int]) -> int | None:
+        manifest_key = str(manifest_path)
+        retry_at = self.snapshot_size_retry_at.get(manifest_key, 0.0)
+        if probe_budget[0] <= 0 or time.time() < retry_at:
+            return None
+
+        repo_path = payload.get("repoPath")
+        snapshot_id = payload.get("snapshotId")
+        if not repo_path or not snapshot_id:
+            return None
+
+        probe_budget[0] -= 1
+        snap_size = self.restic_snapshot_size(repo_path, snapshot_id)
+        if snap_size is None:
+            self.snapshot_size_retry_at[manifest_key] = time.time() + self.snapshot_size_retry_seconds
+            return None
+
+        self.snapshot_size_retry_at.pop(manifest_key, None)
+        updated_payload = dict(payload)
+        updated_payload["snapshotSizeBytes"] = snap_size
+        atomic_write_json(manifest_path, updated_payload)
+        payload["snapshotSizeBytes"] = snap_size
+        return snap_size
+
+    def manifest_state(self, service_name: str, service: dict, *, probe_budget: list[int]) -> dict:
         recovery_mode = service.get("recoveryMode", "backup")
         service_label = service.get("label") or service_name.title()
         if recovery_mode == "declarative":
@@ -559,6 +603,18 @@ class Dashboard:
                 max_age_seconds = parse_duration_seconds(service["maxBackupAge"])
                 fresh = age_seconds is not None and age_seconds <= max_age_seconds
                 pin = self.service_pin_record(service_name, str(manifest_path))
+                snap_size = payload.get("snapshotSizeBytes")
+                if snap_size is not None:
+                    try:
+                        snap_size = int(snap_size)
+                    except (TypeError, ValueError):
+                        snap_size = None
+                if snap_size is None:
+                    snap_size = self.populate_manifest_snapshot_size(
+                        manifest_path,
+                        payload,
+                        probe_budget=probe_budget,
+                    )
                 manifests.append(
                     {
                         "path": str(manifest_path),
@@ -568,6 +624,9 @@ class Dashboard:
                         "completedAt": payload.get("completedAt"),
                         "snapshotId": payload.get("snapshotId"),
                         "repoPath": payload.get("repoPath"),
+                        "repoUri": payload.get("repoUri"),
+                        "snapshotSizeBytes": snap_size,
+                        "sizeHuman": format_bytes(snap_size) if snap_size is not None else "",
                         "ageSeconds": age_seconds,
                         "ageHuman": format_age(age_seconds),
                         "fresh": fresh,
@@ -674,8 +733,9 @@ class Dashboard:
         else:
             role = {"label": "waiting-for-leader" if not any_active else "lease-missing-active", "kind": "warn"}
 
+        probe_budget = [self.snapshot_size_probes_per_collect]
         services = {
-            service_name: self.manifest_state(service_name, service)
+            service_name: self.manifest_state(service_name, service, probe_budget=probe_budget)
             for service_name, service in self.services.items()
         }
         service_operations = controller_state.get("serviceOperations") or {}
@@ -753,15 +813,17 @@ class Dashboard:
                 f"target='_blank' rel='noreferrer'>{html.escape(link.get('transport', 'link'))}</a>"
             )
 
-        def admin_btn(action: str, svc: str, *, manifest: str = "", extra: str = "", label: str, css: str = "button button-sm") -> str:
+        def admin_btn(action: str, svc: str, *, manifest: str = "", extra: str = "", label: str, css: str = "button button-sm", confirm_msg: str = "") -> str:
             mp = f"<input type='hidden' name='manifestPath' value='{html.escape(manifest)}'/>" if manifest else ""
+            confirm_js = html.escape(json.dumps(confirm_msg), quote=True) if confirm_msg else ""
+            confirm_attr = f' onclick="return confirm({confirm_js})"' if confirm_msg else ""
             return (
                 f"<form method='post' action='/admin/action' class='ifrm'>"
                 f"<input type='hidden' name='csrf_token' value='{csrf}'/>"
                 f"<input type='hidden' name='action' value='{html.escape(action)}'/>"
                 f"<input type='hidden' name='service' value='{html.escape(svc)}'/>"
                 f"{mp}{extra}"
-                f"<button type='submit' class='{html.escape(css)}'>{html.escape(label)}</button>"
+                f"<button type='submit' class='{html.escape(css)}'{confirm_attr}>{html.escape(label)}</button>"
                 f"</form>"
             )
 
@@ -885,15 +947,34 @@ class Dashboard:
                         status_badges += b("pinned", "info")
                     note = m.get("note") or m.get("pinNote") or ""
                     note_html = f"<span class='bkp-note muted'>{html.escape(note)}</span>" if note else ""
+                    size_human = m.get("sizeHuman") or ""
                     restore_btn = admin_btn("restore-manifest", svc_name, manifest=m["path"], label="Restore", css="button button-sm button-danger") if is_admin else ""
+                    if is_admin and pinned:
+                        delete_btn = (
+                            "<button type='button' class='button button-sm button-delete' "
+                            "disabled title='Unpin this backup before deleting it'>Delete</button>"
+                        )
+                    elif is_admin:
+                        delete_btn = admin_btn(
+                            "delete-manifest",
+                            svc_name,
+                            manifest=m["path"],
+                            label="Delete",
+                            css="button button-sm button-delete",
+                            confirm_msg="Delete this backup snapshot and its stored data? This cannot be undone.",
+                        )
+                    else:
+                        delete_btn = ""
                     snap_title = html.escape(snap_full)
+                    size_html = f"<span class='bkp-size muted'>{html.escape(size_human)}</span>" if size_human else "<span class='bkp-size'></span>"
                     brows.append(
                         f"<div class='bkp-row'>"
                         f"<span class='bkp-age' title='{html.escape(completed)}'>{html.escape(age)}</span>"
                         f"<span class='bkp-src'>{html.escape(src)}</span>"
                         f"<span class='bkp-st'>{status_badges}{note_html}</span>"
+                        f"{size_html}"
                         f"<code class='bkp-snap' title='{snap_title}'>{html.escape(snap)}</code>"
-                        f"<span class='bkp-act'>{restore_btn}</span>"
+                        f"<span class='bkp-act'>{delete_btn}{restore_btn}</span>"
                         f"</div>"
                     )
                 blist = (
@@ -1086,10 +1167,12 @@ class Dashboard:
       border: 1px solid rgba(36,69,45,0.2); background: var(--accent);
       color: #fff; border-radius: 0.55rem; padding: 0.4rem 0.75rem;
     }}
-    .button:hover {{ filter: brightness(1.1); }}
+    .button:not(:disabled):hover {{ filter: brightness(1.1); }}
     .button-sm {{ padding: 0.25rem 0.55rem; font-size: 0.8rem; }}
     .button-subtle {{ background: transparent; color: var(--accent); }}
     .button-danger {{ background: var(--bad); border-color: rgba(143,42,32,0.25); }}
+    .button-delete {{ background: #6b7280; border-color: rgba(75,85,99,0.3); }}
+    .button:disabled {{ cursor: not-allowed; opacity: 0.55; filter: none; }}
     .ifrm {{ display: inline; margin: 0; padding: 0; }}
     /* ── services grid ── */
     .services {{
@@ -1132,7 +1215,7 @@ class Dashboard:
     .bkp-list {{ display: flex; flex-direction: column; gap: 0.2rem; }}
     .bkp-row {{
       display: grid;
-      grid-template-columns: 3.5rem 1fr auto auto auto;
+      grid-template-columns: 3.5rem 1fr auto auto auto auto;
       align-items: center; gap: 0.4rem;
       padding: 0.28rem 0.1rem;
       border-top: 1px solid rgba(212,200,180,0.5);
@@ -1142,8 +1225,9 @@ class Dashboard:
     .bkp-age {{ color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }}
     .bkp-src {{ font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
     .bkp-st {{ display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap; white-space: nowrap; }}
+    .bkp-size {{ color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 4.75rem; text-align: right; }}
     .bkp-snap {{ font-family: monospace; font-size: 0.75rem; color: var(--muted); }}
-    .bkp-act {{ justify-self: end; }}
+    .bkp-act {{ justify-self: end; display: flex; gap: 0.3rem; flex-wrap: wrap; }}
     .bkp-note {{ font-size: 0.75rem; display: block; }}
     /* ── cluster / units tables ── */
     table {{ width: 100%; border-collapse: collapse; font-size: 0.83rem; }}
@@ -1172,7 +1256,7 @@ class Dashboard:
     @media (max-width: 600px) {{
       .site-hd {{ flex-direction: column; align-items: flex-start; }}
       .bkp-row {{ grid-template-columns: 3rem 1fr auto; }}
-      .bkp-snap, .bkp-st {{ display: none; }}
+      .bkp-snap, .bkp-st, .bkp-size {{ display: none; }}
     }}
   </style>
 </head>

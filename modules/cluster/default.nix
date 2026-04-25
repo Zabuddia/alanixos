@@ -3461,6 +3461,7 @@ in
             coreutils
             etcd
             python3
+            restic
             systemd
           ];
           serviceConfig = {
