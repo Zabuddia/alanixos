@@ -2001,6 +2001,12 @@ in
         serviceName:
         "${cfg.backup.repoBaseDir}/${cfg.name}/${serviceName}/from-*/manifest-*.json";
 
+      dashboardFaviconPath =
+        if builtins.pathExists ./favicon.ico then
+          "${./favicon.ico}"
+        else
+          null;
+
       controllerConfig = {
         cluster = {
           name = cfg.name;
@@ -2037,6 +2043,7 @@ in
           listenAddress = dashboardCfg.listenAddress;
           port = dashboardCfg.port;
           recentEvents = dashboardCfg.recentEvents;
+          faviconPath = dashboardFaviconPath;
           links = dashboardLinks;
           admin = {
             enable = dashboardCfg.admin.enable;
