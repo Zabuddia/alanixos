@@ -729,7 +729,7 @@ class Dashboard:
             "recentEvents": self.recent_controller_events(),
         }
 
-    def render_html(self, state: dict, *, session: dict | None = None, login_error: str | None = None) -> str:
+    def render_html(self, state: dict, *, session: dict | None = None, login_error: str | None = None) -> str:  # noqa: C901
         leader = state["cluster"]["leader"]
         role = state["cluster"]["role"]
         units = state["units"]
@@ -739,1151 +739,633 @@ class Dashboard:
         admin_queue = state.get("adminQueue") or []
         admin_enabled = bool(state.get("adminConfig", {}).get("enabled"))
         is_admin = session is not None and admin_enabled
+        csrf = html.escape(session["csrfToken"]) if session else ""
 
-        leader_summary = "none"
-        if leader.get("error"):
-            leader_summary = f"error: {leader['error']}"
-        elif leader.get("present"):
-            leader_summary = leader["host"]
+        # ── helpers ───────────────────────────────────────────────────────────
+        def b(text: str, kind: str) -> str:
+            return f"<span class='badge badge-{kind}'>{html.escape(text)}</span>"
 
-        def link_extra_class(link: dict) -> str:
-            transport = link.get("transport")
-            if transport == "tor":
-                return " chip-link-tor"
-            if transport == "wan":
-                return " chip-link-wan"
-            return ""
-
-        # Group dashboard links by member host so each row in the Cluster table
-        # shows that host's transport links inline — replaces the separate Dashboards panel.
-        cluster_members = state["cluster"]["members"]
-        links_by_member: dict[str, list] = {m["host"]: [] for m in cluster_members}
-        for link in dashboard_links:
-            h = link.get("host")
-            if h and h in links_by_member:
-                links_by_member[h].append(link)
-
-        member_rows = []
-        for member in cluster_members:
-            host = member["host"]
-            badges = []
-            if member["isLeader"]:
-                badges.append("<span class='badge badge-good'>leader</span>")
-            if member["isLocal"]:
-                badges.append("<span class='badge badge-muted'>this node</span>")
-            badge_html = "".join(badges)
-            host_links = links_by_member.get(host, [])
-            links_html = "".join(
-                f"<a class='chip chip-link chip-sm{link_extra_class(link)}' "
-                f"href='{html.escape(link['url'])}' target='_blank' rel='noreferrer'>"
-                f"{html.escape(link.get('transport', 'link'))}</a>"
-                for link in host_links
-            ) if host_links else "<span class='muted'>no links</span>"
-            member_rows.append(
-                "<tr>"
-                f"<td class='member-idx'>{member['priorityIndex'] + 1}</td>"
-                f"<td class='member-name'>{badge_html}{html.escape(host)}</td>"
-                f"<td>{links_html}</td>"
-                "</tr>"
+        def chip_link(link: dict) -> str:
+            t = link.get("transport", "")
+            extra = f" chip-{t}" if t in ("tor", "wan", "tailscale", "wireguard") else ""
+            return (
+                f"<a class='chip chip-link{extra}' href='{html.escape(link['url'])}' "
+                f"target='_blank' rel='noreferrer'>{html.escape(link.get('transport', 'link'))}</a>"
             )
 
-        unit_rows = []
-        for unit_name, unit in units.items():
-            status_text = unit.get("ActiveState", unit.get("error", "unknown"))
-            kind = "good" if unit.get("ActiveState") == "active" else "warn"
-            if unit.get("ActiveState") in {"failed", "inactive"}:
-                kind = "bad" if unit.get("ActiveState") == "failed" else "muted"
-            if unit.get("error"):
-                kind = "bad"
-            display_name = unit_name.removeprefix("alanix-cluster-")
-            unit_rows.append(
-                "<tr>"
-                f"<td>{html.escape(display_name)}</td>"
-                f"<td><span class='badge {badge_class(kind)}'>{html.escape(status_text)}</span></td>"
-                f"<td class='muted'>{html.escape(unit.get('SubState', ''))}</td>"
-                f"<td class='muted'>{html.escape(unit.get('UnitFileState', ''))}</td>"
-                "</tr>"
+        def admin_btn(action: str, svc: str, *, manifest: str = "", extra: str = "", label: str, css: str = "button button-sm") -> str:
+            mp = f"<input type='hidden' name='manifestPath' value='{html.escape(manifest)}'/>" if manifest else ""
+            return (
+                f"<form method='post' action='/admin/action' class='ifrm'>"
+                f"<input type='hidden' name='csrf_token' value='{csrf}'/>"
+                f"<input type='hidden' name='action' value='{html.escape(action)}'/>"
+                f"<input type='hidden' name='service' value='{html.escape(svc)}'/>"
+                f"{mp}{extra}"
+                f"<button type='submit' class='{html.escape(css)}'>{html.escape(label)}</button>"
+                f"</form>"
             )
 
-        current_admin_operation = controller_state.get("adminOperation")
-        recent_operations = controller_state.get("recentOperations") or []
-        operation_rows = []
-        if current_admin_operation:
-            operation_rows.append(
-                "<tr>"
-                f"<td>{html.escape(current_admin_operation.get('action') or 'operation')}</td>"
-                f"<td>{html.escape(current_admin_operation.get('service') or '-')}</td>"
-                f"<td><span class='badge badge-info'>{html.escape(current_admin_operation.get('status') or 'running')}</span></td>"
-                f"<td class='muted'>{html.escape(current_admin_operation.get('requestedBy') or '-')}</td>"
-                "</tr>"
+        def progress_html(op: dict) -> str:
+            pct = max(0.0, min(100.0, float(op.get("percent", 0.0))))
+            prog = op.get("progress") or {}
+            phase = op.get("phase") or op.get("action") or "running"
+            bd = prog.get("bytesDone")
+            tb = prog.get("totalBytes")
+            fd = prog.get("filesDone")
+            tf = prog.get("totalFiles")
+            stats: list[str] = []
+            if bd is not None and tb:
+                stats.append(f"{format_bytes(bd)} / {format_bytes(tb)}")
+            elif bd is not None:
+                stats.append(format_bytes(bd))
+            elif fd is not None and tf:
+                stats.append(f"{fd} / {tf} files")
+            ti = op.get("currentTargetIndex")
+            tt = op.get("totalTargets")
+            if ti and tt:
+                stats.append(f"target {ti}/{tt}")
+            right = f"{pct:.0f}%" + ((" · " + " · ".join(stats)) if stats else "")
+            return (
+                f"<div class='prog-wrap'>"
+                f"<div class='prog-hd'><span>{html.escape(phase)}</span>"
+                f"<span class='prog-stats'>{html.escape(right)}</span></div>"
+                f"<div class='prog-bar'><span style='width:{pct:.2f}%'></span></div>"
+                f"</div>"
             )
-        for request in admin_queue[:6]:
-            operation_rows.append(
-                "<tr>"
-                f"<td>{html.escape(request.get('action') or 'operation')}</td>"
-                f"<td>{html.escape(request.get('service') or '-')}</td>"
-                "<td><span class='badge badge-muted'>queued</span></td>"
-                f"<td class='muted'>{html.escape(request.get('requestedBy') or '-')}</td>"
-                "</tr>"
-            )
-        operations_table = (
-            "<table><thead><tr><th>Action</th><th>Service</th><th>Status</th><th>User</th></tr></thead><tbody>"
-            + ("".join(operation_rows) if operation_rows else "<tr><td colspan='4' class='muted'>No queued or running admin operations.</td></tr>")
-            + "</tbody></table>"
-        )
 
-        recent_operation_rows = []
-        for item in recent_operations[:8]:
-            recent_operation_rows.append(
-                "<tr>"
-                f"<td>{html.escape(item.get('action') or 'operation')}</td>"
-                f"<td>{html.escape(item.get('service') or '-')}</td>"
-                f"<td><span class='badge {badge_class('good' if item.get('status') == 'completed' else 'warn' if item.get('status') in {'degraded', 'cancelled'} else 'bad')}'>"
-                f"{html.escape(item.get('status') or 'unknown')}</span></td>"
-                f"<td class='muted'>{html.escape(item.get('message') or '')}</td>"
-                "</tr>"
+        # ── admin bar ─────────────────────────────────────────────────────────
+        if admin_enabled and is_admin:
+            admin_bar = (
+                "<div id='admin-bar' class='admin-bar signed-in'>"
+                f"Signed in as <strong>{html.escape(session['username'])}</strong>"
+                f"<form method='post' action='/logout' class='ifrm'>"
+                f"<input type='hidden' name='csrf_token' value='{csrf}'/>"
+                "<button type='submit' class='button button-sm button-subtle'>Sign Out</button>"
+                "</form></div>"
             )
-        recent_operations_table = (
-            "<table><thead><tr><th>Action</th><th>Service</th><th>Status</th><th>Result</th></tr></thead><tbody>"
-            + ("".join(recent_operation_rows) if recent_operation_rows else "<tr><td colspan='4' class='muted'>No recent completed operations yet.</td></tr>")
-            + "</tbody></table>"
-        )
-
-        login_error_html = (
-            f"<div class='admin-message admin-error'>{html.escape(login_error)}</div>"
-            if login_error
-            else ""
-        )
-        if admin_enabled and not is_admin:
-            admin_panel_html = (
-                "<section id='admin-tools' class='panel section'>"
-                "<div class='section-head'><h2>Admin Tools</h2></div>"
-                "<p class='muted'>Status stays readable for everyone. Sign in to queue backup, verify, restore, pin, and import actions.</p>"
-                f"<p class='muted'>Use the current <strong>{html.escape(self.admin_username)}</strong> system password for this machine.</p>"
-                f"{login_error_html}"
-                "<form method='post' action='/login' class='admin-login'>"
-                f"<input type='hidden' name='next' value='/' />"
-                f"<input type='hidden' name='username' value='{html.escape(self.admin_username)}' />"
-                f"<span class='badge badge-info'>admin {html.escape(self.admin_username)}</span>"
-                "<input type='password' name='password' autocomplete='current-password' placeholder='Password' required />"
-                "<button type='submit' class='button'>Sign In</button>"
-                "</form>"
-                "</section>"
-            )
-        elif admin_enabled and is_admin:
-            admin_panel_html = (
-                "<section id='admin-tools' class='panel section'>"
-                "<div class='section-head'>"
-                "<h2>Admin Tools</h2>"
-                "<form method='post' action='/logout'>"
-                f"<input type='hidden' name='csrf_token' value='{html.escape(session['csrfToken'])}' />"
-                "<button type='submit' class='button button-subtle'>Sign Out</button>"
-                "</form>"
-                "</div>"
-                f"<div class='admin-message'>Signed in as <strong>{html.escape(session['username'])}</strong>.</div>"
-                f"{operations_table}"
-                "<div style='margin-top:0.8rem'></div>"
-                f"{recent_operations_table}"
-                "</section>"
+        elif admin_enabled:
+            err = f"<span class='auth-err'>{html.escape(login_error)}</span>" if login_error else ""
+            admin_bar = (
+                f"<div id='admin-bar' class='admin-bar'>"
+                f"<form method='post' action='/login' class='ifrm login-form'>"
+                f"<input type='hidden' name='username' value='{html.escape(self.admin_username)}'/>"
+                f"<label class='admin-label'>Admin</label>"
+                f"<input type='password' name='password' placeholder='Password' autocomplete='current-password'/>"
+                f"<button type='submit' class='button button-sm'>Sign In</button>"
+                f"</form>{err}</div>"
             )
         else:
-            admin_panel_html = ""
+            admin_bar = "<div id='admin-bar'></div>"
 
-        hero_notice_html = ""
-        if admin_enabled and not is_admin:
-            hero_notice_html = (
-                f"<p class='hero-admin-note'>Admin tools are locked. Sign in as <strong>{html.escape(self.admin_username)}</strong> with this computer's current system password.</p>"
+        # ── ops banner ────────────────────────────────────────────────────────
+        cur_admin_op = controller_state.get("adminOperation")
+        recent_ops = controller_state.get("recentOperations") or []
+        if is_admin and (cur_admin_op or admin_queue or recent_ops):
+            rows: list[str] = []
+            if cur_admin_op:
+                rows.append(
+                    f"<tr><td>{html.escape(cur_admin_op.get('action',''))}</td>"
+                    f"<td>{html.escape(cur_admin_op.get('service',''))}</td>"
+                    f"<td>{b(cur_admin_op.get('status','running'),'info')}</td>"
+                    f"<td class='muted'>{html.escape(cur_admin_op.get('requestedBy',''))}</td></tr>"
+                )
+            for q in admin_queue[:5]:
+                rows.append(
+                    f"<tr><td>{html.escape(q.get('action',''))}</td>"
+                    f"<td>{html.escape(q.get('service',''))}</td>"
+                    f"<td>{b('queued','muted')}</td>"
+                    f"<td class='muted'>{html.escape(q.get('requestedBy',''))}</td></tr>"
+                )
+            if not rows:
+                for r in recent_ops[:4]:
+                    sk = "good" if r.get("status") == "completed" else "warn"
+                    rows.append(
+                        f"<tr class='muted'><td>{html.escape(r.get('action',''))}</td>"
+                        f"<td>{html.escape(r.get('service',''))}</td>"
+                        f"<td>{b(r.get('status','done'), sk)}</td>"
+                        f"<td>{html.escape(r.get('message',''))}</td></tr>"
+                    )
+            ops_banner = (
+                f"<section id='ops-banner' class='panel section'>"
+                f"<div class='sh'><h2>Operations</h2></div>"
+                f"<table><thead><tr><th>Action</th><th>Service</th><th>Status</th><th>By</th></tr></thead>"
+                f"<tbody>{''.join(rows)}</tbody></table></section>"
             )
-        elif admin_enabled and is_admin:
-            hero_notice_html = (
-                f"<p class='hero-admin-note'>Admin tools unlocked for <strong>{html.escape(session['username'])}</strong>.</p>"
-            )
+        else:
+            ops_banner = "<section id='ops-banner'></section>"
 
-        hero_actions_html = ""
-        if admin_enabled and not is_admin:
-            hero_actions_html = "<a class='button button-subtle' href='#admin-tools'>Admin Tools</a>"
-        elif admin_enabled and is_admin:
-            hero_actions_html = "<a class='button button-subtle' href='#admin-tools'>Admin Tools</a>"
+        # ── service cards ─────────────────────────────────────────────────────
+        cards: list[str] = []
+        for svc_name, svc in services.items():
+            readiness = svc["promotionReadiness"]
+            manifests = svc.get("manifests") or []
+            active_links = svc.get("activeLinks") or []
+            cur_op = svc.get("currentOperation")
+            is_decl = svc.get("recoveryMode") == "declarative"
 
-        service_sections = []
-        for service_name, service in services.items():
-            readiness = service["promotionReadiness"]
-            readiness_kind = "good" if readiness["ready"] else "warn"
-            freshest = service["freshestManifest"]
-            manifests = service["manifests"]
-            active_links = service.get("activeLinks", [])
-            if service.get("recoveryMode") == "declarative":
-                freshest_html = (
-                    "<span class='muted'>No runtime backup required; service identity comes from declarative configuration.</span>"
-                )
-                config_html = (
-                    f"<span class='svc-config muted'>{html.escape(service.get('recoveryDescription') or 'declarative configuration')}</span>"
-                )
-            elif freshest is None:
-                freshest_html = "<span class='muted'>No local manifest</span>"
-                config_html = (
-                    f"<span class='svc-config muted'>every {html.escape(service['backupInterval'])} · max {html.escape(service['maxBackupAge'])}</span>"
-                )
-            elif freshest.get("fresh"):
-                freshest_html = (
-                    f"<strong>{html.escape(freshest.get('sourceHost') or 'unknown')}</strong>"
-                    f"<span class='muted'> · {html.escape(freshest.get('ageHuman') or 'unknown')} old"
-                    f" · {html.escape(freshest.get('completedAt') or '')}</span>"
-                )
-                config_html = (
-                    f"<span class='svc-config muted'>every {html.escape(service['backupInterval'])} · max {html.escape(service['maxBackupAge'])}</span>"
-                )
+            r_kind = "good" if readiness["ready"] else "warn"
+            r_reason = readiness["reason"]
+            links_row = "".join(chip_link(l) for l in active_links) or "<span class='muted'>Service not on leader.</span>"
+            backup_btn = admin_btn("backup-now", svc_name, label="Backup Now") if (is_admin and not is_decl) else ""
+            op_html = progress_html(cur_op) if cur_op else ""
+
+            if is_decl:
+                blist = f"<p class='muted small'>{html.escape(svc.get('recoveryDescription') or 'Declarative — no backup needed.')}</p>"
+            elif not manifests:
+                interval = svc.get("backupInterval", "?")
+                blist = f"<p class='muted small'>No backups yet. Scheduled every {html.escape(interval)}.</p>"
             else:
-                freshest_html = (
-                    f"<strong>{html.escape(freshest.get('sourceHost') or 'unknown')}</strong>"
-                    f"<span class='text-warn'> · {html.escape(freshest.get('ageHuman') or 'unknown')} old</span>"
-                    f"<span class='muted'> · {html.escape(freshest.get('completedAt') or '')}</span>"
-                )
-                config_html = (
-                    f"<span class='svc-config muted'>every {html.escape(service['backupInterval'])} · max {html.escape(service['maxBackupAge'])}</span>"
+                interval = svc.get("backupInterval", "?")
+                max_age = svc.get("maxBackupAge", "?")
+                brows: list[str] = []
+                for m in manifests[:8]:
+                    fresh = m.get("fresh", False)
+                    pinned = m.get("pinned", False)
+                    src = m.get("sourceHost") or "unknown"
+                    age = m.get("ageHuman") or "?"
+                    snap_full = m.get("snapshotId") or ""
+                    snap = snap_full[:12]
+                    completed = m.get("completedAt") or ""
+                    status_badges = b("fresh" if fresh else "stale", "good" if fresh else "warn")
+                    if pinned:
+                        status_badges += b("pinned", "info")
+                    note = m.get("note") or m.get("pinNote") or ""
+                    note_html = f"<span class='bkp-note muted'>{html.escape(note)}</span>" if note else ""
+                    restore_btn = admin_btn("restore-manifest", svc_name, manifest=m["path"], label="Restore", css="button button-sm button-danger") if is_admin else ""
+                    snap_title = html.escape(snap_full)
+                    brows.append(
+                        f"<div class='bkp-row'>"
+                        f"<span class='bkp-age' title='{html.escape(completed)}'>{html.escape(age)}</span>"
+                        f"<span class='bkp-src'>{html.escape(src)}</span>"
+                        f"<span class='bkp-st'>{status_badges}{note_html}</span>"
+                        f"<code class='bkp-snap' title='{snap_title}'>{html.escape(snap)}</code>"
+                        f"<span class='bkp-act'>{restore_btn}</span>"
+                        f"</div>"
+                    )
+                blist = (
+                    f"<div class='bkp-sched muted small'>Every {html.escape(interval)} · max age {html.escape(max_age)}</div>"
+                    f"<div class='bkp-list'>{''.join(brows)}</div>"
                 )
 
-            current_operation = service.get("currentOperation")
-            current_operation_html = ""
-            if current_operation:
-                progress = current_operation.get("progress") or {}
-                detail_bits = []
-                overall_percent = float(current_operation.get("percent", 0.0))
-                step_percent = progress.get("percent")
-                if current_operation.get("currentTargetIndex") and current_operation.get("totalTargets"):
-                    detail_bits.append(
-                        f"target {current_operation['currentTargetIndex']} of {current_operation['totalTargets']}"
-                    )
-                if progress.get("bytesDone") is not None:
-                    detail_bits.append(
-                        f"{format_bytes(progress.get('bytesDone'))} processed in current target"
-                    )
-                elif progress.get("filesDone") is not None and progress.get("totalFiles") is not None:
-                    detail_bits.append(f"{progress.get('filesDone')} files processed in current target")
-                if current_operation.get("currentTarget"):
-                    detail_bits.append(f"target {current_operation['currentTarget']}")
-                detail_html = (
-                    f"<span class='op-detail'>{html.escape(' · '.join(detail_bits))}</span>"
-                    if detail_bits
-                    else ""
-                )
-                step_progress_html = ""
-                if step_percent is not None:
-                    step_percent_value = max(0.0, min(100.0, float(step_percent)))
-                    step_progress_html = (
-                        "<div class='progress-meta'>"
-                        "<span>Current target</span>"
-                        f"<span>{step_percent_value:.1f}%</span>"
-                        "</div>"
-                        f"<div class='progress-bar progress-bar-step'><span style='width:{step_percent_value:.1f}%'></span></div>"
-                    )
-                current_operation_html = (
-                    "<div class='operation-card'>"
-                    "<div class='operation-row'>"
-                    f"<strong>{html.escape(current_operation.get('action') or 'operation')}</strong>"
-                    f"<span class='badge {badge_class('info')}'>{html.escape(current_operation.get('phase') or 'running')}</span>"
-                    "</div>"
-                    "<div class='progress-meta'>"
-                    "<span>Overall</span>"
-                    f"<span>{overall_percent:.1f}%</span>"
-                    "</div>"
-                    f"<div class='progress-bar'><span style='width:{max(0.0, min(100.0, overall_percent)):.1f}%'></span></div>"
-                    f"{step_progress_html}"
-                    f"{detail_html}"
-                    "</div>"
+            import_html = ""
+            if is_admin and not is_decl:
+                import_html = (
+                    f"<details class='import-wrap' data-detail-key='import-{html.escape(svc_name)}'>"
+                    f"<summary>Import snapshot</summary>"
+                    f"<form method='post' action='/admin/action' class='import-form'>"
+                    f"<input type='hidden' name='csrf_token' value='{csrf}'/>"
+                    f"<input type='hidden' name='action' value='import-manifest'/>"
+                    f"<input type='hidden' name='service' value='{html.escape(svc_name)}'/>"
+                    f"<input type='text' name='repoPath' placeholder='Repo path'/>"
+                    f"<input type='text' name='snapshotId' placeholder='Snapshot ID'/>"
+                    f"<input type='text' name='sourceHost' placeholder='Source host (optional)'/>"
+                    f"<input type='text' name='completedAt' placeholder='Completed at (optional)'/>"
+                    f"<input type='text' name='note' placeholder='Note (optional)'/>"
+                    f"<button type='submit' class='button button-sm button-subtle'>Register</button>"
+                    f"</form></details>"
                 )
 
-            admin_actions_html = ""
-            if is_admin and service.get("recoveryMode") != "declarative":
-                manifest_options = "".join(
-                    f"<option value='{html.escape(m['path'])}'>{html.escape(m.get('snapshotId') or 'unknown')} · {html.escape(m.get('completedAt') or 'unknown')}</option>"
-                    for m in manifests[:20]
-                )
-                admin_actions_html = (
-                    "<div class='admin-actions'>"
-                    f"<form method='post' action='/admin/action'><input type='hidden' name='csrf_token' value='{html.escape(session['csrfToken'])}' /><input type='hidden' name='action' value='backup-now' /><input type='hidden' name='service' value='{html.escape(service_name)}' /><button type='submit' class='button'>Backup Now</button></form>"
-                    + (
-                        "<form method='post' action='/admin/action'>"
-                        f"<input type='hidden' name='csrf_token' value='{html.escape(session['csrfToken'])}' />"
-                        "<input type='hidden' name='action' value='verify-manifest' />"
-                        f"<input type='hidden' name='service' value='{html.escape(service_name)}' />"
-                        f"<select name='manifestPath' required>{manifest_options}</select>"
-                        "<button type='submit' class='button button-subtle'>Verify</button>"
-                        "</form>"
-                        "<form method='post' action='/admin/action'>"
-                        f"<input type='hidden' name='csrf_token' value='{html.escape(session['csrfToken'])}' />"
-                        "<input type='hidden' name='action' value='restore-manifest' />"
-                        f"<input type='hidden' name='service' value='{html.escape(service_name)}' />"
-                        f"<select name='manifestPath' required>{manifest_options}</select>"
-                        "<button type='submit' class='button button-danger'>Restore</button>"
-                        "</form>"
-                        if manifest_options
-                        else ""
-                    )
-                    + "</div>"
-                    + (
-                        f"<details class='admin-import' data-detail-key='import-{html.escape(service_name)}'><summary>Import Existing Snapshot</summary>"
-                        "<form method='post' action='/admin/action' class='import-form'>"
-                        f"<input type='hidden' name='csrf_token' value='{html.escape(session['csrfToken'])}' />"
-                        "<input type='hidden' name='action' value='import-manifest' />"
-                        f"<input type='hidden' name='service' value='{html.escape(service_name)}' />"
-                        "<input type='text' name='repoPath' placeholder='Local repo path' required />"
-                        "<input type='text' name='snapshotId' placeholder='Snapshot id' required />"
-                        "<input type='text' name='sourceHost' placeholder='Source host (optional)' />"
-                        "<input type='text' name='completedAt' placeholder='Completed at ISO8601 (optional)' />"
-                        "<input type='text' name='note' placeholder='Note (optional)' />"
-                        "<button type='submit' class='button button-subtle'>Register Snapshot</button>"
-                        "</form></details>"
-                    )
-                )
-
-            manifest_rows = []
-            for manifest in manifests[:8]:
-                badges = [
-                    f"<span class='badge {badge_class('good' if manifest.get('fresh') else 'warn')}'>{'fresh' if manifest.get('fresh') else 'stale'}</span>"
-                ]
-                if manifest.get("imported"):
-                    badges.append("<span class='badge badge-info'>imported</span>")
-                if manifest.get("pinned"):
-                    badges.append("<span class='badge badge-good'>pinned</span>")
-                notes = []
-                if manifest.get("note"):
-                    notes.append(manifest["note"])
-                if manifest.get("pinNote"):
-                    notes.append(f"pin: {manifest['pinNote']}")
-
-                action_html = ""
-                if is_admin:
-                    pin_action = "unpin-manifest" if manifest.get("pinned") else "pin-manifest"
-                    pin_label = "Unpin" if manifest.get("pinned") else "Pin"
-                    action_html = (
-                        "<div class='table-actions'>"
-                        "<form method='post' action='/admin/action'>"
-                        f"<input type='hidden' name='csrf_token' value='{html.escape(session['csrfToken'])}' />"
-                        f"<input type='hidden' name='action' value='{pin_action}' />"
-                        f"<input type='hidden' name='service' value='{html.escape(service_name)}' />"
-                        f"<input type='hidden' name='manifestPath' value='{html.escape(manifest['path'])}' />"
-                        "<input type='text' name='note' placeholder='pin note' class='table-note-input' />"
-                        f"<button type='submit' class='button button-inline'>{html.escape(pin_label)}</button>"
-                        "</form>"
-                        "</div>"
-                    )
-
-                manifest_rows.append(
-                    "<tr>"
-                    f"<td>{html.escape(manifest.get('sourceHost') or 'unknown')}</td>"
-                    f"<td class='muted'>{html.escape(manifest.get('snapshotId') or 'unknown')}</td>"
-                    f"<td class='muted'>{html.escape(manifest.get('completedAt') or 'unknown')}</td>"
-                    f"<td>{''.join(badges)}{'<div class=\"table-note\">' + html.escape(' · '.join(notes)) + '</div>' if notes else ''}</td>"
-                    f"<td class='muted path-cell'>{html.escape(manifest.get('repoPath') or '')}</td>"
-                    f"<td>{action_html or '<span class=\"muted\">-</span>'}</td>"
-                    "</tr>"
-                )
-            manifests_table = (
-                "<div class='table-wrap'><table><thead><tr>"
-                "<th>Source</th><th>Snapshot</th><th>Completed</th><th>Status</th><th>Repo</th><th>Actions</th>"
-                "</tr></thead><tbody>"
-                + ("".join(manifest_rows) if manifest_rows else "<tr><td colspan='6' class='muted'>No local manifests</td></tr>")
-                + "</tbody></table></div>"
+            cards.append(
+                f"<article class='svc-card' data-service-name='{html.escape(svc_name)}'>"
+                f"<div class='svc-hd'>"
+                f"<div class='svc-title'><h3>{html.escape(svc_name)}</h3>{b(r_reason, r_kind)}</div>"
+                f"<div class='svc-links'>{links_row}</div>"
+                f"<div class='svc-acts'>{backup_btn}</div>"
+                f"</div>"
+                f"{op_html}"
+                f"<div class='bkp-section'>{blist}</div>"
+                f"{import_html}"
+                f"</article>"
             )
 
-            active_units_html = "".join(
-                f"<span class='chip chip-sm'>{html.escape(u)}</span>"
-                for u in service["activeUnits"]
-            ) or "<span class='muted'>None</span>"
-            remote_targets_html = "".join(
-                f"<span class='chip chip-sm'>{html.escape(h)}</span>"
-                for h in service["remoteTargets"]
-            ) or "<span class='muted'>None</span>"
-            active_links_html = "".join(
-                f"<a class='chip chip-link{link_extra_class(link)}' href='{html.escape(link['url'])}' "
-                f"target='_blank' rel='noreferrer'>{html.escape(link['label'])}</a>"
-                for link in active_links
-            ) or "<span class='muted'>Service not running on leader.</span>"
+        services_html = (
+            "<section id='services-section' class='section'>"
+            "<div class='sh'><h2>Services</h2></div>"
+            "<div class='services'>"
+            + ("".join(cards) if cards else "<p class='muted'>No clustered services configured.</p>")
+            + "</div></section>"
+        )
 
-            service_sections.append(
-                f"<article class='service-card' data-service-name='{html.escape(service_name)}'>"
-                "<div class='service-header'>"
-                f"<h3>{html.escape(service_name)}</h3>"
-                f"<span class='badge {badge_class(readiness_kind)}'>{html.escape(readiness['reason'])}</span>"
-                f"{config_html}"
-                "</div>"
-                f"<div class='manifest-info'>{freshest_html}</div>"
-                f"{current_operation_html}"
-                f"{admin_actions_html}"
-                f"<div class='link-row'>{active_links_html}</div>"
-                f"<details data-detail-key='service-{html.escape(service_name)}'><summary>Details</summary>"
-                "<div class='details-body'>"
-                f"<div class='detail-row'><span class='detail-label'>Active units</span><span>{active_units_html}</span></div>"
-                f"<div class='detail-row'><span class='detail-label'>Remote targets</span><span>{remote_targets_html}</span></div>"
-                f"{manifests_table}"
-                "</div></details>"
-                "</article>"
+        # ── cluster panel ─────────────────────────────────────────────────────
+        leader_host = leader.get("host") if leader.get("present") else None
+        cluster_members = state["cluster"]["members"]
+        lbm: dict[str, list] = {m["host"]: [] for m in cluster_members}
+        for lnk in dashboard_links:
+            h = lnk.get("host")
+            if h and h in lbm:
+                lbm[h].append(lnk)
+        mrows: list[str] = []
+        for m in cluster_members:
+            host = m["host"]
+            badges = ("" + (b("leader", "good") if m["isLeader"] else "") + (b("this node", "muted") if m["isLocal"] else ""))
+            hlinks = "".join(chip_link(l) for l in lbm.get(host, [])) or "<span class='muted'>no links</span>"
+            mrows.append(
+                f"<tr><td class='muted idx'>{m['priorityIndex']+1}</td>"
+                f"<td class='host-nm'>{html.escape(host)}{badges}</td>"
+                f"<td>{hlinks}</td></tr>"
             )
+        leader_str = leader_host or ("error" if leader.get("error") else "none")
+        cluster_panel = (
+            f"<details id='cluster-panel' class='panel-details section' data-detail-key='cluster-panel'>"
+            f"<summary><span class='sum-title'>Cluster</span>"
+            f"<span class='sum-note muted'>leader: {html.escape(leader_str)}</span></summary>"
+            f"<div class='panel-body'><table><thead><tr><th>#</th><th>Host</th><th>Links</th></tr></thead>"
+            f"<tbody>{''.join(mrows)}</tbody></table></div></details>"
+        )
 
-        events_html = "\n".join(html.escape(line) for line in state["recentEvents"])
-        raw_json = html.escape(json.dumps(state, indent=2))
+        # ── units panel ───────────────────────────────────────────────────────
+        urows: list[str] = []
+        for uname, u in units.items():
+            st = u.get("ActiveState", u.get("error", "unknown"))
+            k = "good" if st == "active" else "bad" if st == "failed" else "muted" if st == "inactive" else "warn"
+            if u.get("error"):
+                k = "bad"
+            disp = uname.removeprefix("alanix-cluster-")
+            urows.append(
+                f"<tr><td>{html.escape(disp)}</td><td>{b(st, k)}</td>"
+                f"<td class='muted small'>{html.escape(u.get('SubState',''))}</td></tr>"
+            )
+        units_panel = (
+            f"<details id='units-panel' class='panel-details section' data-detail-key='units-panel'>"
+            f"<summary><span class='sum-title'>Units</span></summary>"
+            f"<div class='panel-body'><table><thead><tr><th>Unit</th><th>State</th><th>Sub</th></tr></thead>"
+            f"<tbody>{''.join(urows)}</tbody></table></div></details>"
+        )
 
+        # ── events panel ──────────────────────────────────────────────────────
+        events_text = "\n".join(html.escape(line) for line in state["recentEvents"])
+        events_panel = (
+            f"<details id='events-panel' class='panel-details section' data-detail-key='events-panel'>"
+            f"<summary><span class='sum-title'>Events</span></summary>"
+            f"<div class='panel-body'>"
+            f"<pre class='events-pre' data-preserve-scroll='true'>"
+            f"{events_text or '<span class=\"muted\">No events yet.</span>'}"
+            f"</pre></div></details>"
+        )
+
+        # ── page ──────────────────────────────────────────────────────────────
         return f"""<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Alanix Cluster Dashboard · {html.escape(self.hostname)}</title>
-    <style>
-      :root {{
-        --bg: #f6f1e8;
-        --panel: #fffdf8;
-        --line: #d9ccb8;
-        --text: #1d241b;
-        --muted: #5f6c62;
-        --good: #2f7a45;
-        --warn: #b56b18;
-        --bad: #a3362a;
-        --info: #245f8d;
-        --accent: #24452d;
-        --tor: #4a2d7a;
-        --wan: #1a6b8a;
-      }}
-      * {{ box-sizing: border-box; }}
-      body {{
-        margin: 0;
-        font-family: "Iosevka Aile", "IBM Plex Sans", "Segoe UI", sans-serif;
-        color: var(--text);
-        background:
-          radial-gradient(circle at top right, rgba(36,69,45,0.10), transparent 28rem),
-          linear-gradient(180deg, #fbf7f0, var(--bg));
-        min-height: 100vh;
-      }}
-      main {{ max-width: 80rem; margin: 0 auto; padding: 1.5rem; }}
-      h1, h2, h3 {{ margin: 0; font-weight: 700; letter-spacing: -0.02em; }}
-      h1 {{ font-size: 1.85rem; }}
-      h2 {{
-        font-size: 0.72rem;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        color: var(--muted);
-        margin-bottom: 0.65rem;
-      }}
-      .section-head {{
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.8rem;
-        margin-bottom: 0.65rem;
-      }}
-      .section-head h2 {{ margin-bottom: 0; }}
-      .section-actions {{
-        display: flex;
-        align-items: center;
-        gap: 0.35rem;
-      }}
-      h3 {{ font-size: 1rem; }}
-      .section {{ margin-bottom: 1.1rem; }}
-      .panel {{
-        background: rgba(255,253,248,0.94);
-        border: 1px solid var(--line);
-        border-radius: 0.875rem;
-        padding: 1rem 1.1rem;
-        box-shadow: 0 2px 12px rgba(54,43,22,0.055);
-      }}
-      .service-card {{
-        background: rgba(255,253,248,0.94);
-        border: 1px solid var(--line);
-        border-radius: 0.875rem;
-        padding: 1rem 1.1rem;
-        box-shadow: 0 2px 12px rgba(54,43,22,0.055);
-      }}
-      .button {{
-        appearance: none;
-        border: 1px solid rgba(36,69,45,0.18);
-        background: var(--accent);
-        color: #fffdf8;
-        border-radius: 0.7rem;
-        padding: 0.5rem 0.85rem;
-        font: inherit;
-        cursor: pointer;
-      }}
-      .button:hover {{ filter: brightness(1.05); }}
-      .button-subtle {{
-        background: transparent;
-        color: var(--accent);
-      }}
-      .button-danger {{
-        background: var(--bad);
-        border-color: rgba(163,54,42,0.28);
-      }}
-      .button-inline {{
-        padding: 0.35rem 0.55rem;
-        font-size: 0.78rem;
-      }}
-      .hero-actions {{
-        display: flex;
-        align-items: center;
-        gap: 0.6rem;
-        flex-wrap: wrap;
-        justify-content: flex-end;
-      }}
-      .hero-admin-note {{
-        margin: 0.45rem 0 0;
-        color: var(--muted);
-        font-size: 0.9rem;
-      }}
-      .admin-login,
-      .admin-actions,
-      .import-form,
-      .table-actions form {{
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        align-items: center;
-      }}
-      .admin-login input,
-      .admin-actions select,
-      .import-form input,
-      .table-note-input {{
-        min-width: 0;
-        border: 1px solid rgba(36,69,45,0.18);
-        background: #fffdf8;
-        border-radius: 0.65rem;
-        padding: 0.5rem 0.65rem;
-        font: inherit;
-        color: inherit;
-      }}
-      .admin-login input {{ flex: 1 1 12rem; }}
-      .hero-login {{
-        justify-content: flex-end;
-      }}
-      .hero-login input {{
-        flex: 0 1 13rem;
-      }}
-      .admin-actions form {{ margin: 0; }}
-      .admin-actions {{
-        align-items: flex-start;
-      }}
-      .admin-message {{
-        margin-bottom: 0.8rem;
-        color: var(--muted);
-        font-size: 0.88rem;
-      }}
-      .admin-error {{ color: var(--bad); }}
-      .admin-import {{
-        margin-top: 0.35rem;
-      }}
-      .operation-card {{
-        border: 1px solid rgba(36,69,45,0.12);
-        border-radius: 0.8rem;
-        padding: 0.75rem 0.85rem;
-        background: rgba(36,69,45,0.04);
-      }}
-      .operation-row {{
-        display: flex;
-        align-items: center;
-        gap: 0.45rem;
-        flex-wrap: wrap;
-        margin-bottom: 0.45rem;
-      }}
-      .op-detail {{
-        display: block;
-        margin-top: 0.35rem;
-        color: var(--muted);
-        font-size: 0.82rem;
-      }}
-      .progress-meta {{
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 0.6rem;
-        margin-top: 0.35rem;
-        color: var(--muted);
-        font-size: 0.8rem;
-      }}
-      .progress-bar {{
-        height: 0.45rem;
-        background: rgba(36,69,45,0.10);
-        border-radius: 999px;
-        overflow: hidden;
-        margin-top: 0.2rem;
-      }}
-      .progress-bar span {{
-        display: block;
-        height: 100%;
-        background: linear-gradient(90deg, #406e4a, #82a55d);
-      }}
-      .progress-bar-step span {{
-        background: linear-gradient(90deg, #245f8d, #6fa2c9);
-      }}
-      .table-actions form {{ margin: 0; }}
-      .table-actions form {{
-        align-items: flex-start;
-      }}
-      .table-note {{
-        margin-top: 0.3rem;
-        color: var(--muted);
-        font-size: 0.78rem;
-      }}
-      .table-wrap {{
-        width: 100%;
-        overflow-x: auto;
-      }}
-      .path-cell {{
-        min-width: 14rem;
-        max-width: 26rem;
-        word-break: break-word;
-        white-space: normal;
-        font-size: 0.76rem;
-      }}
-      .service-card details[open] .table-wrap {{
-        margin-right: -0.1rem;
-      }}
-      /* Hero */
-      .hero {{
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-end;
-        gap: 1rem;
-        margin-bottom: 1.1rem;
-      }}
-      .hero-sub {{ margin: 0.3rem 0 0; color: var(--muted); font-size: 0.88rem; }}
-      /* Metrics */
-      .grid {{
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-        gap: 0.75rem;
-        margin-bottom: 1.1rem;
-      }}
-      .metric-label {{
-        display: block;
-        font-size: 0.72rem;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        color: var(--muted);
-        margin-bottom: 0.3rem;
-      }}
-      .metric-value {{ font-size: 1.15rem; font-weight: 700; }}
-      /* Badges & chips */
-      .badge, .chip {{
-        display: inline-flex;
-        align-items: center;
-        border-radius: 999px;
-        padding: 0.18rem 0.5rem;
-        font-size: 0.78rem;
-        line-height: 1.4;
-        white-space: nowrap;
-      }}
-      .badge-good  {{ background: rgba(47,122,69,0.12);  color: var(--good); }}
-      .badge-warn  {{ background: rgba(181,107,24,0.12); color: var(--warn); }}
-      .badge-bad   {{ background: rgba(163,54,42,0.12);  color: var(--bad); }}
-      .badge-muted {{ background: rgba(95,108,98,0.12);  color: var(--muted); }}
-      .badge-info  {{ background: rgba(36,95,141,0.12);  color: var(--info); }}
-      .chip {{
-        background: rgba(36,69,45,0.08);
-        color: var(--accent);
-        margin: 0 0.3rem 0.3rem 0;
-        text-decoration: none;
-      }}
-      .chip-sm {{ padding: 0.12rem 0.42rem; font-size: 0.75rem; }}
-      .chip-link {{ border: 1px solid rgba(36,69,45,0.18); }}
-      .chip-link:hover {{ background: rgba(36,69,45,0.14); }}
-      .chip-link-tor {{
-        background: rgba(74,45,122,0.09);
-        color: var(--tor);
-        border: 1px solid rgba(74,45,122,0.22);
-      }}
-      .chip-link-tor:hover {{ background: rgba(74,45,122,0.16); }}
-      .chip-link-wan {{
-        background: rgba(26,107,138,0.09);
-        color: var(--wan);
-        border: 1px solid rgba(26,107,138,0.22);
-      }}
-      .chip-link-wan:hover {{ background: rgba(26,107,138,0.16); }}
-      /* Cluster member table */
-      .member-table {{ width: 100%; border-collapse: collapse; }}
-      .member-table td {{
-        padding: 0.48rem 0.35rem;
-        border-top: 1px solid rgba(217,204,184,0.4);
-        vertical-align: middle;
-      }}
-      .member-table tr:first-child td {{ border-top: none; }}
-      .member-idx {{ width: 1.6rem; color: var(--muted); font-size: 0.8rem; }}
-      .member-name {{ width: 13rem; font-weight: 600; }}
-      .member-name .badge {{ margin-right: 0.3rem; vertical-align: middle; }}
-      /* Unit status */
-      .unit-table {{ width: 100%; border-collapse: collapse; margin-top: 0.5rem; font-size: 0.88rem; }}
-      .unit-table th, .unit-table td {{
-        padding: 0.42rem 0.35rem;
-        text-align: left;
-        border-top: 1px solid rgba(217,204,184,0.5);
-        vertical-align: top;
-      }}
-      .unit-table th {{
-        color: var(--muted);
-        font-size: 0.72rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-        border-top: none;
-      }}
-      /* Services */
-      .services {{
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
-        gap: 0.9rem;
-      }}
-      @supports selector(.service-card:has(details[open])) {{
-        .service-card:has(details[open]) {{
-          grid-column: 1 / -1;
-        }}
-      }}
-      .service-card {{ display: flex; flex-direction: column; gap: 0.55rem; }}
-      .service-header {{
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-      }}
-      .svc-config {{ font-size: 0.8rem; margin-left: auto; }}
-      .manifest-info {{ font-size: 0.88rem; }}
-      .text-warn {{ color: var(--warn); }}
-      .link-row {{ display: flex; flex-wrap: wrap; }}
-      /* Inner manifest table */
-      table {{
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 0.5rem;
-        font-size: 0.83rem;
-      }}
-      th, td {{
-        padding: 0.38rem 0.35rem;
-        text-align: left;
-        border-top: 1px solid rgba(217,204,184,0.55);
-        vertical-align: top;
-        overflow-wrap: anywhere;
-      }}
-      th {{
-        color: var(--muted);
-        font-size: 0.72rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-        border-top: none;
-      }}
-      /* Details toggle */
-      details > summary {{
-        cursor: pointer;
-        font-size: 0.8rem;
-        font-weight: 600;
-        color: var(--muted);
-        user-select: none;
-        list-style: none;
-      }}
-      details > summary::-webkit-details-marker {{ display: none; }}
-      details > summary::before {{ content: "▸  "; font-size: 0.65rem; }}
-      details[open] > summary::before {{ content: "▾  "; }}
-      details > summary:hover {{ color: var(--accent); }}
-      .details-body {{ padding-top: 0.45rem; display: flex; flex-direction: column; gap: 0.35rem; }}
-      .detail-row {{ display: flex; gap: 0.6rem; align-items: flex-start; font-size: 0.84rem; }}
-      .detail-label {{ min-width: 7rem; color: var(--muted); font-size: 0.78rem; padding-top: 0.25rem; flex-shrink: 0; }}
-      /* Events */
-      pre {{
-        margin: 0;
-        padding: 1rem;
-        background: #1a211a;
-        color: #eef5ec;
-        border-radius: 0.875rem;
-        overflow: auto;
-        font-family: "Iosevka Term", "IBM Plex Mono", monospace;
-        font-size: 0.84rem;
-        line-height: 1.55;
-      }}
-      .events-log {{ max-height: 20rem; }}
-      .muted {{ color: var(--muted); }}
-      .refresh-age {{ font-size: 0.78rem; color: var(--muted); }}
-      .icon-button {{
-        appearance: none;
-        border: 1px solid transparent;
-        background: transparent;
-        color: var(--muted);
-        border-radius: 0.7rem;
-        width: 2rem;
-        height: 2rem;
-        padding: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
-      }}
-      .icon-button:hover {{
-        background: rgba(36,69,45,0.08);
-        border-color: rgba(36,69,45,0.12);
-        color: var(--accent);
-      }}
-      .icon-button svg {{
-        width: 1rem;
-        height: 1rem;
-        stroke: currentColor;
-        fill: none;
-        stroke-width: 1.8;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-      }}
-      .icon-button .icon-check {{ display: none; }}
-      .icon-button[data-copy-state="copied"] {{
-        border-color: rgba(47,122,69,0.28);
-        color: var(--good);
-        background: rgba(47,122,69,0.08);
-      }}
-      .icon-button[data-copy-state="copied"] .icon-copy {{ display: none; }}
-      .icon-button[data-copy-state="copied"] .icon-check {{ display: inline-flex; }}
-      .details-toolbar {{
-        display: flex;
-        justify-content: flex-end;
-        margin-top: 0.6rem;
-      }}
-      @media (max-width: 680px) {{
-        .hero {{ flex-direction: column; align-items: flex-start; }}
-        .services {{ grid-template-columns: 1fr; }}
-        .member-name {{ width: auto; }}
-        .hero-actions {{ justify-content: flex-start; }}
-      }}
-    </style>
-  </head>
-  <body>
-    <main>
-      <section id="hero-section" class="hero">
-        <div>
-          <h1>Alanix Cluster Dashboard</h1>
-          <p class="hero-sub">{html.escape(self.hostname)} · {html.escape(state["cluster"]["name"])}</p>
-          {hero_notice_html}
-        </div>
-        <div class="hero-actions">
-          {hero_actions_html}
-          <span class="badge {badge_class(role['kind'])}">{html.escape(role['label'])}</span>
-        </div>
-      </section>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Alanix · {html.escape(self.cluster["name"])} · {html.escape(self.hostname)}</title>
+  <style>
+    :root {{
+      --bg: #f5f0e8; --panel: #fffdf8; --border: #d4c8b4;
+      --text: #1a2018; --muted: #5a6659;
+      --good: #2a7040; --warn: #a85c10; --bad: #8f2a20; --info: #1e5580;
+      --accent: #24452d;
+    }}
+    *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 14px; line-height: 1.5;
+      color: var(--text); background: var(--bg); min-height: 100vh;
+    }}
+    a {{ color: inherit; }}
+    /* ── layout ── */
+    .site-hd {{
+      background: var(--panel); border-bottom: 1px solid var(--border);
+      padding: 0.6rem 1.25rem;
+      display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+    }}
+    .brand {{ display: flex; align-items: baseline; gap: 0.6rem; flex: 1; min-width: 0; }}
+    .cluster-nm {{ font-weight: 700; font-size: 1rem; letter-spacing: -0.01em; }}
+    .node-nm {{ font-size: 0.82rem; }}
+    .hd-right {{ display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }}
+    main {{ max-width: 72rem; margin: 0 auto; padding: 1.1rem 1.25rem; display: flex; flex-direction: column; gap: 0.85rem; }}
+    /* ── admin bar ── */
+    .admin-bar {{
+      background: rgba(36,69,45,0.06); border: 1px solid var(--border);
+      border-radius: 0.65rem; padding: 0.45rem 0.75rem;
+      display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+    }}
+    .admin-bar.signed-in {{ background: rgba(42,112,64,0.08); border-color: rgba(42,112,64,0.22); }}
+    .login-form {{ display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }}
+    .admin-label {{ font-size: 0.8rem; color: var(--muted); font-weight: 600; }}
+    .auth-err {{ color: var(--bad); font-size: 0.82rem; }}
+    input[type="password"], input[type="text"] {{
+      border: 1px solid var(--border); background: var(--panel);
+      border-radius: 0.5rem; padding: 0.3rem 0.6rem;
+      font: inherit; color: inherit; min-width: 0;
+    }}
+    /* ── section header ── */
+    .sh {{ display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }}
+    .sh h2 {{
+      font-size: 0.7rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--muted);
+    }}
+    /* ── panel / details ── */
+    .panel {{
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 0.75rem; padding: 0.85rem 1rem;
+    }}
+    .panel-details {{
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 0.75rem; padding: 0.75rem 1rem;
+    }}
+    .panel-details > summary {{
+      cursor: pointer; user-select: none; list-style: none;
+      display: flex; align-items: center; gap: 0.6rem;
+    }}
+    .panel-details > summary::-webkit-details-marker {{ display: none; }}
+    .panel-details > summary::before {{
+      content: "▸"; font-size: 0.65rem; color: var(--muted); flex-shrink: 0;
+    }}
+    .panel-details[open] > summary::before {{ content: "▾"; }}
+    .sum-title {{
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--muted);
+    }}
+    .sum-note {{ font-size: 0.78rem; }}
+    .panel-body {{ padding-top: 0.6rem; }}
+    /* ── badges ── */
+    .badge {{
+      display: inline-flex; align-items: center;
+      border-radius: 999px; padding: 0.15rem 0.45rem;
+      font-size: 0.75rem; line-height: 1.4; white-space: nowrap; font-weight: 500;
+    }}
+    .badge-good  {{ background: rgba(42,112,64,0.12); color: var(--good); }}
+    .badge-warn  {{ background: rgba(168,92,16,0.12); color: var(--warn); }}
+    .badge-bad   {{ background: rgba(143,42,32,0.12); color: var(--bad); }}
+    .badge-muted {{ background: rgba(90,102,89,0.12); color: var(--muted); }}
+    .badge-info  {{ background: rgba(30,85,128,0.12); color: var(--info); }}
+    /* ── chips ── */
+    .chip {{
+      display: inline-flex; align-items: center;
+      border-radius: 999px; padding: 0.15rem 0.5rem;
+      font-size: 0.75rem; text-decoration: none; white-space: nowrap;
+      background: rgba(36,69,45,0.08); color: var(--accent);
+      border: 1px solid rgba(36,69,45,0.18);
+    }}
+    .chip-link:hover {{ background: rgba(36,69,45,0.14); }}
+    .chip-tor {{ background: rgba(74,45,122,0.09); color: #4a2d7a; border-color: rgba(74,45,122,0.22); }}
+    .chip-wan {{ background: rgba(26,107,138,0.09); color: #1a6b8a; border-color: rgba(26,107,138,0.22); }}
+    /* ── buttons ── */
+    .button {{
+      appearance: none; cursor: pointer; font: inherit;
+      border: 1px solid rgba(36,69,45,0.2); background: var(--accent);
+      color: #fff; border-radius: 0.55rem; padding: 0.4rem 0.75rem;
+    }}
+    .button:hover {{ filter: brightness(1.1); }}
+    .button-sm {{ padding: 0.25rem 0.55rem; font-size: 0.8rem; }}
+    .button-subtle {{ background: transparent; color: var(--accent); }}
+    .button-danger {{ background: var(--bad); border-color: rgba(143,42,32,0.25); }}
+    .ifrm {{ display: inline; margin: 0; padding: 0; }}
+    /* ── services grid ── */
+    .services {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr));
+      gap: 0.75rem;
+    }}
+    .svc-card {{
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 0.75rem; padding: 0.85rem 1rem;
+      display: flex; flex-direction: column; gap: 0.6rem;
+    }}
+    .svc-hd {{ display: flex; align-items: flex-start; gap: 0.5rem; flex-wrap: wrap; }}
+    .svc-title {{ display: flex; align-items: center; gap: 0.4rem; flex: 1; min-width: 0; }}
+    .svc-title h3 {{ font-size: 0.95rem; font-weight: 700; }}
+    .svc-links {{ display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; }}
+    .svc-acts {{ margin-left: auto; display: flex; gap: 0.3rem; align-items: center; }}
+    /* ── progress ── */
+    .prog-wrap {{
+      border: 1px solid rgba(36,69,45,0.12); border-radius: 0.6rem;
+      padding: 0.55rem 0.75rem; background: rgba(36,69,45,0.04);
+    }}
+    .prog-hd {{
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 0.5rem; font-size: 0.8rem; margin-bottom: 0.35rem; font-weight: 600;
+    }}
+    .prog-stats {{ color: var(--muted); font-weight: 400; }}
+    .prog-bar {{
+      height: 0.5rem; background: rgba(36,69,45,0.1);
+      border-radius: 999px; overflow: hidden;
+    }}
+    .prog-bar span {{
+      display: block; height: 100%;
+      background: linear-gradient(90deg, var(--good), #5fa86e);
+      transition: width 0.4s ease;
+    }}
+    /* ── backup list ── */
+    .bkp-sched {{ margin-bottom: 0.35rem; }}
+    .bkp-list {{ display: flex; flex-direction: column; gap: 0.2rem; }}
+    .bkp-row {{
+      display: grid;
+      grid-template-columns: 3.5rem 1fr auto auto auto;
+      align-items: center; gap: 0.4rem;
+      padding: 0.28rem 0.1rem;
+      border-top: 1px solid rgba(212,200,180,0.5);
+      font-size: 0.82rem;
+    }}
+    .bkp-list .bkp-row:first-child {{ border-top: none; }}
+    .bkp-age {{ color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }}
+    .bkp-src {{ font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+    .bkp-st {{ display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap; white-space: nowrap; }}
+    .bkp-snap {{ font-family: monospace; font-size: 0.75rem; color: var(--muted); }}
+    .bkp-act {{ justify-self: end; }}
+    .bkp-note {{ font-size: 0.75rem; display: block; }}
+    /* ── import ── */
+    .import-wrap {{ margin-top: 0.1rem; }}
+    .import-wrap > summary {{
+      cursor: pointer; list-style: none; font-size: 0.78rem;
+      color: var(--muted); user-select: none;
+    }}
+    .import-wrap > summary::-webkit-details-marker {{ display: none; }}
+    .import-wrap > summary::before {{ content: "▸ "; font-size: 0.6rem; }}
+    .import-wrap[open] > summary::before {{ content: "▾ "; }}
+    .import-form {{
+      display: flex; flex-wrap: wrap; gap: 0.35rem;
+      margin-top: 0.4rem; align-items: center;
+    }}
+    .import-form input {{ flex: 1 1 10rem; }}
+    /* ── cluster / units tables ── */
+    table {{ width: 100%; border-collapse: collapse; font-size: 0.83rem; }}
+    th, td {{
+      padding: 0.35rem 0.4rem; text-align: left;
+      border-top: 1px solid rgba(212,200,180,0.5); vertical-align: middle;
+    }}
+    th {{
+      border-top: none; color: var(--muted);
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+    }}
+    .idx {{ width: 1.5rem; }}
+    .host-nm {{ font-weight: 600; }}
+    .host-nm .badge {{ margin-left: 0.3rem; vertical-align: middle; }}
+    /* ── events ── */
+    .events-pre {{
+      font-family: monospace; font-size: 0.78rem; line-height: 1.55;
+      background: #1a211a; color: #dff2dc;
+      padding: 0.75rem; border-radius: 0.6rem;
+      overflow: auto; max-height: 18rem; white-space: pre-wrap; word-break: break-all;
+    }}
+    /* ── utils ── */
+    .muted {{ color: var(--muted); }}
+    .small {{ font-size: 0.8rem; }}
+    .section {{ }}
+    @media (max-width: 600px) {{
+      .site-hd {{ flex-direction: column; align-items: flex-start; }}
+      .svc-hd {{ flex-direction: column; }}
+      .svc-acts {{ margin-left: 0; }}
+      .bkp-row {{ grid-template-columns: 3rem 1fr auto; }}
+      .bkp-snap, .bkp-st {{ display: none; }}
+    }}
+  </style>
+</head>
+<body>
+  <header class="site-hd">
+    <div class="brand">
+      <span class="cluster-nm">Alanix · {html.escape(self.cluster["name"])}</span>
+      <span class="node-nm muted">{html.escape(self.hostname)}</span>
+    </div>
+    <div class="hd-right">
+      {b(role["label"], role["kind"])}
+    </div>
+  </header>
+  <main>
+    {admin_bar}
+    {ops_banner}
+    {services_html}
+    {cluster_panel}
+    {units_panel}
+    {events_panel}
+  </main>
+  <script>
+    (function() {{
+      var liveSource = null;
+      var pendingHtml = null;
+      var reconnectTimer = null;
+      var sectionIds = [
+        'admin-bar', 'ops-banner', 'services-section',
+        'cluster-panel', 'units-panel', 'events-panel'
+      ];
 
-      {admin_panel_html}
+      function userIsEditingForm() {{
+        var a = document.activeElement;
+        return a && (a.matches('input,textarea,select,button') || a.isContentEditable);
+      }}
 
-      <section id="metrics-section" class="grid">
-        <article class="panel">
-          <span class="metric-label">Leader</span>
-          <div class="metric-value">{html.escape(leader_summary)}</div>
-        </article>
-        <article class="panel">
-          <span class="metric-label">Controller</span>
-          <div class="metric-value">{html.escape(units["alanix-cluster-controller.service"].get("ActiveState", units["alanix-cluster-controller.service"].get("error", "unknown")))}</div>
-        </article>
-        <article class="panel">
-          <span class="metric-label">etcd</span>
-          <div class="metric-value">{html.escape(units.get("etcd.service", {}).get("ActiveState", "n/a"))}</div>
-        </article>
-        <article class="panel">
-          <span class="metric-label">Active Target</span>
-          <div class="metric-value">{html.escape(units[self.target].get("ActiveState", units[self.target].get("error", "unknown")))}</div>
-        </article>
-      </section>
-
-      <section id="cluster-section" class="panel section">
-        <h2>Cluster</h2>
-        <table class="member-table">
-          <tbody>{''.join(member_rows)}</tbody>
-        </table>
-      </section>
-
-      <details id="unit-status-section" class="panel section" data-detail-key="unit-status">
-        <summary>Unit Status</summary>
-        <table class="unit-table">
-          <thead><tr><th>Unit</th><th>State</th><th>Substate</th><th>Enabled</th></tr></thead>
-          <tbody>{''.join(unit_rows)}</tbody>
-        </table>
-      </details>
-
-      <section id="services-section" class="section">
-        <h2>Services</h2>
-        <div class="services">
-          {''.join(service_sections) if service_sections else '<div class="panel muted">No clustered services configured yet.</div>'}
-        </div>
-      </section>
-
-      <section id="events-section" class="section">
-        <div class="section-head">
-          <h2>Recent Events</h2>
-          <div class="section-actions">
-            <button class="icon-button" type="button" data-copy-target="recent-events" aria-label="Copy recent events" title="Copy recent events">
-              <span class="icon-copy" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><rect x="9" y="9" width="10" height="10" rx="2"></rect><path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"></path></svg>
-              </span>
-              <span class="icon-check" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7"></path></svg>
-              </span>
-            </button>
-          </div>
-        </div>
-        <pre id="recent-events" class="events-log" data-preserve-scroll="true">{events_html}</pre>
-      </section>
-
-      <section id="raw-section" class="section">
-        <details data-detail-key="raw-json">
-          <summary>Raw JSON</summary>
-          <div class="details-toolbar">
-            <button class="icon-button" type="button" data-copy-target="raw-json" aria-label="Copy raw JSON" title="Copy raw JSON">
-              <span class="icon-copy" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><rect x="9" y="9" width="10" height="10" rx="2"></rect><path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"></path></svg>
-              </span>
-              <span class="icon-check" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7"></path></svg>
-              </span>
-            </button>
-          </div>
-          <pre id="raw-json" data-preserve-scroll="true" style="margin-top:0.6rem">{raw_json}</pre>
-        </details>
-      </section>
-    </main>
-    <script>
-      (function() {{
-        var liveSource = null;
-        var pendingHtml = null;
-        var reconnectTimer = null;
-        var sectionIds = [
-          'hero-section',
-          'metrics-section',
-          'admin-tools',
-          'cluster-section',
-          'unit-status-section',
-          'services-section',
-          'events-section',
-          'raw-section'
-        ];
-
-        async function copyTargetText(button) {{
-          var targetId = button.getAttribute('data-copy-target');
-          if (!targetId) return;
-          var el = document.getElementById(targetId);
-          if (!el) return;
-          var text = el.textContent || '';
-          try {{
-            if (navigator.clipboard && navigator.clipboard.writeText) {{
-              await navigator.clipboard.writeText(text);
-            }} else {{
-              var ta = document.createElement('textarea');
-              ta.value = text;
-              ta.style.position = 'fixed';
-              ta.style.opacity = '0';
-              document.body.appendChild(ta);
-              ta.focus();
-              ta.select();
-              document.execCommand('copy');
-              document.body.removeChild(ta);
-            }}
-            button.setAttribute('data-copy-label', button.getAttribute('data-copy-label') || button.getAttribute('aria-label') || 'Copy');
-            button.setAttribute('data-copy-state', 'copied');
-            clearTimeout(button._copyTimer);
-            button._copyTimer = setTimeout(function() {{
-              button.removeAttribute('data-copy-state');
-            }}, 1500);
-          }} catch (e) {{}}
-        }}
-
-        function preserveScrollState() {{
-          var scrolls = {{}};
-          document.querySelectorAll('[data-preserve-scroll]').forEach(function(el) {{
-            if (el.id) {{
-              scrolls[el.id] = el.scrollTop;
-            }}
-          }});
-          return scrolls;
-        }}
-
-        function restoreScrollState(scrolls) {{
-          Object.keys(scrolls).forEach(function(id) {{
-            var el = document.getElementById(id);
-            if (el) {{
-              el.scrollTop = scrolls[id];
-            }}
-          }});
-        }}
-
-        function userIsEditingForm() {{
-          var active = document.activeElement;
-          if (!active) return false;
-          if (active.matches && active.matches('input, textarea, select, button')) {{
-            return true;
-          }}
-          if (active.isContentEditable) {{
-            return true;
-          }}
-          return false;
-        }}
-
-        function captureOpenDetails() {{
-          var openKeys = new Set();
-          document.querySelectorAll('details[data-detail-key]').forEach(function(el) {{
-            if (el.open) {{
-              openKeys.add(el.getAttribute('data-detail-key'));
-            }}
-          }});
-          return openKeys;
-        }}
-
-        function restoreOpenDetails(openKeys) {{
-          document.querySelectorAll('details[data-detail-key]').forEach(function(el) {{
-            var key = el.getAttribute('data-detail-key');
-            if (key && openKeys.has(key)) {{
-              el.open = true;
-            }}
-          }});
-        }}
-
-        function replaceSectionFromDoc(id, doc) {{
-          var next = doc.getElementById(id);
-          var current = document.getElementById(id);
-          if (!next && !current) return;
-          if (!next && current) {{
-            current.remove();
-            return;
-          }}
-          if (next && !current) {{
-            var anchor = document.getElementById('metrics-section') || document.querySelector('main');
-            if (anchor && anchor.parentNode) {{
-              anchor.parentNode.insertBefore(next.cloneNode(true), anchor.nextSibling);
-            }}
-            return;
-          }}
-          current.replaceWith(next.cloneNode(true));
-        }}
-
-        function syncServicesSection(doc) {{
-          var currentSection = document.getElementById('services-section');
-          var nextSection = doc.getElementById('services-section');
-          if (!currentSection || !nextSection) {{
-            replaceSectionFromDoc('services-section', doc);
-            return;
-          }}
-
-          var currentContainer = currentSection.querySelector('.services');
-          var nextContainer = nextSection.querySelector('.services');
-          if (!currentContainer || !nextContainer) {{
-            replaceSectionFromDoc('services-section', doc);
-            return;
-          }}
-
-          var currentCardsByName = {{}};
-          Array.from(currentContainer.querySelectorAll('.service-card[data-service-name]')).forEach(function(card) {{
-            currentCardsByName[card.getAttribute('data-service-name')] = card;
-          }});
-
-          var nextCards = Array.from(nextContainer.children);
-          nextCards.forEach(function(nextChild, index) {{
-            if (!nextChild.classList || !nextChild.classList.contains('service-card')) {{
-              replaceSectionFromDoc('services-section', doc);
-              currentContainer = null;
-              return;
-            }}
-            if (!currentContainer) return;
-            var name = nextChild.getAttribute('data-service-name');
-            var currentCard = currentCardsByName[name];
-            if (!currentCard) {{
-              currentCard = nextChild.cloneNode(true);
-            }} else if (currentCard.outerHTML !== nextChild.outerHTML) {{
-              currentCard.replaceWith(nextChild.cloneNode(true));
-              currentCard = currentContainer.querySelector('.service-card[data-service-name="' + name + '"]');
-            }}
-            var expectedSlot = currentContainer.children[index] || null;
-            if (currentCard !== expectedSlot) {{
-              currentContainer.insertBefore(currentCard, expectedSlot);
-            }}
-          }});
-          if (!currentContainer) return;
-
-          Array.from(currentContainer.querySelectorAll('.service-card[data-service-name]')).forEach(function(card) {{
-            var name = card.getAttribute('data-service-name');
-            var stillExists = nextContainer.querySelector('.service-card[data-service-name="' + name + '"]');
-            if (!stillExists) {{
-              card.remove();
-            }}
-          }});
-        }}
-
-        function applyDocumentText(htmlText) {{
-          if (!htmlText) return;
-          if (document.hidden || userIsEditingForm()) {{
-            pendingHtml = htmlText;
-            return;
-          }}
-          try {{
-            var y = window.scrollY;
-            var preservedScrolls = preserveScrollState();
-            var openDetails = captureOpenDetails();
-            var doc = new DOMParser().parseFromString(htmlText, 'text/html');
-            sectionIds.forEach(function(id) {{
-              if (id === 'services-section') {{
-                syncServicesSection(doc);
-              }} else {{
-                replaceSectionFromDoc(id, doc);
-              }}
-            }});
-            restoreOpenDetails(openDetails);
-            requestAnimationFrame(function() {{
-              restoreScrollState(preservedScrolls);
-              window.scrollTo(0, y);
-            }});
-          }} catch (e) {{}}
-        }}
-
-        function flushPendingUpdate() {{
-          if (!pendingHtml || document.hidden || userIsEditingForm()) return;
-          var htmlText = pendingHtml;
-          pendingHtml = null;
-          applyDocumentText(htmlText);
-        }}
-
-        document.addEventListener('click', function(ev) {{
-          var button = ev.target.closest('[data-copy-target]');
-          if (!button) return;
-          ev.preventDefault();
-          copyTargetText(button);
+      function captureOpenDetails() {{
+        var s = new Set();
+        document.querySelectorAll('details[data-detail-key]').forEach(function(el) {{
+          if (el.open) s.add(el.getAttribute('data-detail-key'));
         }});
-        document.addEventListener('focusout', function() {{
-          requestAnimationFrame(flushPendingUpdate);
-        }}, true);
-        document.addEventListener('visibilitychange', function() {{
-          if (!document.hidden) {{
-            flushPendingUpdate();
-          }}
+        return s;
+      }}
+
+      function restoreOpenDetails(s) {{
+        document.querySelectorAll('details[data-detail-key]').forEach(function(el) {{
+          var k = el.getAttribute('data-detail-key');
+          if (k && s.has(k)) el.open = true;
         }});
+      }}
 
-        function connectLive() {{
-          if (!window.EventSource) return;
-          if (liveSource) {{
-            liveSource.close();
-          }}
-          liveSource = new EventSource('/api/events');
-          liveSource.addEventListener('update', function(ev) {{
-            try {{
-              var payload = JSON.parse(ev.data || '{{}}');
-              applyDocumentText(payload.html || '');
-            }} catch (e) {{}}
-          }});
-          liveSource.onerror = function() {{
-            if (liveSource) {{
-              liveSource.close();
-              liveSource = null;
-            }}
-            if (reconnectTimer) {{
-              window.clearTimeout(reconnectTimer);
-            }}
-            reconnectTimer = window.setTimeout(connectLive, 3000);
-          }};
+      function preserveScrolls() {{
+        var m = {{}};
+        document.querySelectorAll('[data-preserve-scroll]').forEach(function(el) {{
+          if (el.id) m[el.id] = el.scrollTop;
+        }});
+        return m;
+      }}
+
+      function restoreScrolls(m) {{
+        Object.keys(m).forEach(function(id) {{
+          var el = document.getElementById(id);
+          if (el) el.scrollTop = m[id];
+        }});
+      }}
+
+      function replaceSectionFromDoc(id, doc) {{
+        var next = doc.getElementById(id);
+        var cur = document.getElementById(id);
+        if (!next && !cur) return;
+        if (!next && cur) {{ cur.remove(); return; }}
+        if (next && !cur) {{
+          var anchor = document.querySelector('main');
+          if (anchor) anchor.appendChild(next.cloneNode(true));
+          return;
         }}
+        cur.replaceWith(next.cloneNode(true));
+      }}
 
-        connectLive();
-      }})();
-    </script>
-  </body>
+      function syncServicesSection(doc) {{
+        var cur = document.getElementById('services-section');
+        var next = doc.getElementById('services-section');
+        if (!cur || !next) {{ replaceSectionFromDoc('services-section', doc); return; }}
+        var curGrid = cur.querySelector('.services');
+        var nextGrid = next.querySelector('.services');
+        if (!curGrid || !nextGrid) {{ replaceSectionFromDoc('services-section', doc); return; }}
+        var byName = {{}};
+        Array.from(curGrid.querySelectorAll('.svc-card[data-service-name]')).forEach(function(c) {{
+          byName[c.getAttribute('data-service-name')] = c;
+        }});
+        var nextCards = Array.from(nextGrid.children);
+        nextCards.forEach(function(nc, idx) {{
+          if (!curGrid) return;
+          if (!nc.classList.contains('svc-card')) {{ replaceSectionFromDoc('services-section', doc); curGrid = null; return; }}
+          var name = nc.getAttribute('data-service-name');
+          var cc = byName[name];
+          if (!cc) {{
+            cc = nc.cloneNode(true);
+          }} else if (cc.outerHTML !== nc.outerHTML) {{
+            cc.replaceWith(nc.cloneNode(true));
+            cc = curGrid.querySelector('.svc-card[data-service-name="' + name + '"]');
+          }}
+          var slot = curGrid.children[idx] || null;
+          if (cc !== slot) curGrid.insertBefore(cc, slot);
+        }});
+        if (!curGrid) return;
+        Array.from(curGrid.querySelectorAll('.svc-card[data-service-name]')).forEach(function(c) {{
+          if (!nextGrid.querySelector('.svc-card[data-service-name="' + c.getAttribute('data-service-name') + '"]')) c.remove();
+        }});
+      }}
+
+      function applyHtml(htmlText) {{
+        if (!htmlText) return;
+        if (document.hidden || userIsEditingForm()) {{ pendingHtml = htmlText; return; }}
+        try {{
+          var y = window.scrollY;
+          var scrolls = preserveScrolls();
+          var open = captureOpenDetails();
+          var doc = new DOMParser().parseFromString(htmlText, 'text/html');
+          sectionIds.forEach(function(id) {{
+            if (id === 'services-section') syncServicesSection(doc);
+            else replaceSectionFromDoc(id, doc);
+          }});
+          restoreOpenDetails(open);
+          requestAnimationFrame(function() {{ restoreScrolls(scrolls); window.scrollTo(0, y); }});
+        }} catch(e) {{}}
+      }}
+
+      function flushPending() {{
+        if (!pendingHtml || document.hidden || userIsEditingForm()) return;
+        var t = pendingHtml; pendingHtml = null; applyHtml(t);
+      }}
+
+      document.addEventListener('focusout', function() {{ requestAnimationFrame(flushPending); }}, true);
+      document.addEventListener('visibilitychange', function() {{ if (!document.hidden) flushPending(); }});
+
+      function connect() {{
+        if (!window.EventSource) return;
+        if (liveSource) liveSource.close();
+        liveSource = new EventSource('/api/events');
+        liveSource.addEventListener('update', function(ev) {{
+          try {{ applyHtml(JSON.parse(ev.data || '{{}}').html || ''); }} catch(e) {{}}
+        }});
+        liveSource.onerror = function() {{
+          if (liveSource) {{ liveSource.close(); liveSource = null; }}
+          clearTimeout(reconnectTimer);
+          reconnectTimer = setTimeout(connect, 3000);
+        }};
+      }}
+      connect();
+    }})();
+  </script>
+</body>
 </html>
 """
-
 
 class RequestHandler(BaseHTTPRequestHandler):
     dashboard: Dashboard
