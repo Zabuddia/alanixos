@@ -67,6 +67,13 @@
     mode = "0400";
   };
 
+  sops.secrets."cluster/dashboard-password" = {
+    sopsFile = (import ../../secrets/files.nix).cluster;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."sunshine-web-ui-passwords/alan-big-nixos" = {
     sopsFile = (import ../../secrets/files.nix).servicePasswords;
     owner = "buddia";
