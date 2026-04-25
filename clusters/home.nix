@@ -156,7 +156,7 @@ in
       enable = true;
       listenAddress = "127.0.0.1";
       port = 3000;
-      rootUrl = "http://${config.alanix.tailscale.address}:13000/";
+      rootUrl = "https://forgejo.fifefin.com";
       backupDir = "/var/backup/forgejo";
 
       expose = {

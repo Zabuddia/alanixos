@@ -8,9 +8,11 @@ import hashlib
 import json
 import math
 import os
+import pwd
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -129,8 +131,28 @@ def parse_iso_timestamp(value: str | None) -> datetime | None:
         return None
 
 
-def atomic_write_json(path: Path, payload) -> None:
+def atomic_write_json(
+    path: Path,
+    payload,
+    *,
+    owner_uid: int | None = None,
+    owner_gid: int | None = None,
+    mode: int | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        existing_stat = path.stat()
+    except FileNotFoundError:
+        existing_stat = None
+
+    if existing_stat is not None:
+        if owner_uid is None:
+            owner_uid = existing_stat.st_uid
+        if owner_gid is None:
+            owner_gid = existing_stat.st_gid
+        if mode is None:
+            mode = stat.S_IMODE(existing_stat.st_mode)
+
     temp_path = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -143,6 +165,14 @@ def atomic_write_json(path: Path, payload) -> None:
             json.dump(payload, handle, indent=2, sort_keys=True)
             handle.write("\n")
             temp_path = Path(handle.name)
+        if mode is not None:
+            os.chmod(temp_path, mode)
+        if owner_uid is not None or owner_gid is not None:
+            os.chown(
+                temp_path,
+                owner_uid if owner_uid is not None else -1,
+                owner_gid if owner_gid is not None else -1,
+            )
         os.replace(temp_path, path)
     finally:
         if temp_path is not None and temp_path.exists():
@@ -230,6 +260,9 @@ class Controller:
         self.leader_key = self.cluster["leaderKey"]
         self.target = self.cluster["activeTarget"]
         self.repo_user = self.cluster["backup"]["repoUser"]
+        repo_account = pwd.getpwnam(self.repo_user)
+        self.repo_uid = repo_account.pw_uid
+        self.repo_gid = repo_account.pw_gid
         self.password_file = self.cluster["backup"]["passwordFile"]
         self.max_concurrent_backups = max(1, int(self.cluster["backup"].get("maxConcurrent", 2)))
         self.endpoints = self.cluster["endpoints"]
@@ -994,7 +1027,13 @@ class Controller:
                         "repoUri": repo_path,
                         "snapshotSizeBytes": snap_size,
                     }
-                    atomic_write_json(Path(manifest_path), manifest)
+                    atomic_write_json(
+                        Path(manifest_path),
+                        manifest,
+                        owner_uid=self.repo_uid,
+                        owner_gid=self.repo_gid,
+                        mode=0o644,
+                    )
                     self._prune_local_manifests(manifest_dir, retain_days)
                 else:
                     phase = f"replicating to {target['host']}"
@@ -1046,7 +1085,14 @@ class Controller:
                     }
                     self.ensure_backup_generation_current(generation, service_name)
                     self.run_as_backup_user(
-                        ["ssh", target["address"], f"cat > {shlex.quote(manifest_path)}"],
+                        [
+                            "ssh",
+                            target["address"],
+                            (
+                                f"install -m 644 /dev/null {shlex.quote(manifest_path)} "
+                                f"&& cat > {shlex.quote(manifest_path)}"
+                            ),
+                        ],
                         input_text=json.dumps(manifest, indent=2) + "\n",
                     )
                     prune_cmd = (

@@ -6,8 +6,10 @@ import hashlib
 import http.cookies
 import json
 import os
+import pwd
 import secrets
 import shlex
+import stat
 import subprocess
 import sys
 import threading
@@ -145,11 +147,39 @@ def manifest_pin_id(manifest_path: str) -> str:
     return hashlib.sha256(manifest_path.encode("utf-8")).hexdigest()
 
 
-def atomic_write_json(path: Path, payload) -> None:
+def atomic_write_json(
+    path: Path,
+    payload,
+    *,
+    owner_uid: int | None = None,
+    owner_gid: int | None = None,
+    mode: int | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        existing_stat = path.stat()
+    except FileNotFoundError:
+        existing_stat = None
+
+    if existing_stat is not None:
+        if owner_uid is None:
+            owner_uid = existing_stat.st_uid
+        if owner_gid is None:
+            owner_gid = existing_stat.st_gid
+        if mode is None:
+            mode = stat.S_IMODE(existing_stat.st_mode)
+
     temp_path = path.with_name(f".{path.name}.{os.getpid()}.{time.time_ns()}")
     try:
         temp_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        if mode is not None:
+            os.chmod(temp_path, mode)
+        if owner_uid is not None or owner_gid is not None:
+            os.chown(
+                temp_path,
+                owner_uid if owner_uid is not None else -1,
+                owner_gid if owner_gid is not None else -1,
+            )
         os.replace(temp_path, path)
     finally:
         temp_path.unlink(missing_ok=True)
@@ -170,6 +200,10 @@ class Dashboard:
         self.endpoints = self.cluster["endpoints"]
         self.members = self.cluster["priority"]
         self.bootstrap_host = self.cluster["bootstrapHost"]
+        self.repo_user = self.cluster["backup"]["repoUser"]
+        repo_account = pwd.getpwnam(self.repo_user)
+        self.repo_uid = repo_account.pw_uid
+        self.repo_gid = repo_account.pw_gid
         self.recent_events = int(self.dashboard.get("recentEvents", 40))
         self.runtime_dir = Path(os.environ.get("ALANIX_CLUSTER_RUNTIME_DIR", "/run/alanix-cluster"))
         self.admin_queue_dir = self.runtime_dir / "admin-queue"
@@ -185,6 +219,9 @@ class Dashboard:
         self.admin_session_ttl = parse_duration_seconds(self.admin.get("sessionTtl", "12h"))
         self.sessions = {}
         self.sessions_lock = threading.Lock()
+        favicon_path = self.dashboard.get("faviconPath")
+        self.favicon_path = Path(favicon_path) if favicon_path else None
+        self.favicon_bytes = self._load_favicon_bytes()
         self.restic_password_file = self.cluster["backup"]["passwordFile"]
         self.snapshot_size_probes_per_collect = 2
         self.snapshot_size_retry_seconds = 300.0
@@ -195,6 +232,14 @@ class Dashboard:
         self._cached_state: dict | None = None
         t = threading.Thread(target=self._state_collector_loop, daemon=True)
         t.start()
+
+    def _load_favicon_bytes(self) -> bytes | None:
+        if self.favicon_path is None:
+            return None
+        try:
+            return self.favicon_path.read_bytes()
+        except OSError:
+            return None
 
     def _state_collector_loop(self) -> None:
         last_mtime: int | None = None
@@ -545,7 +590,13 @@ class Dashboard:
         self.snapshot_size_retry_at.pop(manifest_key, None)
         updated_payload = dict(payload)
         updated_payload["snapshotSizeBytes"] = snap_size
-        atomic_write_json(manifest_path, updated_payload)
+        atomic_write_json(
+            manifest_path,
+            updated_payload,
+            owner_uid=self.repo_uid,
+            owner_gid=self.repo_gid,
+            mode=0o644,
+        )
         payload["snapshotSizeBytes"] = snap_size
         return snap_size
 
@@ -1062,12 +1113,14 @@ class Dashboard:
         )
 
         # ── page ──────────────────────────────────────────────────────────────
+        favicon_link = '<link rel="icon" href="/favicon.ico" sizes="any">' if self.favicon_bytes else ""
         return f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Alanix · {html.escape(self.cluster["name"])} · {html.escape(self.hostname)}</title>
+  {favicon_link}
   <style>
     :root {{
       --bg: #f5f0e8; --panel: #fffdf8; --border: #d4c8b4;
@@ -1497,6 +1550,18 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         path = urllib.parse.urlsplit(self.path).path
+        if path == "/favicon.ico":
+            if self.dashboard.favicon_bytes is None:
+                self.send_response(404)
+                self.end_headers()
+                return
+            self.respond_bytes(
+                200,
+                self.dashboard.favicon_bytes,
+                "image/x-icon",
+                headers=[("Cache-Control", "public, max-age=3600")],
+            )
+            return
         if path == "/api/events":
             self.handle_event_stream()
             return
