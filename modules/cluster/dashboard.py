@@ -176,7 +176,10 @@ class Dashboard:
         self.runtime_state_file = self.runtime_dir / "controller-state.json"
         self.cluster_data_dir = Path(self.cluster["backup"]["repoBaseDir"]) / self.cluster["name"]
         self.admin = self.dashboard.get("admin", {})
-        self.admin_enabled = bool(self.admin.get("enabled")) and bool(self.admin.get("hashedPasswordFile"))
+        admin_toggle = self.admin.get("enable")
+        if admin_toggle is None:
+            admin_toggle = self.admin.get("enabled")
+        self.admin_enabled = bool(admin_toggle) and bool(self.admin.get("hashedPasswordFile"))
         self.admin_username = self.admin.get("username") or "buddia"
         self.admin_password_file = self.admin.get("hashedPasswordFile")
         self.admin_session_ttl = parse_duration_seconds(self.admin.get("sessionTtl", "12h"))
@@ -844,6 +847,16 @@ class Dashboard:
         else:
             admin_panel_html = ""
 
+        hero_notice_html = ""
+        if admin_enabled and not is_admin:
+            hero_notice_html = (
+                f"<p class='hero-admin-note'>Admin tools are locked. Sign in as <strong>{html.escape(self.admin_username)}</strong> with this computer's normal password.</p>"
+            )
+        elif admin_enabled and is_admin:
+            hero_notice_html = (
+                f"<p class='hero-admin-note'>Admin tools unlocked for <strong>{html.escape(session['username'])}</strong>.</p>"
+            )
+
         hero_actions_html = ""
         if admin_enabled and not is_admin:
             hero_actions_html = "<a class='button button-subtle' href='#admin-tools'>Admin Sign In</a>"
@@ -947,7 +960,7 @@ class Dashboard:
                     )
                     + "</div>"
                     + (
-                        "<details class='admin-import'><summary>Import Existing Snapshot</summary>"
+                        f"<details class='admin-import' data-detail-key='import-{html.escape(service_name)}'><summary>Import Existing Snapshot</summary>"
                         "<form method='post' action='/admin/action' class='import-form'>"
                         f"<input type='hidden' name='csrf_token' value='{html.escape(session['csrfToken'])}' />"
                         "<input type='hidden' name='action' value='import-manifest' />"
@@ -1037,7 +1050,7 @@ class Dashboard:
                 f"{current_operation_html}"
                 f"{admin_actions_html}"
                 f"<div class='link-row'>{active_links_html}</div>"
-                "<details><summary>Details</summary>"
+                f"<details data-detail-key='service-{html.escape(service_name)}'><summary>Details</summary>"
                 "<div class='details-body'>"
                 f"<div class='detail-row'><span class='detail-label'>Active units</span><span>{active_units_html}</span></div>"
                 f"<div class='detail-row'><span class='detail-label'>Remote targets</span><span>{remote_targets_html}</span></div>"
@@ -1149,6 +1162,11 @@ class Dashboard:
         flex-wrap: wrap;
         justify-content: flex-end;
       }}
+      .hero-admin-note {{
+        margin: 0.45rem 0 0;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }}
       .admin-login,
       .admin-actions,
       .import-form,
@@ -1172,6 +1190,9 @@ class Dashboard:
       }}
       .admin-login input {{ flex: 1 1 12rem; }}
       .admin-actions form {{ margin: 0; }}
+      .admin-actions {{
+        align-items: flex-start;
+      }}
       .admin-message {{
         margin-bottom: 0.8rem;
         color: var(--muted);
@@ -1235,6 +1256,9 @@ class Dashboard:
         word-break: break-word;
         white-space: normal;
         font-size: 0.76rem;
+      }}
+      .service-card details[open] .table-wrap {{
+        margin-right: -0.1rem;
       }}
       /* Hero */
       .hero {{
@@ -1451,10 +1475,11 @@ class Dashboard:
   </head>
   <body>
     <main>
-      <section class="hero">
+      <section id="hero-section" class="hero">
         <div>
           <h1>Alanix Cluster Dashboard</h1>
           <p class="hero-sub">{html.escape(self.hostname)} · {html.escape(state["cluster"]["name"])} · {html.escape(state["generatedAt"])} <span class="refresh-age" id="last-refreshed-age"></span></p>
+          {hero_notice_html}
         </div>
         <div class="hero-actions">
           {hero_actions_html}
@@ -1462,7 +1487,7 @@ class Dashboard:
         </div>
       </section>
 
-      <section class="grid">
+      <section id="metrics-section" class="grid">
         <article class="panel">
           <span class="metric-label">Leader</span>
           <div class="metric-value">{html.escape(leader_summary)}</div>
@@ -1483,14 +1508,14 @@ class Dashboard:
 
       {admin_panel_html}
 
-      <section class="panel section">
+      <section id="cluster-section" class="panel section">
         <h2>Cluster</h2>
         <table class="member-table">
           <tbody>{''.join(member_rows)}</tbody>
         </table>
       </section>
 
-      <details class="panel section">
+      <details id="unit-status-section" class="panel section" data-detail-key="unit-status">
         <summary>Unit Status</summary>
         <table class="unit-table">
           <thead><tr><th>Unit</th><th>State</th><th>Substate</th><th>Enabled</th></tr></thead>
@@ -1498,14 +1523,14 @@ class Dashboard:
         </table>
       </details>
 
-      <section class="section">
+      <section id="services-section" class="section">
         <h2>Services</h2>
         <div class="services">
           {''.join(service_sections) if service_sections else '<div class="panel muted">No clustered services configured yet.</div>'}
         </div>
       </section>
 
-      <section class="section">
+      <section id="events-section" class="section">
         <div class="section-head">
           <h2>Recent Events</h2>
           <div class="section-actions">
@@ -1522,8 +1547,8 @@ class Dashboard:
         <pre id="recent-events" class="events-log" data-preserve-scroll="true">{events_html}</pre>
       </section>
 
-      <section class="section">
-        <details>
+      <section id="raw-section" class="section">
+        <details data-detail-key="raw-json">
           <summary>Raw JSON</summary>
           <div class="details-toolbar">
             <button class="icon-button" type="button" data-copy-target="raw-json" aria-label="Copy raw JSON" title="Copy raw JSON">
@@ -1546,6 +1571,16 @@ class Dashboard:
         var refreshPending = false;
         var liveSource = null;
         var reconnectTimer = null;
+        var sectionIds = [
+          'hero-section',
+          'metrics-section',
+          'admin-tools',
+          'cluster-section',
+          'unit-status-section',
+          'services-section',
+          'events-section',
+          'raw-section'
+        ];
 
         function markInteraction() {{
           lastInteractionAt = Date.now();
@@ -1617,6 +1652,43 @@ class Dashboard:
           }});
         }}
 
+        function captureOpenDetails() {{
+          var openKeys = new Set();
+          document.querySelectorAll('details[data-detail-key]').forEach(function(el) {{
+            if (el.open) {{
+              openKeys.add(el.getAttribute('data-detail-key'));
+            }}
+          }});
+          return openKeys;
+        }}
+
+        function restoreOpenDetails(openKeys) {{
+          document.querySelectorAll('details[data-detail-key]').forEach(function(el) {{
+            var key = el.getAttribute('data-detail-key');
+            if (key && openKeys.has(key)) {{
+              el.open = true;
+            }}
+          }});
+        }}
+
+        function replaceSectionFromDoc(id, doc) {{
+          var next = doc.getElementById(id);
+          var current = document.getElementById(id);
+          if (!next && !current) return;
+          if (!next && current) {{
+            current.remove();
+            return;
+          }}
+          if (next && !current) {{
+            var anchor = document.getElementById('metrics-section') || document.querySelector('main');
+            if (anchor && anchor.parentNode) {{
+              anchor.parentNode.insertBefore(next.cloneNode(true), anchor.nextSibling);
+            }}
+            return;
+          }}
+          current.replaceWith(next.cloneNode(true));
+        }}
+
         document.addEventListener('click', function(ev) {{
           var button = ev.target.closest('[data-copy-target]');
           if (!button) return;
@@ -1641,33 +1713,26 @@ class Dashboard:
           refreshPending = false;
           try {{
             if (document.hidden) return;
-            if (Date.now() - lastInteractionAt < 4000) return;
+            if (Date.now() - lastInteractionAt < 1200) return;
             if (userIsReadingScrollable()) return;
             var selection = window.getSelection ? window.getSelection().toString() : '';
             if (selection) return;
             var y = window.scrollY;
             var preservedScrolls = preserveScrollState();
-            var openIdx = new Set();
-            document.querySelectorAll('main details').forEach(function(el, i) {{
-              if (el.open) openIdx.add(i);
-            }});
+            var openDetails = captureOpenDetails();
             var res = await fetch('/');
             if (!res.ok) return;
             var doc = new DOMParser().parseFromString(await res.text(), 'text/html');
-            var newMain = doc.querySelector('main');
-            var curMain = document.querySelector('main');
-            if (newMain && curMain) {{
-              curMain.innerHTML = newMain.innerHTML;
-              curMain.querySelectorAll('details').forEach(function(el, i) {{
-                if (openIdx.has(i)) el.open = true;
-              }});
-              refreshedAt = Date.now();
-              updateAge();
-              requestAnimationFrame(function() {{
-                restoreScrollState(preservedScrolls);
-                window.scrollTo(0, y);
-              }});
-            }}
+            sectionIds.forEach(function(id) {{
+              replaceSectionFromDoc(id, doc);
+            }});
+            restoreOpenDetails(openDetails);
+            refreshedAt = Date.now();
+            updateAge();
+            requestAnimationFrame(function() {{
+              restoreScrollState(preservedScrolls);
+              window.scrollTo(0, y);
+            }});
           }} catch(e) {{}}
         }}
 
