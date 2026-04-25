@@ -4,9 +4,11 @@ import base64
 import collections
 import concurrent.futures
 import glob
+import hashlib
 import json
 import math
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -108,6 +110,111 @@ def format_duration(seconds: float) -> str:
     return f"{hours}h {minutes}m"
 
 
+def now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def iso_timestamp(value: datetime | None = None) -> str:
+    if value is None:
+        value = now_utc()
+    return value.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def parse_iso_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def atomic_write_json(path: Path, payload) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            delete=False,
+        ) as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            temp_path = Path(handle.name)
+        os.replace(temp_path, path)
+    finally:
+        if temp_path is not None and temp_path.exists():
+            temp_path.unlink(missing_ok=True)
+
+
+def format_bytes(value: int | float | None) -> str:
+    if value is None:
+        return "unknown"
+    size = float(value)
+    units = ["B", "KiB", "MiB", "GiB", "TiB"]
+    unit_index = 0
+    while size >= 1024.0 and unit_index < len(units) - 1:
+        size /= 1024.0
+        unit_index += 1
+    if unit_index == 0:
+        return f"{int(size)} {units[unit_index]}"
+    return f"{size:.1f} {units[unit_index]}"
+
+
+def manifest_pin_id(manifest_path: str) -> str:
+    return hashlib.sha256(manifest_path.encode("utf-8")).hexdigest()
+
+
+def parse_restic_progress_line(line: str) -> dict | None:
+    stripped = line.strip()
+    if not stripped:
+        return None
+
+    if stripped.startswith("{"):
+        try:
+            payload = json.loads(stripped)
+        except json.JSONDecodeError:
+            payload = None
+        if payload:
+            message_type = payload.get("message_type")
+            if message_type == "status":
+                return {
+                    "kind": "progress",
+                    "percent": float(payload.get("percent_done", 0.0)) * 100.0,
+                    "filesDone": payload.get("files_done"),
+                    "totalFiles": payload.get("total_files"),
+                    "bytesDone": payload.get("bytes_done"),
+                    "totalBytes": payload.get("total_bytes"),
+                }
+            if message_type == "summary":
+                return {
+                    "kind": "summary",
+                    "summary": payload,
+                }
+
+    copy_match = re.search(
+        r"\]\s+([0-9]+(?:\.[0-9]+)?)%\s+([0-9]+)\s*/\s*([0-9]+)\s+packs copied",
+        stripped,
+    )
+    if copy_match:
+        return {
+            "kind": "progress",
+            "percent": float(copy_match.group(1)),
+            "packsDone": int(copy_match.group(2)),
+            "totalPacks": int(copy_match.group(3)),
+        }
+
+    if stripped.startswith("snapshot ") and stripped.endswith(" saved"):
+        return {
+            "kind": "summary",
+            "summary": {"message": stripped},
+        }
+
+    return None
+
+
 class EtcdUnavailable(RuntimeError):
     pass
 
@@ -135,6 +242,14 @@ class Controller:
         self.priority_index = self.priority.index(self.hostname)
         self.lease_ttl = int(parse_duration_seconds(self.cluster["etcd"]["leaseTtl"]))
         self.acquisition_step = parse_duration_seconds(self.cluster["etcd"]["acquisitionStep"])
+        self.cluster_data_dir = Path(self.cluster["backup"]["repoBaseDir"]) / self.cluster["name"]
+        self.runtime_dir = Path(os.environ.get("ALANIX_CLUSTER_RUNTIME_DIR", "/run/alanix-cluster"))
+        self.admin_queue_dir = self.runtime_dir / "admin-queue"
+        self.admin_inflight_dir = self.runtime_dir / "admin-inflight"
+        self.runtime_state_file = self.runtime_dir / "controller-state.json"
+        self.runtime_state_lock = threading.Lock()
+        self.service_operations = {name: None for name in self.services}
+        self.operation_history = collections.deque(maxlen=50)
 
         self.keepalive_proc = None
         self.keepalive_reader = None
@@ -155,6 +270,17 @@ class Controller:
         self.running_backups = {}
         self.backup_generation = 0
         self.backup_generation_lock = threading.Lock()
+        self.admin_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="alanix-admin",
+        )
+        self.running_admin_operation = None
+
+        self.runtime_dir.mkdir(parents=True, exist_ok=True)
+        self.admin_queue_dir.mkdir(parents=True, exist_ok=True)
+        self.admin_inflight_dir.mkdir(parents=True, exist_ok=True)
+        self.requeue_stale_admin_requests()
+        self.write_runtime_state()
 
     def run(self, cmd, *, check=True, input_text=None, env=None):
         merged_env = os.environ.copy()
@@ -175,6 +301,44 @@ class Controller:
                 f"stderr:\n{proc.stderr}"
             )
         return proc
+
+    def run_stream(self, cmd, *, check=True, input_text=None, env=None, on_line=None):
+        merged_env = os.environ.copy()
+        if env:
+            merged_env.update(env)
+
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE if input_text is not None else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=merged_env,
+            bufsize=1,
+        )
+
+        if input_text is not None and proc.stdin is not None:
+            proc.stdin.write(input_text)
+            proc.stdin.close()
+
+        output_lines = []
+        assert proc.stdout is not None
+        for raw_line in proc.stdout:
+            line = raw_line.rstrip("\n")
+            output_lines.append(line)
+            if on_line is not None:
+                on_line(line)
+
+        proc.wait()
+        stdout = "\n".join(output_lines)
+        if check and proc.returncode != 0:
+            raise RuntimeError(
+                f"command failed ({proc.returncode}): {' '.join(shlex.quote(part) for part in cmd)}\n"
+                f"stdout:\n{stdout}\n"
+                "stderr:\n"
+            )
+
+        return subprocess.CompletedProcess(cmd, proc.returncode, stdout, "")
 
     def current_etcd_endpoint(self):
         with self.etcd_endpoint_lock:
@@ -242,6 +406,15 @@ class Controller:
             "RESTIC_PASSWORD_FILE": self.password_file,
         }
         return self.run(cmd, check=check, input_text=input_text, env=env)
+
+    def run_as_backup_user_stream(self, args, *, check=True, input_text=None, env=None, on_line=None):
+        cmd = ["runuser", "-u", self.repo_user, "--"] + args
+        merged_env = {
+            "RESTIC_PASSWORD_FILE": self.password_file,
+        }
+        if env:
+            merged_env.update(env)
+        return self.run_stream(cmd, check=check, input_text=input_text, env=merged_env, on_line=on_line)
 
     def get_leader(self):
         proc = self.etcdctl(["get", self.leader_key], check=False)
@@ -412,22 +585,212 @@ class Controller:
         if not self.backup_generation_is_current(generation):
             raise RuntimeError(f"{service_name}: backup cancelled because leadership changed")
 
-    def local_manifests_for_service(self, service_name):
+    def service_manifest_globs(self, service_name):
         service = self.services[service_name]
+        globs = service.get("localManifestGlobs")
+        if globs:
+            return globs
         manifest_glob = service.get("localManifestGlob")
-        if not manifest_glob:
-            return []
-        manifests = []
-        for path in glob.glob(manifest_glob):
-            manifest_path = Path(path)
-            if not manifest_path.exists():
+        if manifest_glob:
+            return [manifest_glob]
+        return []
+
+    def service_import_dir(self, service_name):
+        return self.cluster_data_dir / service_name / "imports"
+
+    def service_pin_dir(self, service_name):
+        return self.cluster_data_dir / service_name / "pins"
+
+    def pin_record_path(self, service_name, manifest_path):
+        return self.service_pin_dir(service_name) / f"{manifest_pin_id(manifest_path)}.json"
+
+    def read_pin_record(self, service_name, manifest_path):
+        pin_path = self.pin_record_path(service_name, manifest_path)
+        if not pin_path.exists():
+            return None
+        try:
+            return json.loads(pin_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return None
+
+    def write_runtime_state(self):
+        with self.runtime_state_lock:
+            payload = {
+                "generatedAt": iso_timestamp(),
+                "hostname": self.hostname,
+                "leaseId": self.lease_id,
+                "leaderRevision": self.leader_revision,
+                "isLeader": self.lease_id is not None,
+                "serviceOperations": self.service_operations,
+                "adminOperation": self.running_admin_operation["state"] if self.running_admin_operation else None,
+                "recentOperations": list(self.operation_history),
+            }
+        atomic_write_json(self.runtime_state_file, payload)
+
+    def start_service_operation(self, service_name, *, action, origin, phase, percent=0.0, requested_by=None):
+        operation = {
+            "service": service_name,
+            "action": action,
+            "origin": origin,
+            "phase": phase,
+            "percent": round(max(0.0, min(100.0, float(percent))), 1),
+            "requestedBy": requested_by,
+            "startedAt": iso_timestamp(),
+            "updatedAt": iso_timestamp(),
+        }
+        with self.runtime_state_lock:
+            self.service_operations[service_name] = operation
+        self.write_runtime_state()
+
+    def update_service_operation(self, service_name, **updates):
+        with self.runtime_state_lock:
+            operation = self.service_operations.get(service_name)
+            if operation is None:
+                return
+            for key, value in updates.items():
+                if value is None and key not in {"summary"}:
+                    continue
+                if key == "percent" and value is not None:
+                    operation[key] = round(max(0.0, min(100.0, float(value))), 1)
+                else:
+                    operation[key] = value
+            operation["updatedAt"] = iso_timestamp()
+        self.write_runtime_state()
+
+    def clear_service_operation(self, service_name, *, status, message, details=None):
+        with self.runtime_state_lock:
+            operation = self.service_operations.get(service_name)
+            if operation is None:
+                history = {
+                    "service": service_name,
+                    "status": status,
+                    "message": message,
+                    "completedAt": iso_timestamp(),
+                }
+            else:
+                history = dict(operation)
+                history.update(
+                    {
+                        "status": status,
+                        "message": message,
+                        "details": details,
+                        "completedAt": iso_timestamp(),
+                    }
+                )
+            self.operation_history.appendleft(history)
+            self.service_operations[service_name] = None
+        self.write_runtime_state()
+
+    def record_operation_history(self, payload):
+        with self.runtime_state_lock:
+            history = dict(payload)
+            history.setdefault("completedAt", iso_timestamp())
+            self.operation_history.appendleft(history)
+        self.write_runtime_state()
+
+    def set_admin_operation_state(self, payload):
+        with self.runtime_state_lock:
+            if self.running_admin_operation is not None:
+                self.running_admin_operation["state"] = payload
+        self.write_runtime_state()
+
+    def requeue_stale_admin_requests(self):
+        for path in sorted(self.admin_inflight_dir.glob("*.json")):
+            target = self.admin_queue_dir / path.name
+            path.replace(target)
+
+    def take_next_admin_request(self):
+        for path in sorted(self.admin_queue_dir.glob("*.json")):
+            inflight_path = self.admin_inflight_dir / path.name
+            try:
+                path.replace(inflight_path)
+            except FileNotFoundError:
                 continue
             try:
-                data = json.loads(manifest_path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
+                payload = json.loads(inflight_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                inflight_path.unlink(missing_ok=True)
+                self.record_operation_history(
+                    {
+                        "action": "admin-request",
+                        "status": "failed",
+                        "message": f"invalid admin request {path.name}: {summarize_error(str(exc))}",
+                    }
+                )
                 continue
-            data["_path"] = str(manifest_path)
-            manifests.append(data)
+            payload["_path"] = str(inflight_path)
+            return payload
+        return None
+
+    def complete_admin_request_file(self, request):
+        request_path = Path(request["_path"])
+        request_path.unlink(missing_ok=True)
+
+    def restic_progress_updater(self, service_name, *, phase, base_percent, percent_span, extra=None):
+        def handle(line):
+            progress = parse_restic_progress_line(line)
+            if progress is None:
+                return
+            if progress["kind"] == "progress":
+                percent = base_percent + percent_span * (progress.get("percent", 0.0) / 100.0)
+                update = {
+                    "phase": phase,
+                    "percent": percent,
+                    "progress": progress,
+                }
+                if extra:
+                    update.update(extra)
+                self.update_service_operation(service_name, **update)
+            elif progress["kind"] == "summary":
+                update = {
+                    "phase": phase,
+                    "percent": base_percent + percent_span,
+                    "summary": progress.get("summary"),
+                }
+                if extra:
+                    update.update(extra)
+                self.update_service_operation(service_name, **update)
+
+        return handle
+
+    def find_manifest(self, service_name, manifest_path):
+        for manifest in self.local_manifests_for_service(service_name):
+            if manifest.get("_path") == manifest_path:
+                return manifest
+        raise RuntimeError(f"{service_name}: manifest not found: {manifest_path}")
+
+    def validate_snapshot_exists(self, repo_path, snapshot_id):
+        proc = self.run(
+            ["restic", "-r", repo_path, "snapshots", snapshot_id, "--json"],
+            env={"RESTIC_PASSWORD_FILE": self.password_file},
+        )
+        try:
+            payload = json.loads(proc.stdout or "[]")
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"invalid restic snapshot response for {repo_path}: {exc}") from exc
+        if not payload:
+            raise RuntimeError(f"snapshot {snapshot_id} not found in {repo_path}")
+        payload.sort(key=lambda item: item.get("time", ""))
+        return payload[-1]
+
+    def local_manifests_for_service(self, service_name):
+        manifests = []
+        seen = set()
+        for manifest_glob in self.service_manifest_globs(service_name):
+            for path in glob.glob(manifest_glob):
+                manifest_path = Path(path)
+                if not manifest_path.exists():
+                    continue
+                manifest_key = str(manifest_path)
+                if manifest_key in seen:
+                    continue
+                seen.add(manifest_key)
+                try:
+                    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+                except json.JSONDecodeError:
+                    continue
+                data["_path"] = str(manifest_path)
+                manifests.append(data)
         return manifests
 
     def freshest_manifest(self, service_name):
@@ -516,22 +879,36 @@ class Controller:
         payload.sort(key=lambda item: item.get("time", ""))
         return payload[-1]["short_id"]
 
-    def backup_service(self, service_name, generation):
+    def backup_service(self, service_name, generation, *, origin="automatic", requested_by=None):
         service = self.services[service_name]
         backup_started_at = time.monotonic()
         target_count = len(service["remoteTargets"])
         self.ensure_backup_generation_current(generation, service_name)
+        self.start_service_operation(
+            service_name,
+            action="backup",
+            origin=origin,
+            phase="preparing backup payload",
+            percent=1.0,
+            requested_by=requested_by,
+        )
         log(f"starting backup for {service_name} to {target_count} target{'s' if target_count != 1 else ''}")
         if service.get("preBackupCommand"):
             prep_started_at = time.monotonic()
             self.run(service["preBackupCommand"])
             self.ensure_backup_generation_current(generation, service_name)
+            self.update_service_operation(
+                service_name,
+                phase="prepared backup payload",
+                percent=5.0,
+            )
             log(f"{service_name}: prepared backup payload in {format_duration(time.monotonic() - prep_started_at)}")
 
         successful_targets = []
         failed_targets = []
+        target_span = 90.0 / max(1, target_count)
 
-        for target in service["remoteTargets"]:
+        for target_index, target in enumerate(service["remoteTargets"]):
             self.ensure_backup_generation_current(generation, service_name)
             target_started_at = time.monotonic()
             try:
@@ -540,13 +917,29 @@ class Controller:
                 remote_dir = os.path.dirname(repo_path)
                 manifest_path = target["manifestPath"]
                 manifest_dir = os.path.dirname(manifest_path)
+                base_percent = 5.0 + target_index * target_span
+                self.update_service_operation(
+                    service_name,
+                    phase=f"replicating to {target['host']}",
+                    percent=base_percent,
+                    currentTarget=target["host"],
+                )
 
                 self.run_as_backup_user(
                     ["ssh", target["address"], f"mkdir -p {shlex.quote(remote_dir)} {shlex.quote(manifest_dir)}"]
                 )
                 self.ensure_restic_repo(remote_uri)
                 self.ensure_backup_generation_current(generation, service_name)
-                self.run_as_backup_user(["restic", "-r", remote_uri, "backup"] + service["backupPaths"])
+                self.run_as_backup_user_stream(
+                    ["restic", "--json", "-r", remote_uri, "backup"] + service["backupPaths"],
+                    on_line=self.restic_progress_updater(
+                        service_name,
+                        phase=f"replicating to {target['host']}",
+                        base_percent=base_percent,
+                        percent_span=target_span,
+                        extra={"currentTarget": target["host"]},
+                    ),
+                )
                 self.ensure_backup_generation_current(generation, service_name)
 
                 snapshot_id = self.latest_snapshot_id(remote_uri)
@@ -566,6 +959,12 @@ class Controller:
                     ["ssh", target["address"], f"cat > {shlex.quote(manifest_path)}"],
                     input_text=json.dumps(manifest, indent=2) + "\n",
                 )
+                self.update_service_operation(
+                    service_name,
+                    phase=f"replicated to {target['host']}",
+                    percent=base_percent + target_span,
+                    currentTarget=target["host"],
+                )
                 successful_targets.append(target["host"])
                 log(
                     f"{service_name}: replicated backup to {target['host']} in "
@@ -578,19 +977,41 @@ class Controller:
                         "error": summarize_error(str(exc)),
                     }
                 )
+                self.update_service_operation(
+                    service_name,
+                    phase=f"failed replication to {target['host']}",
+                    percent=base_percent,
+                    currentTarget=target["host"],
+                    error=summarize_error(str(exc)),
+                )
                 log(
                     f"{service_name}: replication to {target['host']} failed after "
                     f"{format_duration(time.monotonic() - target_started_at)}: {summarize_error(str(exc))}"
                 )
 
-        return {
+        result = {
             "successfulTargets": successful_targets,
             "failedTargets": failed_targets,
             "totalTargets": len(service["remoteTargets"]),
             "durationSeconds": time.monotonic() - backup_started_at,
         }
+        if failed_targets:
+            message = (
+                f"replicated to {len(successful_targets)}/{len(service['remoteTargets'])} targets"
+                if successful_targets
+                else "backup failed on all targets"
+            )
+            self.clear_service_operation(service_name, status="degraded", message=message, details=result)
+        else:
+            self.clear_service_operation(
+                service_name,
+                status="completed",
+                message=f"backup completed in {format_duration(result['durationSeconds'])}",
+                details=result,
+            )
+        return result
 
-    def restore_service(self, service_name, manifest):
+    def restore_service(self, service_name, manifest, *, progress_callback=None):
         service = self.services[service_name]
         repo_path = manifest["repoPath"]
         snapshot_id = manifest["snapshotId"]
@@ -603,9 +1024,10 @@ class Controller:
         )
         restore_root = tempfile.mkdtemp(prefix=f"alanix-cluster-{service_name}-", dir="/var/tmp")
         try:
-            self.run(
-                ["restic", "-r", repo_path, "restore", snapshot_id, "--target", restore_root],
+            self.run_stream(
+                ["restic", "--json", "-r", repo_path, "restore", snapshot_id, "--target", restore_root],
                 env={"RESTIC_PASSWORD_FILE": self.password_file},
+                on_line=progress_callback,
             )
             for backup_path in service["backupPaths"]:
                 source_path = os.path.join(restore_root, backup_path.lstrip("/"))
@@ -628,6 +1050,226 @@ class Controller:
             )
         finally:
             shutil.rmtree(restore_root, ignore_errors=True)
+
+    def verify_manifest(self, service_name, manifest, *, requested_by=None):
+        repo_path = manifest["repoPath"]
+        snapshot_id = manifest["snapshotId"]
+        self.start_service_operation(
+            service_name,
+            action="verify",
+            origin="manual",
+            phase="checking snapshot metadata",
+            percent=5.0,
+            requested_by=requested_by,
+        )
+        snapshot = self.validate_snapshot_exists(repo_path, snapshot_id)
+        self.update_service_operation(
+            service_name,
+            phase="reading a subset of repository data",
+            percent=30.0,
+            snapshot=snapshot.get("short_id") or snapshot_id,
+        )
+        self.run_stream(
+            ["restic", "--json", "-r", repo_path, "check", "--read-data-subset=5%"],
+            env={"RESTIC_PASSWORD_FILE": self.password_file},
+            on_line=self.restic_progress_updater(
+                service_name,
+                phase="reading a subset of repository data",
+                base_percent=30.0,
+                percent_span=65.0,
+            ),
+        )
+        details = {
+            "repoPath": repo_path,
+            "snapshotId": snapshot.get("short_id") or snapshot_id,
+        }
+        self.clear_service_operation(
+            service_name,
+            status="completed",
+            message=f"verified snapshot {details['snapshotId']}",
+            details=details,
+        )
+        return details
+
+    def restore_manifest(self, service_name, manifest, *, requested_by=None):
+        was_active = self.any_managed_unit_active()
+        self.start_service_operation(
+            service_name,
+            action="restore",
+            origin="manual",
+            phase="stopping workloads",
+            percent=2.0,
+            requested_by=requested_by,
+        )
+        if was_active:
+            self.stop_target()
+        try:
+            self.update_service_operation(
+                service_name,
+                phase="restoring snapshot contents",
+                percent=15.0,
+                restoringSnapshot=manifest.get("snapshotId"),
+            )
+            self.restore_service(
+                service_name,
+                manifest,
+                progress_callback=self.restic_progress_updater(
+                    service_name,
+                    phase="restoring snapshot contents",
+                    base_percent=15.0,
+                    percent_span=70.0,
+                ),
+            )
+        except Exception:
+            if was_active and self.lease_id is not None:
+                try:
+                    self.start_target()
+                except Exception as start_exc:
+                    log(f"{service_name}: failed to restart workloads after restore failure: {summarize_error(str(start_exc))}")
+            raise
+
+        self.update_service_operation(
+            service_name,
+            phase="starting workloads",
+            percent=92.0,
+        )
+        if was_active and self.lease_id is not None:
+            self.start_target()
+        self.clear_service_operation(
+            service_name,
+            status="completed",
+            message=f"restored snapshot {manifest.get('snapshotId')}",
+            details={
+                "manifestPath": manifest.get("_path"),
+                "snapshotId": manifest.get("snapshotId"),
+                "repoPath": manifest.get("repoPath"),
+            },
+        )
+
+    def pin_manifest(self, service_name, manifest, *, requested_by=None, note=None):
+        pin_path = self.pin_record_path(service_name, manifest["_path"])
+        record = {
+            "service": service_name,
+            "manifestPath": manifest["_path"],
+            "snapshotId": manifest.get("snapshotId"),
+            "repoPath": manifest.get("repoPath"),
+            "pinnedAt": iso_timestamp(),
+            "requestedBy": requested_by,
+            "note": note or "",
+        }
+        atomic_write_json(pin_path, record)
+        self.record_operation_history(
+            {
+                "service": service_name,
+                "action": "pin",
+                "status": "completed",
+                "message": f"pinned snapshot {manifest.get('snapshotId')}",
+                "requestedBy": requested_by,
+                "details": record,
+            }
+        )
+        return record
+
+    def unpin_manifest(self, service_name, manifest, *, requested_by=None):
+        pin_path = self.pin_record_path(service_name, manifest["_path"])
+        pin_path.unlink(missing_ok=True)
+        record = {
+            "service": service_name,
+            "manifestPath": manifest["_path"],
+            "snapshotId": manifest.get("snapshotId"),
+            "repoPath": manifest.get("repoPath"),
+        }
+        self.record_operation_history(
+            {
+                "service": service_name,
+                "action": "unpin",
+                "status": "completed",
+                "message": f"unpinned snapshot {manifest.get('snapshotId')}",
+                "requestedBy": requested_by,
+                "details": record,
+            }
+        )
+        return record
+
+    def import_manifest(self, service_name, *, repo_path, snapshot_id, source_host=None, note=None, completed_at=None, requested_by=None):
+        repo_path = os.path.abspath(repo_path)
+        if not os.path.isdir(repo_path):
+            raise RuntimeError(f"{service_name}: repo path is not a directory: {repo_path}")
+
+        snapshot = self.validate_snapshot_exists(repo_path, snapshot_id)
+        completed = parse_iso_timestamp(completed_at)
+        if completed is None:
+            completed = parse_iso_timestamp(snapshot.get("time")) or now_utc()
+
+        import_dir = self.service_import_dir(service_name) / (
+            f"import-{datetime.now().strftime('%Y%m%dT%H%M%S')}-{time.time_ns()}"
+        )
+        import_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = import_dir / "manifest.json"
+        manifest = {
+            "service": service_name,
+            "sourceHost": source_host or "manual-import",
+            "leaderRevision": None,
+            "completedAt": iso_timestamp(completed),
+            "snapshotId": snapshot.get("short_id") or snapshot_id,
+            "repoPath": repo_path,
+            "imported": True,
+            "note": note or "",
+            "requestedBy": requested_by,
+        }
+        atomic_write_json(manifest_path, manifest)
+        self.record_operation_history(
+            {
+                "service": service_name,
+                "action": "import",
+                "status": "completed",
+                "message": f"registered imported snapshot {manifest['snapshotId']}",
+                "requestedBy": requested_by,
+                "details": {
+                    "manifestPath": str(manifest_path),
+                    "repoPath": repo_path,
+                    "snapshotId": manifest["snapshotId"],
+                },
+            }
+        )
+        return manifest
+
+    def execute_admin_request(self, request):
+        action = request["action"]
+        service_name = request.get("service")
+        requested_by = request.get("requestedBy")
+
+        if action == "backup-now":
+            return self.backup_service(service_name, self.backup_generation, origin="manual", requested_by=requested_by)
+
+        if action == "verify-manifest":
+            manifest = self.find_manifest(service_name, request["manifestPath"])
+            return self.verify_manifest(service_name, manifest, requested_by=requested_by)
+
+        if action == "restore-manifest":
+            manifest = self.find_manifest(service_name, request["manifestPath"])
+            return self.restore_manifest(service_name, manifest, requested_by=requested_by)
+
+        if action == "pin-manifest":
+            manifest = self.find_manifest(service_name, request["manifestPath"])
+            return self.pin_manifest(service_name, manifest, requested_by=requested_by, note=request.get("note"))
+
+        if action == "unpin-manifest":
+            manifest = self.find_manifest(service_name, request["manifestPath"])
+            return self.unpin_manifest(service_name, manifest, requested_by=requested_by)
+
+        if action == "import-manifest":
+            return self.import_manifest(
+                service_name,
+                repo_path=request["repoPath"],
+                snapshot_id=request["snapshotId"],
+                source_host=request.get("sourceHost"),
+                note=request.get("note"),
+                completed_at=request.get("completedAt"),
+                requested_by=requested_by,
+            )
+
+        raise RuntimeError(f"unsupported admin action: {action}")
 
     def recover_services(self, *, allow_stale=False):
         bootstrap = self.hostname == self.bootstrap_host
@@ -704,6 +1346,8 @@ class Controller:
         }
 
     def schedule_due_backups(self, now):
+        if self.running_admin_operation is not None:
+            return
         available_slots = self.max_concurrent_backups - len(self.running_backups)
         if available_slots <= 0:
             return
@@ -733,8 +1377,21 @@ class Controller:
                 try:
                     future.result()
                 except Exception as exc:
+                    if self.service_operations.get(service_name) is not None:
+                        self.clear_service_operation(
+                            service_name,
+                            status="cancelled",
+                            message="backup result discarded after leadership change",
+                            details={"error": summarize_error(str(exc))},
+                        )
                     log(f"discarded backup result for {service_name} from previous leadership: {summarize_error(str(exc))}")
                 else:
+                    if self.service_operations.get(service_name) is not None:
+                        self.clear_service_operation(
+                            service_name,
+                            status="cancelled",
+                            message="backup result discarded after leadership change",
+                        )
                     log(f"discarded completed backup result for {service_name} from previous leadership")
                 continue
 
@@ -745,6 +1402,12 @@ class Controller:
                 result = future.result()
             except Exception as exc:
                 self.next_backup_at[service_name] = next_due
+                self.clear_service_operation(
+                    service_name,
+                    status="failed",
+                    message=summarize_error(str(exc)),
+                    details={"error": summarize_error(str(exc))},
+                )
                 log(
                     f"backup for {service_name} failed; keeping leader active while replication is degraded: "
                     f"{summarize_error(str(exc))}"
@@ -777,6 +1440,116 @@ class Controller:
                     f"keeping leader active while replication is degraded: {failure_summary}; "
                     f"duration {format_duration(result['durationSeconds'])}"
                 )
+
+    def start_admin_request(self, request):
+        action = request["action"]
+        service_name = request.get("service")
+        requested_by = request.get("requestedBy")
+        submitted_at = request.get("submittedAt") or iso_timestamp()
+
+        if action in {"backup-now", "verify-manifest", "restore-manifest", "pin-manifest", "unpin-manifest", "import-manifest"}:
+            if not service_name or service_name not in self.services:
+                raise RuntimeError(f"unknown service for {action}: {service_name!r}")
+
+        if action == "backup-now" and self.lease_id is None:
+            raise RuntimeError("manual backups may only run on the current leader")
+
+        if action in {"backup-now", "verify-manifest", "restore-manifest"} and self.running_backups:
+            raise RuntimeError("another backup is already running; wait for it to finish and try again")
+
+        state = {
+            "action": action,
+            "service": service_name,
+            "requestedBy": requested_by,
+            "submittedAt": submitted_at,
+            "startedAt": iso_timestamp(),
+            "status": "running",
+        }
+        self.running_admin_operation = {
+            "request": request,
+            "future": self.admin_executor.submit(self.execute_admin_request, request),
+            "state": state,
+        }
+        self.write_runtime_state()
+
+    def fail_admin_request(self, request, message):
+        self.complete_admin_request_file(request)
+        self.record_operation_history(
+            {
+                "service": request.get("service"),
+                "action": request.get("action"),
+                "status": "failed",
+                "requestedBy": request.get("requestedBy"),
+                "message": message,
+                "details": {"request": request},
+            }
+        )
+
+    def collect_finished_admin_operations(self):
+        if self.running_admin_operation is None:
+            return
+
+        future = self.running_admin_operation["future"]
+        if not future.done():
+            return
+
+        request = self.running_admin_operation["request"]
+        action = request["action"]
+        service_name = request.get("service")
+        requested_by = request.get("requestedBy")
+        self.complete_admin_request_file(request)
+
+        try:
+            result = future.result()
+        except Exception as exc:
+            if action in {"pin-manifest", "unpin-manifest", "import-manifest"}:
+                self.record_operation_history(
+                    {
+                        "service": service_name,
+                        "action": action,
+                        "status": "failed",
+                        "requestedBy": requested_by,
+                        "message": summarize_error(str(exc)),
+                    }
+                )
+            elif service_name and self.service_operations.get(service_name) is not None:
+                self.clear_service_operation(
+                    service_name,
+                    status="failed",
+                    message=summarize_error(str(exc)),
+                    details={"error": summarize_error(str(exc))},
+                )
+            else:
+                self.record_operation_history(
+                    {
+                        "service": service_name,
+                        "action": action,
+                        "status": "failed",
+                        "requestedBy": requested_by,
+                        "message": summarize_error(str(exc)),
+                    }
+                )
+        else:
+            if action == "backup-now" and service_name is not None:
+                next_due = time.monotonic() + parse_duration_seconds(self.services[service_name]["backupInterval"])
+                self.next_backup_at[service_name] = next_due
+
+        self.running_admin_operation = None
+        self.write_runtime_state()
+
+    def process_admin_requests(self):
+        self.collect_finished_admin_operations()
+        if self.running_admin_operation is not None:
+            return
+
+        request = self.take_next_admin_request()
+        if request is None:
+            return
+
+        try:
+            self.start_admin_request(request)
+        except Exception as exc:
+            self.fail_admin_request(request, summarize_error(str(exc)))
 
     def tick_active(self):
         if self.keepalive_proc is None or self.keepalive_proc.poll() is not None:
@@ -879,6 +1652,7 @@ class Controller:
         while True:
             try:
                 self.collect_finished_backups()
+                self.process_admin_requests()
                 if self.lease_id is None:
                     self.tick_passive()
                 else:
@@ -888,6 +1662,7 @@ class Controller:
                     self.demote(f"unexpected error while active: {exc}")
                 else:
                     log(f"passive error: {exc}")
+            self.write_runtime_state()
             time.sleep(1)
 
 
