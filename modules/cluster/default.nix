@@ -3477,6 +3477,7 @@ in
         systemd.tmpfiles.rules =
           [
             "d ${cfg.backup.repoBaseDir} 0700 ${cfg.backup.repoUser} users - -"
+            "Z ${cfg.backup.repoBaseDir} - ${cfg.backup.repoUser} users - -"
           ]
           ++ lib.optionals nextcloudCluster [
             "d ${nextcloudCfg.backupDir} 0750 nextcloud ${backupRepoUserGroup} - -"
