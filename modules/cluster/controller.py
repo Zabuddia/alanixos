@@ -250,6 +250,7 @@ class Controller:
         self.runtime_state_lock = threading.Lock()
         self.service_operations = {name: None for name in self.services}
         self.operation_history = collections.deque(maxlen=50)
+        self.last_runtime_state_signature = None
 
         self.keepalive_proc = None
         self.keepalive_reader = None
@@ -280,7 +281,7 @@ class Controller:
         self.admin_queue_dir.mkdir(parents=True, exist_ok=True)
         self.admin_inflight_dir.mkdir(parents=True, exist_ok=True)
         self.requeue_stale_admin_requests()
-        self.write_runtime_state()
+        self.write_runtime_state(force=True)
 
     def run(self, cmd, *, check=True, input_text=None, env=None):
         merged_env = os.environ.copy()
@@ -613,10 +614,9 @@ class Controller:
         except json.JSONDecodeError:
             return None
 
-    def write_runtime_state(self):
+    def write_runtime_state(self, *, force=False):
         with self.runtime_state_lock:
             payload = {
-                "generatedAt": iso_timestamp(),
                 "hostname": self.hostname,
                 "leaseId": self.lease_id,
                 "leaderRevision": self.leader_revision,
@@ -625,7 +625,13 @@ class Controller:
                 "adminOperation": self.running_admin_operation["state"] if self.running_admin_operation else None,
                 "recentOperations": list(self.operation_history),
             }
-        atomic_write_json(self.runtime_state_file, payload)
+        signature = json.dumps(payload, sort_keys=True)
+        if not force and signature == self.last_runtime_state_signature:
+            return
+        self.last_runtime_state_signature = signature
+        payload_with_timestamp = dict(payload)
+        payload_with_timestamp["generatedAt"] = iso_timestamp()
+        atomic_write_json(self.runtime_state_file, payload_with_timestamp)
 
     def start_service_operation(self, service_name, *, action, origin, phase, percent=0.0, requested_by=None):
         operation = {
