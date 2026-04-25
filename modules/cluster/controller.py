@@ -946,8 +946,7 @@ class Controller:
                         currentTargetIndex=target_index + 1,
                         totalTargets=target_count,
                     )
-                    os.makedirs(repo_path, exist_ok=True)
-                    os.makedirs(manifest_dir, exist_ok=True)
+                    self.run_as_backup_user(["mkdir", "-p", repo_path, manifest_dir])
                     self.ensure_restic_repo(repo_path)
                     self.ensure_backup_generation_current(generation, service_name)
                     self.run_as_backup_user_stream(
