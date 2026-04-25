@@ -156,6 +156,32 @@ in
         description = "Number of recent controller events to show in the dashboard.";
       };
 
+      admin = {
+        enable = lib.mkOption {
+          type = types.bool;
+          default = true;
+          description = "Whether the dashboard should allow authenticated admin actions.";
+        };
+
+        username = lib.mkOption {
+          type = types.str;
+          default = cfg.backup.repoUser;
+          description = "Username shown and accepted by the dashboard admin login.";
+        };
+
+        hashedPasswordFile = lib.mkOption {
+          type = types.nullOr types.path;
+          default = lib.attrByPath [ "alanix" "users" "accounts" cfg.backup.repoUser "hashedPasswordFile" ] null config;
+          description = "Path to a shadow-format password hash used for dashboard admin login.";
+        };
+
+        sessionTtl = lib.mkOption {
+          type = types.str;
+          default = "12h";
+          description = "Lifetime for dashboard admin sessions.";
+        };
+      };
+
       expose = serviceExposure.mkOptions {
         serviceName = "cluster-dashboard";
         serviceDescription = "Cluster Dashboard";
@@ -1963,6 +1989,12 @@ in
         ))
       ];
 
+      mkLocalManifestGlobs =
+        serviceName: [
+          "${cfg.backup.repoBaseDir}/${cfg.name}/${serviceName}/from-*/manifest.json"
+          "${cfg.backup.repoBaseDir}/${cfg.name}/${serviceName}/imports/*/manifest.json"
+        ];
+
       controllerConfig = {
         cluster = {
           name = cfg.name;
@@ -1999,6 +2031,12 @@ in
           port = dashboardCfg.port;
           recentEvents = dashboardCfg.recentEvents;
           links = dashboardLinks;
+          admin = {
+            enable = dashboardCfg.admin.enable;
+            username = dashboardCfg.admin.username;
+            hashedPasswordFile = dashboardCfg.admin.hashedPasswordFile;
+            sessionTtl = dashboardCfg.admin.sessionTtl;
+          };
         };
         services =
           (lib.optionalAttrs nextcloudCluster {
@@ -2027,6 +2065,7 @@ in
                   (lib.filter (peer: peer != hostname) cfg.members);
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/nextcloud/from-*/repo";
               localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/nextcloud/from-*/manifest.json";
+              localManifestGlobs = mkLocalManifestGlobs "nextcloud";
               linksByHost = nextcloudLinksByHost;
               torUrl = mkTorUrl nextcloudCfg.expose.tor;
               tor = {
@@ -2060,6 +2099,7 @@ in
                   (lib.filter (peer: peer != hostname) cfg.members);
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/filebrowser/from-*/repo";
               localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/filebrowser/from-*/manifest.json";
+              localManifestGlobs = mkLocalManifestGlobs "filebrowser";
               linksByHost = filebrowserLinksByHost;
               torUrl = mkTorUrl filebrowserCfg.expose.tor;
               tor = {
@@ -2093,6 +2133,7 @@ in
                   (lib.filter (peer: peer != hostname) cfg.members);
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/radicale/from-*/repo";
               localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/radicale/from-*/manifest.json";
+              localManifestGlobs = mkLocalManifestGlobs "radicale";
               linksByHost = radicaleLinksByHost;
               torUrl = mkTorUrl radicaleCfg.expose.tor;
               tor = {
@@ -2126,6 +2167,7 @@ in
                   (lib.filter (peer: peer != hostname) cfg.members);
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-*/repo";
               localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-*/manifest.json";
+              localManifestGlobs = mkLocalManifestGlobs "vaultwarden";
               linksByHost = vaultwardenLinksByHost;
               torUrl = mkTorUrl vaultwardenCfg.expose.tor;
               tor = {
@@ -2158,6 +2200,7 @@ in
                   (lib.filter (peer: peer != hostname) cfg.members);
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-*/repo";
               localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-*/manifest.json";
+              localManifestGlobs = mkLocalManifestGlobs "forgejo";
               linksByHost = forgejoLinksByHost;
               torUrl = mkTorUrl forgejoCfg.expose.tor;
               tor = {
@@ -2191,6 +2234,7 @@ in
                   (lib.filter (peer: peer != hostname) cfg.members);
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/invidious/from-*/repo";
               localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/invidious/from-*/manifest.json";
+              localManifestGlobs = mkLocalManifestGlobs "invidious";
               linksByHost = invidiousLinksByHost;
               torUrl = mkTorUrl invidiousCfg.expose.tor;
               tor = {
@@ -2224,6 +2268,7 @@ in
                   (lib.filter (peer: peer != hostname) cfg.members);
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/immich/from-*/repo";
               localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/immich/from-*/manifest.json";
+              localManifestGlobs = mkLocalManifestGlobs "immich";
               linksByHost = immichLinksByHost;
               torUrl = mkTorUrl immichCfg.expose.tor;
               tor = {
@@ -2256,6 +2301,7 @@ in
                   (lib.filter (peer: peer != hostname) cfg.members);
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/jellyfin/from-*/repo";
               localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/jellyfin/from-*/manifest.json";
+              localManifestGlobs = mkLocalManifestGlobs "jellyfin";
               linksByHost = jellyfinLinksByHost;
               torUrl = mkTorUrl jellyfinCfg.expose.tor;
               tor = {
@@ -2288,6 +2334,7 @@ in
                   (lib.filter (peer: peer != hostname) cfg.members);
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/openwebui/from-*/repo";
               localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/openwebui/from-*/manifest.json";
+              localManifestGlobs = mkLocalManifestGlobs "openwebui";
               linksByHost = openwebuiLinksByHost;
               torUrl = mkTorUrl openwebuiCfg.expose.tor;
               tor = {
@@ -3381,6 +3428,7 @@ in
             etcd
             python3
             systemd
+            whois
           ];
           serviceConfig = {
             Type = "simple";

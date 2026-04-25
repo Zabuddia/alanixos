@@ -2,10 +2,17 @@
 
 import glob
 import html
+import hashlib
+import http.cookies
 import json
+import os
+import secrets
 import shlex
 import subprocess
 import sys
+import threading
+import time
+import urllib.parse
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -61,6 +68,12 @@ def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def iso_timestamp(value: datetime | None = None) -> str:
+    if value is None:
+        value = now_utc()
+    return value.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def format_age(seconds: float | None) -> str:
     if seconds is None:
         return "unknown"
@@ -114,6 +127,34 @@ def build_url(*, scheme: str, host: str, port: int, path: str = "/") -> str:
     return f"{scheme}://{host}{port_suffix}{path}"
 
 
+def format_bytes(value: int | float | None) -> str:
+    if value is None:
+        return "unknown"
+    size = float(value)
+    units = ["B", "KiB", "MiB", "GiB", "TiB"]
+    unit_index = 0
+    while size >= 1024.0 and unit_index < len(units) - 1:
+        size /= 1024.0
+        unit_index += 1
+    if unit_index == 0:
+        return f"{int(size)} {units[unit_index]}"
+    return f"{size:.1f} {units[unit_index]}"
+
+
+def manifest_pin_id(manifest_path: str) -> str:
+    return hashlib.sha256(manifest_path.encode("utf-8")).hexdigest()
+
+
+def atomic_write_json(path: Path, payload) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(f".{path.name}.{os.getpid()}.{time.time_ns()}")
+    try:
+        temp_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        os.replace(temp_path, path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
 
 class Dashboard:
     def __init__(self, config_path: str) -> None:
@@ -130,13 +171,32 @@ class Dashboard:
         self.members = self.cluster["priority"]
         self.bootstrap_host = self.cluster["bootstrapHost"]
         self.recent_events = int(self.dashboard.get("recentEvents", 40))
+        self.runtime_dir = Path(os.environ.get("ALANIX_CLUSTER_RUNTIME_DIR", "/run/alanix-cluster"))
+        self.admin_queue_dir = self.runtime_dir / "admin-queue"
+        self.runtime_state_file = self.runtime_dir / "controller-state.json"
+        self.cluster_data_dir = Path(self.cluster["backup"]["repoBaseDir"]) / self.cluster["name"]
+        self.admin = self.dashboard.get("admin", {})
+        self.admin_enabled = bool(self.admin.get("enabled")) and bool(self.admin.get("hashedPasswordFile"))
+        self.admin_username = self.admin.get("username") or "buddia"
+        self.admin_password_file = self.admin.get("hashedPasswordFile")
+        self.admin_session_ttl = parse_duration_seconds(self.admin.get("sessionTtl", "12h"))
+        self.sessions = {}
+        self.sessions_lock = threading.Lock()
 
-    def run(self, cmd: list[str], *, timeout: float = 5.0, check: bool = True) -> subprocess.CompletedProcess[str]:
+    def run(
+        self,
+        cmd: list[str],
+        *,
+        timeout: float = 5.0,
+        check: bool = True,
+        input_text: str | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         try:
             proc = subprocess.run(
                 cmd,
                 check=False,
                 text=True,
+                input=input_text,
                 capture_output=True,
                 timeout=timeout,
             )
@@ -160,6 +220,117 @@ class Dashboard:
     def etcdctl(self, args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
         cmd = ["etcdctl", f"--endpoints={','.join(self.endpoints)}", "--write-out=json"] + args
         return self.run(cmd, check=check)
+
+    def verify_password(self, username: str, password: str) -> bool:
+        if not self.admin_enabled:
+            return False
+        if username != self.admin_username or not self.admin_password_file:
+            return False
+
+        try:
+            hashed = Path(self.admin_password_file).read_text(encoding="utf-8").strip()
+        except OSError:
+            return False
+        if not hashed:
+            return False
+
+        try:
+            proc = self.run(
+                ["mkpasswd", "-S", hashed, "-s"],
+                timeout=5.0,
+                check=False,
+                input_text=password + "\n",
+            )
+        except Exception:
+            return False
+        if proc.returncode != 0:
+            return False
+        return proc.stdout.strip() == hashed
+
+    def create_session(self, username: str) -> dict:
+        session_id = secrets.token_urlsafe(32)
+        session = {
+            "id": session_id,
+            "username": username,
+            "csrfToken": secrets.token_urlsafe(24),
+            "createdAt": time.time(),
+            "expiresAt": time.time() + self.admin_session_ttl,
+        }
+        with self.sessions_lock:
+            self.sessions[session_id] = session
+        return session
+
+    def cleanup_sessions(self) -> None:
+        now = time.time()
+        with self.sessions_lock:
+            expired = [session_id for session_id, session in self.sessions.items() if session["expiresAt"] <= now]
+            for session_id in expired:
+                self.sessions.pop(session_id, None)
+
+    def session_from_cookie(self, cookie_header: str | None):
+        if not cookie_header:
+            return None
+        self.cleanup_sessions()
+        cookie = http.cookies.SimpleCookie()
+        try:
+            cookie.load(cookie_header)
+        except http.cookies.CookieError:
+            return None
+        morsel = cookie.get("alanix_cluster_session")
+        if morsel is None:
+            return None
+        session_id = morsel.value
+        with self.sessions_lock:
+            session = self.sessions.get(session_id)
+            if session is None:
+                return None
+            if session["expiresAt"] <= time.time():
+                self.sessions.pop(session_id, None)
+                return None
+            session["expiresAt"] = time.time() + self.admin_session_ttl
+            return dict(session)
+
+    def destroy_session(self, session_id: str | None) -> None:
+        if not session_id:
+            return
+        with self.sessions_lock:
+            self.sessions.pop(session_id, None)
+
+    def queue_admin_request(self, payload: dict) -> None:
+        request_id = payload.get("id") or f"{int(time.time())}-{secrets.token_hex(6)}"
+        request = dict(payload)
+        request["id"] = request_id
+        request.setdefault("submittedAt", iso_timestamp())
+        path = self.admin_queue_dir / f"{request_id}.json"
+        atomic_write_json(path, request)
+
+    def controller_runtime_state(self) -> dict:
+        if not self.runtime_state_file.exists():
+            return {}
+        try:
+            return json.loads(self.runtime_state_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return {}
+
+    def queued_admin_requests(self) -> list[dict]:
+        requests = []
+        for path in sorted(self.admin_queue_dir.glob("*.json")):
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            payload["_path"] = str(path)
+            requests.append(payload)
+        return requests
+
+    def service_pin_record(self, service_name: str, manifest_path: str) -> dict | None:
+        pin_path = self.cluster_data_dir / service_name / "pins" / f"{manifest_pin_id(manifest_path)}.json"
+        if not pin_path.exists():
+            return None
+        try:
+            return json.loads(pin_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return None
 
     def get_leader(self) -> dict:
         try:
@@ -321,35 +492,49 @@ class Dashboard:
             return result
 
         manifests = []
-        for path in glob.glob(service["localManifestGlob"]):
-            manifest_path = Path(path)
-            if not manifest_path.exists():
-                continue
-            try:
-                payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                continue
+        manifest_globs = service.get("localManifestGlobs") or [service["localManifestGlob"]]
+        seen = set()
+        for manifest_glob in manifest_globs:
+            for path in glob.glob(manifest_glob):
+                manifest_path = Path(path)
+                if not manifest_path.exists():
+                    continue
+                manifest_key = str(manifest_path)
+                if manifest_key in seen:
+                    continue
+                seen.add(manifest_key)
+                try:
+                    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+                except json.JSONDecodeError:
+                    continue
 
-            completed_at = parse_completed_at(payload.get("completedAt"))
-            age_seconds = None
-            if completed_at is not None:
-                age_seconds = (now_utc() - completed_at).total_seconds()
-            max_age_seconds = parse_duration_seconds(service["maxBackupAge"])
-            fresh = age_seconds is not None and age_seconds <= max_age_seconds
-            manifests.append(
-                {
-                    "path": str(manifest_path),
-                    "service": payload.get("service"),
-                    "sourceHost": payload.get("sourceHost"),
-                    "leaderRevision": payload.get("leaderRevision"),
-                    "completedAt": payload.get("completedAt"),
-                    "snapshotId": payload.get("snapshotId"),
-                    "repoPath": payload.get("repoPath"),
-                    "ageSeconds": age_seconds,
-                    "ageHuman": format_age(age_seconds),
-                    "fresh": fresh,
-                }
-            )
+                completed_at = parse_completed_at(payload.get("completedAt"))
+                age_seconds = None
+                if completed_at is not None:
+                    age_seconds = (now_utc() - completed_at).total_seconds()
+                max_age_seconds = parse_duration_seconds(service["maxBackupAge"])
+                fresh = age_seconds is not None and age_seconds <= max_age_seconds
+                pin = self.service_pin_record(service_name, str(manifest_path))
+                manifests.append(
+                    {
+                        "path": str(manifest_path),
+                        "service": payload.get("service"),
+                        "sourceHost": payload.get("sourceHost"),
+                        "leaderRevision": payload.get("leaderRevision"),
+                        "completedAt": payload.get("completedAt"),
+                        "snapshotId": payload.get("snapshotId"),
+                        "repoPath": payload.get("repoPath"),
+                        "ageSeconds": age_seconds,
+                        "ageHuman": format_age(age_seconds),
+                        "fresh": fresh,
+                        "imported": bool(payload.get("imported")),
+                        "note": payload.get("note") or "",
+                        "requestedBy": payload.get("requestedBy"),
+                        "pinned": pin is not None,
+                        "pinNote": (pin or {}).get("note", ""),
+                        "pinRequestedBy": (pin or {}).get("requestedBy"),
+                    }
+                )
 
         manifests.sort(key=lambda item: item.get("completedAt") or "", reverse=True)
         freshest = manifests[0] if manifests else None
@@ -430,6 +615,8 @@ class Dashboard:
         unit_statuses = {unit: self.unit_status(unit) for unit in self.managed_units()}
         any_active = self.any_workload_active(unit_statuses)
         target_active = unit_statuses.get(self.target, {}).get("ActiveState") == "active"
+        controller_state = self.controller_runtime_state()
+        queued_admin_requests = self.queued_admin_requests()
 
         if leader.get("error"):
             role = {"label": "unknown", "kind": "warn"}
@@ -447,6 +634,9 @@ class Dashboard:
             service_name: self.manifest_state(service_name, service)
             for service_name, service in self.services.items()
         }
+        service_operations = controller_state.get("serviceOperations") or {}
+        for service_name, service_state in services.items():
+            service_state["currentOperation"] = service_operations.get(service_name)
         leader_host = leader.get("host") if leader.get("present") else None
         is_leader = role["label"] in {"leader", "leader-recovering"}
         for service_name, service_state in services.items():
@@ -486,15 +676,25 @@ class Dashboard:
             "dashboardLinks": unique_links(self.dashboard.get("links", [])),
             "units": unit_statuses,
             "services": services,
+            "controllerState": controller_state,
+            "adminQueue": queued_admin_requests,
+            "adminConfig": {
+                "enabled": self.admin_enabled,
+                "username": self.admin_username,
+            },
             "recentEvents": self.recent_controller_events(),
         }
 
-    def render_html(self, state: dict) -> str:
+    def render_html(self, state: dict, *, session: dict | None = None, login_error: str | None = None) -> str:
         leader = state["cluster"]["leader"]
         role = state["cluster"]["role"]
         units = state["units"]
         services = state["services"]
         dashboard_links = state.get("dashboardLinks", [])
+        controller_state = state.get("controllerState") or {}
+        admin_queue = state.get("adminQueue") or []
+        admin_enabled = bool(state.get("adminConfig", {}).get("enabled"))
+        is_admin = session is not None and admin_enabled
 
         leader_summary = "none"
         if leader.get("error"):
@@ -561,6 +761,88 @@ class Dashboard:
                 "</tr>"
             )
 
+        current_admin_operation = controller_state.get("adminOperation")
+        recent_operations = controller_state.get("recentOperations") or []
+        operation_rows = []
+        if current_admin_operation:
+            operation_rows.append(
+                "<tr>"
+                f"<td>{html.escape(current_admin_operation.get('action') or 'operation')}</td>"
+                f"<td>{html.escape(current_admin_operation.get('service') or '-')}</td>"
+                f"<td><span class='badge badge-info'>{html.escape(current_admin_operation.get('status') or 'running')}</span></td>"
+                f"<td class='muted'>{html.escape(current_admin_operation.get('requestedBy') or '-')}</td>"
+                "</tr>"
+            )
+        for request in admin_queue[:6]:
+            operation_rows.append(
+                "<tr>"
+                f"<td>{html.escape(request.get('action') or 'operation')}</td>"
+                f"<td>{html.escape(request.get('service') or '-')}</td>"
+                "<td><span class='badge badge-muted'>queued</span></td>"
+                f"<td class='muted'>{html.escape(request.get('requestedBy') or '-')}</td>"
+                "</tr>"
+            )
+        operations_table = (
+            "<table><thead><tr><th>Action</th><th>Service</th><th>Status</th><th>User</th></tr></thead><tbody>"
+            + ("".join(operation_rows) if operation_rows else "<tr><td colspan='4' class='muted'>No queued or running admin operations.</td></tr>")
+            + "</tbody></table>"
+        )
+
+        recent_operation_rows = []
+        for item in recent_operations[:8]:
+            recent_operation_rows.append(
+                "<tr>"
+                f"<td>{html.escape(item.get('action') or 'operation')}</td>"
+                f"<td>{html.escape(item.get('service') or '-')}</td>"
+                f"<td><span class='badge {badge_class('good' if item.get('status') == 'completed' else 'warn' if item.get('status') in {'degraded', 'cancelled'} else 'bad')}'>"
+                f"{html.escape(item.get('status') or 'unknown')}</span></td>"
+                f"<td class='muted'>{html.escape(item.get('message') or '')}</td>"
+                "</tr>"
+            )
+        recent_operations_table = (
+            "<table><thead><tr><th>Action</th><th>Service</th><th>Status</th><th>Result</th></tr></thead><tbody>"
+            + ("".join(recent_operation_rows) if recent_operation_rows else "<tr><td colspan='4' class='muted'>No recent completed operations yet.</td></tr>")
+            + "</tbody></table>"
+        )
+
+        login_error_html = (
+            f"<div class='admin-message admin-error'>{html.escape(login_error)}</div>"
+            if login_error
+            else ""
+        )
+        if admin_enabled and not is_admin:
+            admin_panel_html = (
+                "<section class='panel section'>"
+                "<div class='section-head'><h2>Admin Tools</h2></div>"
+                "<p class='muted'>Status stays readable for everyone. Sign in to queue backup, verify, restore, pin, and import actions.</p>"
+                f"{login_error_html}"
+                "<form method='post' action='/login' class='admin-login'>"
+                f"<input type='hidden' name='next' value='/' />"
+                f"<input type='text' name='username' value='{html.escape(self.admin_username)}' autocomplete='username' required />"
+                "<input type='password' name='password' autocomplete='current-password' placeholder='Password' required />"
+                "<button type='submit' class='button'>Sign In</button>"
+                "</form>"
+                "</section>"
+            )
+        elif admin_enabled and is_admin:
+            admin_panel_html = (
+                "<section class='panel section'>"
+                "<div class='section-head'>"
+                "<h2>Admin Tools</h2>"
+                "<form method='post' action='/logout'>"
+                f"<input type='hidden' name='csrf_token' value='{html.escape(session['csrfToken'])}' />"
+                "<button type='submit' class='button button-subtle'>Sign Out</button>"
+                "</form>"
+                "</div>"
+                f"<div class='admin-message'>Signed in as <strong>{html.escape(session['username'])}</strong>.</div>"
+                f"{operations_table}"
+                "<div style='margin-top:0.8rem'></div>"
+                f"{recent_operations_table}"
+                "</section>"
+            )
+        else:
+            admin_panel_html = ""
+
         service_sections = []
         for service_name, service in services.items():
             readiness = service["promotionReadiness"]
@@ -599,21 +881,127 @@ class Dashboard:
                     f"<span class='svc-config muted'>every {html.escape(service['backupInterval'])} · max {html.escape(service['maxBackupAge'])}</span>"
                 )
 
+            current_operation = service.get("currentOperation")
+            current_operation_html = ""
+            if current_operation:
+                progress = current_operation.get("progress") or {}
+                detail_bits = []
+                if progress.get("bytesDone") is not None and progress.get("totalBytes") is not None:
+                    detail_bits.append(
+                        f"{format_bytes(progress.get('bytesDone'))} / {format_bytes(progress.get('totalBytes'))}"
+                    )
+                elif progress.get("filesDone") is not None and progress.get("totalFiles") is not None:
+                    detail_bits.append(f"{progress.get('filesDone')} / {progress.get('totalFiles')} files")
+                if current_operation.get("currentTarget"):
+                    detail_bits.append(f"target {current_operation['currentTarget']}")
+                detail_html = (
+                    f"<span class='op-detail'>{html.escape(' · '.join(detail_bits))}</span>"
+                    if detail_bits
+                    else ""
+                )
+                current_operation_html = (
+                    "<div class='operation-card'>"
+                    "<div class='operation-row'>"
+                    f"<strong>{html.escape(current_operation.get('action') or 'operation')}</strong>"
+                    f"<span class='badge {badge_class('info')}'>{html.escape(current_operation.get('phase') or 'running')}</span>"
+                    f"<span class='op-percent'>{html.escape(str(current_operation.get('percent', 0.0)))}%</span>"
+                    "</div>"
+                    f"<div class='progress-bar'><span style='width:{max(0.0, min(100.0, float(current_operation.get('percent', 0.0)))):.1f}%'></span></div>"
+                    f"{detail_html}"
+                    "</div>"
+                )
+
+            admin_actions_html = ""
+            if is_admin and service.get("recoveryMode") != "declarative":
+                manifest_options = "".join(
+                    f"<option value='{html.escape(m['path'])}'>{html.escape(m.get('snapshotId') or 'unknown')} · {html.escape(m.get('completedAt') or 'unknown')}</option>"
+                    for m in manifests[:20]
+                )
+                admin_actions_html = (
+                    "<div class='admin-actions'>"
+                    f"<form method='post' action='/admin/action'><input type='hidden' name='csrf_token' value='{html.escape(session['csrfToken'])}' /><input type='hidden' name='action' value='backup-now' /><input type='hidden' name='service' value='{html.escape(service_name)}' /><button type='submit' class='button'>Backup Now</button></form>"
+                    + (
+                        "<form method='post' action='/admin/action'>"
+                        f"<input type='hidden' name='csrf_token' value='{html.escape(session['csrfToken'])}' />"
+                        "<input type='hidden' name='action' value='verify-manifest' />"
+                        f"<input type='hidden' name='service' value='{html.escape(service_name)}' />"
+                        f"<select name='manifestPath' required>{manifest_options}</select>"
+                        "<button type='submit' class='button button-subtle'>Verify</button>"
+                        "</form>"
+                        "<form method='post' action='/admin/action'>"
+                        f"<input type='hidden' name='csrf_token' value='{html.escape(session['csrfToken'])}' />"
+                        "<input type='hidden' name='action' value='restore-manifest' />"
+                        f"<input type='hidden' name='service' value='{html.escape(service_name)}' />"
+                        f"<select name='manifestPath' required>{manifest_options}</select>"
+                        "<button type='submit' class='button button-danger'>Restore</button>"
+                        "</form>"
+                        if manifest_options
+                        else ""
+                    )
+                    + "</div>"
+                    + (
+                        "<details class='admin-import'><summary>Import Existing Snapshot</summary>"
+                        "<form method='post' action='/admin/action' class='import-form'>"
+                        f"<input type='hidden' name='csrf_token' value='{html.escape(session['csrfToken'])}' />"
+                        "<input type='hidden' name='action' value='import-manifest' />"
+                        f"<input type='hidden' name='service' value='{html.escape(service_name)}' />"
+                        "<input type='text' name='repoPath' placeholder='Local repo path' required />"
+                        "<input type='text' name='snapshotId' placeholder='Snapshot id' required />"
+                        "<input type='text' name='sourceHost' placeholder='Source host (optional)' />"
+                        "<input type='text' name='completedAt' placeholder='Completed at ISO8601 (optional)' />"
+                        "<input type='text' name='note' placeholder='Note (optional)' />"
+                        "<button type='submit' class='button button-subtle'>Register Snapshot</button>"
+                        "</form></details>"
+                    )
+                )
+
             manifest_rows = []
-            for manifest in manifests[:5]:
+            for manifest in manifests[:8]:
+                badges = [
+                    f"<span class='badge {badge_class('good' if manifest.get('fresh') else 'warn')}'>{'fresh' if manifest.get('fresh') else 'stale'}</span>"
+                ]
+                if manifest.get("imported"):
+                    badges.append("<span class='badge badge-info'>imported</span>")
+                if manifest.get("pinned"):
+                    badges.append("<span class='badge badge-good'>pinned</span>")
+                notes = []
+                if manifest.get("note"):
+                    notes.append(manifest["note"])
+                if manifest.get("pinNote"):
+                    notes.append(f"pin: {manifest['pinNote']}")
+
+                action_html = ""
+                if is_admin:
+                    pin_action = "unpin-manifest" if manifest.get("pinned") else "pin-manifest"
+                    pin_label = "Unpin" if manifest.get("pinned") else "Pin"
+                    action_html = (
+                        "<div class='table-actions'>"
+                        "<form method='post' action='/admin/action'>"
+                        f"<input type='hidden' name='csrf_token' value='{html.escape(session['csrfToken'])}' />"
+                        f"<input type='hidden' name='action' value='{pin_action}' />"
+                        f"<input type='hidden' name='service' value='{html.escape(service_name)}' />"
+                        f"<input type='hidden' name='manifestPath' value='{html.escape(manifest['path'])}' />"
+                        "<input type='text' name='note' placeholder='pin note' class='table-note-input' />"
+                        f"<button type='submit' class='button button-inline'>{html.escape(pin_label)}</button>"
+                        "</form>"
+                        "</div>"
+                    )
+
                 manifest_rows.append(
                     "<tr>"
                     f"<td>{html.escape(manifest.get('sourceHost') or 'unknown')}</td>"
                     f"<td class='muted'>{html.escape(manifest.get('snapshotId') or 'unknown')}</td>"
                     f"<td class='muted'>{html.escape(manifest.get('completedAt') or 'unknown')}</td>"
-                    f"<td><span class='badge {badge_class('good' if manifest.get('fresh') else 'warn')}'>{'fresh' if manifest.get('fresh') else 'stale'}</span></td>"
+                    f"<td>{''.join(badges)}{'<div class=\"table-note\">' + html.escape(' · '.join(notes)) + '</div>' if notes else ''}</td>"
+                    f"<td class='muted path-cell'>{html.escape(manifest.get('repoPath') or '')}</td>"
+                    f"<td>{action_html or '<span class=\"muted\">-</span>'}</td>"
                     "</tr>"
                 )
             manifests_table = (
                 "<table><thead><tr>"
-                "<th>Source</th><th>Snapshot</th><th>Completed</th><th>Fresh</th>"
+                "<th>Source</th><th>Snapshot</th><th>Completed</th><th>Status</th><th>Repo</th><th>Actions</th>"
                 "</tr></thead><tbody>"
-                + ("".join(manifest_rows) if manifest_rows else "<tr><td colspan='4' class='muted'>No local manifests</td></tr>")
+                + ("".join(manifest_rows) if manifest_rows else "<tr><td colspan='6' class='muted'>No local manifests</td></tr>")
                 + "</tbody></table>"
             )
 
@@ -639,6 +1027,8 @@ class Dashboard:
                 f"{config_html}"
                 "</div>"
                 f"<div class='manifest-info'>{freshest_html}</div>"
+                f"{current_operation_html}"
+                f"{admin_actions_html}"
                 f"<div class='link-row'>{active_links_html}</div>"
                 "<details><summary>Details</summary>"
                 "<div class='details-body'>"
@@ -721,6 +1111,106 @@ class Dashboard:
         border-radius: 0.875rem;
         padding: 1rem 1.1rem;
         box-shadow: 0 2px 12px rgba(54,43,22,0.055);
+      }}
+      .button {{
+        appearance: none;
+        border: 1px solid rgba(36,69,45,0.18);
+        background: var(--accent);
+        color: #fffdf8;
+        border-radius: 0.7rem;
+        padding: 0.5rem 0.85rem;
+        font: inherit;
+        cursor: pointer;
+      }}
+      .button:hover {{ filter: brightness(1.05); }}
+      .button-subtle {{
+        background: transparent;
+        color: var(--accent);
+      }}
+      .button-danger {{
+        background: var(--bad);
+        border-color: rgba(163,54,42,0.28);
+      }}
+      .button-inline {{
+        padding: 0.35rem 0.55rem;
+        font-size: 0.78rem;
+      }}
+      .admin-login,
+      .admin-actions,
+      .import-form,
+      .table-actions form {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+      }}
+      .admin-login input,
+      .admin-actions select,
+      .import-form input,
+      .table-note-input {{
+        min-width: 0;
+        border: 1px solid rgba(36,69,45,0.18);
+        background: #fffdf8;
+        border-radius: 0.65rem;
+        padding: 0.5rem 0.65rem;
+        font: inherit;
+        color: inherit;
+      }}
+      .admin-login input {{ flex: 1 1 12rem; }}
+      .admin-actions form {{ margin: 0; }}
+      .admin-message {{
+        margin-bottom: 0.8rem;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }}
+      .admin-error {{ color: var(--bad); }}
+      .admin-import {{
+        margin-top: 0.35rem;
+      }}
+      .operation-card {{
+        border: 1px solid rgba(36,69,45,0.12);
+        border-radius: 0.8rem;
+        padding: 0.75rem 0.85rem;
+        background: rgba(36,69,45,0.04);
+      }}
+      .operation-row {{
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.45rem;
+      }}
+      .op-percent {{
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 0.82rem;
+      }}
+      .op-detail {{
+        display: block;
+        margin-top: 0.35rem;
+        color: var(--muted);
+        font-size: 0.82rem;
+      }}
+      .progress-bar {{
+        height: 0.45rem;
+        background: rgba(36,69,45,0.10);
+        border-radius: 999px;
+        overflow: hidden;
+      }}
+      .progress-bar span {{
+        display: block;
+        height: 100%;
+        background: linear-gradient(90deg, #406e4a, #82a55d);
+      }}
+      .table-actions form {{ margin: 0; }}
+      .table-note {{
+        margin-top: 0.3rem;
+        color: var(--muted);
+        font-size: 0.78rem;
+      }}
+      .path-cell {{
+        max-width: 16rem;
+        word-break: break-all;
       }}
       /* Hero */
       .hero {{
@@ -957,6 +1447,8 @@ class Dashboard:
         </article>
       </section>
 
+      {admin_panel_html}
+
       <section class="panel section">
         <h2>Cluster</h2>
         <table class="member-table">
@@ -1146,33 +1638,116 @@ class Dashboard:
 class RequestHandler(BaseHTTPRequestHandler):
     dashboard: Dashboard
 
+    def current_session(self):
+        return self.dashboard.session_from_cookie(self.headers.get("Cookie"))
+
+    def parse_form_body(self) -> dict[str, str]:
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        raw = self.rfile.read(length).decode("utf-8") if length > 0 else ""
+        parsed = urllib.parse.parse_qs(raw, keep_blank_values=True)
+        return {key: values[-1] for key, values in parsed.items()}
+
+    def csrf_valid(self, session: dict | None, form: dict[str, str]) -> bool:
+        if session is None:
+            return False
+        return secrets.compare_digest(form.get("csrf_token", ""), session.get("csrfToken", ""))
+
+    def respond_bytes(self, status: int, payload: bytes, content_type: str, *, headers: list[tuple[str, str]] | None = None):
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(payload)))
+        if headers:
+            for key, value in headers:
+                self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def redirect(self, location: str, *, headers: list[tuple[str, str]] | None = None):
+        self.send_response(303)
+        self.send_header("Location", location)
+        if headers:
+            for key, value in headers:
+                self.send_header(key, value)
+        self.end_headers()
+
     def do_GET(self) -> None:  # noqa: N802
+        session = self.current_session()
         state = self.dashboard.collect()
-        if self.path == "/api/status":
+        path = urllib.parse.urlsplit(self.path).path
+        if path == "/api/status":
             payload = json.dumps(state, indent=2).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
+            self.respond_bytes(200, payload, "application/json; charset=utf-8")
             return
 
-        if self.path in {"/", ""}:
-            payload = self.dashboard.render_html(state).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
+        if path in {"/", ""}:
+            payload = self.dashboard.render_html(state, session=session).encode("utf-8")
+            self.respond_bytes(200, payload, "text/html; charset=utf-8")
             return
 
-        if self.path == "/healthz":
+        if path == "/healthz":
             payload = b"ok\n"
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
+            self.respond_bytes(200, payload, "text/plain; charset=utf-8")
+            return
+
+        self.send_response(404)
+        self.end_headers()
+
+    def do_POST(self) -> None:  # noqa: N802
+        session = self.current_session()
+        form = self.parse_form_body()
+        path = urllib.parse.urlsplit(self.path).path
+
+        if path == "/login":
+            username = form.get("username", "")
+            password = form.get("password", "")
+            if not self.dashboard.verify_password(username, password):
+                state = self.dashboard.collect()
+                payload = self.dashboard.render_html(
+                    state,
+                    session=None,
+                    login_error="Sign-in failed. Check the password and try again.",
+                ).encode("utf-8")
+                self.respond_bytes(401, payload, "text/html; charset=utf-8")
+                return
+
+            session = self.dashboard.create_session(username)
+            cookie = (
+                f"alanix_cluster_session={session['id']}; Path=/; HttpOnly; SameSite=Strict"
+            )
+            self.redirect("/", headers=[("Set-Cookie", cookie)])
+            return
+
+        if path == "/logout":
+            if session is not None and not self.csrf_valid(session, form):
+                payload = b"forbidden\n"
+                self.respond_bytes(403, payload, "text/plain; charset=utf-8")
+                return
+            if session is not None:
+                self.dashboard.destroy_session(session.get("id"))
+            cookie = "alanix_cluster_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"
+            self.redirect("/", headers=[("Set-Cookie", cookie)])
+            return
+
+        if path == "/admin/action":
+            if session is None or not self.csrf_valid(session, form):
+                payload = b"forbidden\n"
+                self.respond_bytes(403, payload, "text/plain; charset=utf-8")
+                return
+
+            action = form.get("action", "")
+            request = {
+                "action": action,
+                "service": form.get("service"),
+                "manifestPath": form.get("manifestPath"),
+                "repoPath": form.get("repoPath"),
+                "snapshotId": form.get("snapshotId"),
+                "sourceHost": form.get("sourceHost"),
+                "completedAt": form.get("completedAt"),
+                "note": form.get("note"),
+                "requestedBy": session["username"],
+            }
+            self.dashboard.queue_admin_request(request)
+            self.redirect("/")
             return
 
         self.send_response(404)
