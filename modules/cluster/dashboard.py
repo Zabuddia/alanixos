@@ -227,25 +227,59 @@ class Dashboard:
 
     def verify_password(self, username: str, password: str) -> bool:
         if not self.admin_enabled:
+            print("alanix-dashboard auth: rejected because admin auth is disabled", file=sys.stderr, flush=True)
             return False
         if username != self.admin_username or not self.admin_password_file:
+            print(
+                f"alanix-dashboard auth: rejected username={username!r} expected={self.admin_username!r} "
+                f"password_file_present={bool(self.admin_password_file)}",
+                file=sys.stderr,
+                flush=True,
+            )
             return False
 
-        for hashed in self.password_hash_candidates(username):
+        candidates = self.password_hash_candidates(username)
+        if not candidates:
+            print(
+                f"alanix-dashboard auth: no password hashes available for {username!r}",
+                file=sys.stderr,
+                flush=True,
+            )
+            return False
+
+        for source, hashed in candidates:
+            normalized = self.normalize_password_hash(hashed)
+            if not normalized:
+                continue
             try:
                 proc = self.run(
-                    ["mkpasswd", "-S", hashed, "-s"],
+                    ["mkpasswd", "-S", normalized, "-s"],
                     timeout=5.0,
                     check=False,
                     input_text=password + "\n",
                 )
             except Exception:
+                print(
+                    f"alanix-dashboard auth: verifier execution failed for source={source}",
+                    file=sys.stderr,
+                    flush=True,
+                )
                 continue
-            if proc.returncode == 0 and secrets.compare_digest(proc.stdout.strip(), hashed):
+            if proc.returncode == 0 and secrets.compare_digest(proc.stdout.strip(), normalized):
+                print(
+                    f"alanix-dashboard auth: successful login for {username!r} via {source}",
+                    file=sys.stderr,
+                    flush=True,
+                )
                 return True
+        print(
+            f"alanix-dashboard auth: password mismatch for {username!r}; sources={[source for source, _ in candidates]}",
+            file=sys.stderr,
+            flush=True,
+        )
         return False
 
-    def password_hash_candidates(self, username: str) -> list[str]:
+    def password_hash_candidates(self, username: str) -> list[tuple[str, str]]:
         candidates = []
 
         getent_path = shutil.which("getent")
@@ -264,17 +298,23 @@ class Dashboard:
                 if len(parts) >= 2:
                     shadow_hash = parts[1].strip()
                     if shadow_hash and shadow_hash not in {"!", "*", "x"}:
-                        candidates.append(shadow_hash)
+                        candidates.append(("shadow", shadow_hash))
 
         if self.admin_password_file:
             try:
                 hashed = Path(self.admin_password_file).read_text(encoding="utf-8").strip()
             except OSError:
                 hashed = ""
-            if hashed and hashed not in {"!", "*", "x"} and hashed not in candidates:
-                candidates.append(hashed)
+            if hashed and hashed not in {"!", "*", "x"} and hashed not in [value for _, value in candidates]:
+                candidates.append(("configured", hashed))
 
         return candidates
+
+    def normalize_password_hash(self, hashed: str) -> str:
+        cleaned = hashed.strip()
+        while cleaned.startswith(("!", "*")):
+            cleaned = cleaned[1:]
+        return cleaned
 
     def create_session(self, username: str) -> dict:
         session_id = secrets.token_urlsafe(32)
@@ -848,7 +888,8 @@ class Dashboard:
                 f"{login_error_html}"
                 "<form method='post' action='/login' class='admin-login'>"
                 f"<input type='hidden' name='next' value='/' />"
-                f"<input type='text' name='username' value='{html.escape(self.admin_username)}' autocomplete='username' required />"
+                f"<input type='hidden' name='username' value='{html.escape(self.admin_username)}' />"
+                f"<span class='badge badge-info'>admin {html.escape(self.admin_username)}</span>"
                 "<input type='password' name='password' autocomplete='current-password' placeholder='Password' required />"
                 "<button type='submit' class='button'>Sign In</button>"
                 "</form>"
@@ -882,21 +923,10 @@ class Dashboard:
             hero_notice_html = (
                 f"<p class='hero-admin-note'>Admin tools unlocked for <strong>{html.escape(session['username'])}</strong>.</p>"
             )
-        if login_error:
-            hero_notice_html += f"<div class='admin-message admin-error'>{html.escape(login_error)}</div>"
 
         hero_actions_html = ""
         if admin_enabled and not is_admin:
-            hero_actions_html = (
-                "<a class='button button-subtle' href='#admin-tools'>Admin Tools</a>"
-                "<form method='post' action='/login' class='admin-login hero-login'>"
-                f"<input type='hidden' name='next' value='/' />"
-                f"<input type='hidden' name='username' value='{html.escape(self.admin_username)}' />"
-                f"<span class='badge badge-info'>admin {html.escape(self.admin_username)}</span>"
-                "<input type='password' name='password' autocomplete='current-password' placeholder='Current password' required />"
-                "<button type='submit' class='button'>Sign In</button>"
-                "</form>"
-            )
+            hero_actions_html = "<a class='button button-subtle' href='#admin-tools'>Admin Tools</a>"
         elif admin_enabled and is_admin:
             hero_actions_html = "<a class='button button-subtle' href='#admin-tools'>Admin Tools</a>"
 
@@ -943,16 +973,18 @@ class Dashboard:
             if current_operation:
                 progress = current_operation.get("progress") or {}
                 detail_bits = []
+                overall_percent = float(current_operation.get("percent", 0.0))
+                step_percent = progress.get("percent")
                 if current_operation.get("currentTargetIndex") and current_operation.get("totalTargets"):
                     detail_bits.append(
-                        f"overall {current_operation.get('percent', 0.0):.1f}% ({current_operation['currentTargetIndex']}/{current_operation['totalTargets']} targets)"
+                        f"target {current_operation['currentTargetIndex']} of {current_operation['totalTargets']}"
                     )
-                if progress.get("bytesDone") is not None and progress.get("totalBytes") is not None:
+                if progress.get("bytesDone") is not None:
                     detail_bits.append(
-                        f"current target {format_bytes(progress.get('bytesDone'))} / {format_bytes(progress.get('totalBytes'))}"
+                        f"{format_bytes(progress.get('bytesDone'))} processed in current target"
                     )
                 elif progress.get("filesDone") is not None and progress.get("totalFiles") is not None:
-                    detail_bits.append(f"current target {progress.get('filesDone')} / {progress.get('totalFiles')} files")
+                    detail_bits.append(f"{progress.get('filesDone')} files processed in current target")
                 if current_operation.get("currentTarget"):
                     detail_bits.append(f"target {current_operation['currentTarget']}")
                 detail_html = (
@@ -960,14 +992,28 @@ class Dashboard:
                     if detail_bits
                     else ""
                 )
+                step_progress_html = ""
+                if step_percent is not None:
+                    step_percent_value = max(0.0, min(100.0, float(step_percent)))
+                    step_progress_html = (
+                        "<div class='progress-meta'>"
+                        "<span>Current target</span>"
+                        f"<span>{step_percent_value:.1f}%</span>"
+                        "</div>"
+                        f"<div class='progress-bar progress-bar-step'><span style='width:{step_percent_value:.1f}%'></span></div>"
+                    )
                 current_operation_html = (
                     "<div class='operation-card'>"
                     "<div class='operation-row'>"
                     f"<strong>{html.escape(current_operation.get('action') or 'operation')}</strong>"
                     f"<span class='badge {badge_class('info')}'>{html.escape(current_operation.get('phase') or 'running')}</span>"
-                    f"<span class='op-percent'>{current_operation.get('percent', 0.0):.1f}% overall</span>"
                     "</div>"
-                    f"<div class='progress-bar'><span style='width:{max(0.0, min(100.0, float(current_operation.get('percent', 0.0)))):.1f}%'></span></div>"
+                    "<div class='progress-meta'>"
+                    "<span>Overall</span>"
+                    f"<span>{overall_percent:.1f}%</span>"
+                    "</div>"
+                    f"<div class='progress-bar'><span style='width:{max(0.0, min(100.0, overall_percent)):.1f}%'></span></div>"
+                    f"{step_progress_html}"
                     f"{detail_html}"
                     "</div>"
                 )
@@ -1262,27 +1308,35 @@ class Dashboard:
         flex-wrap: wrap;
         margin-bottom: 0.45rem;
       }}
-      .op-percent {{
-        margin-left: auto;
-        color: var(--muted);
-        font-size: 0.82rem;
-      }}
       .op-detail {{
         display: block;
         margin-top: 0.35rem;
         color: var(--muted);
         font-size: 0.82rem;
       }}
+      .progress-meta {{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.6rem;
+        margin-top: 0.35rem;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }}
       .progress-bar {{
         height: 0.45rem;
         background: rgba(36,69,45,0.10);
         border-radius: 999px;
         overflow: hidden;
+        margin-top: 0.2rem;
       }}
       .progress-bar span {{
         display: block;
         height: 100%;
         background: linear-gradient(90deg, #406e4a, #82a55d);
+      }}
+      .progress-bar-step span {{
+        background: linear-gradient(90deg, #245f8d, #6fa2c9);
       }}
       .table-actions form {{ margin: 0; }}
       .table-actions form {{
@@ -1525,7 +1579,7 @@ class Dashboard:
       <section id="hero-section" class="hero">
         <div>
           <h1>Alanix Cluster Dashboard</h1>
-          <p class="hero-sub">{html.escape(self.hostname)} · {html.escape(state["cluster"]["name"])} · {html.escape(state["generatedAt"])} <span class="refresh-age" id="last-refreshed-age"></span></p>
+          <p class="hero-sub">{html.escape(self.hostname)} · {html.escape(state["cluster"]["name"])}</p>
           {hero_notice_html}
         </div>
         <div class="hero-actions">
@@ -1533,6 +1587,8 @@ class Dashboard:
           <span class="badge {badge_class(role['kind'])}">{html.escape(role['label'])}</span>
         </div>
       </section>
+
+      {admin_panel_html}
 
       <section id="metrics-section" class="grid">
         <article class="panel">
@@ -1552,8 +1608,6 @@ class Dashboard:
           <div class="metric-value">{html.escape(units[self.target].get("ActiveState", units[self.target].get("error", "unknown")))}</div>
         </article>
       </section>
-
-      {admin_panel_html}
 
       <section id="cluster-section" class="panel section">
         <h2>Cluster</h2>
@@ -1613,10 +1667,8 @@ class Dashboard:
     </main>
     <script>
       (function() {{
-        var refreshedAt = Date.now();
-        var lastInteractionAt = Date.now();
-        var refreshPending = false;
         var liveSource = null;
+        var pendingHtml = null;
         var reconnectTimer = null;
         var sectionIds = [
           'hero-section',
@@ -1629,19 +1681,7 @@ class Dashboard:
           'raw-section'
         ];
 
-        function markInteraction() {{
-          lastInteractionAt = Date.now();
-        }}
-
-        function updateAge() {{
-          var el = document.getElementById('last-refreshed-age');
-          if (!el) return;
-          var s = Math.floor((Date.now() - refreshedAt) / 1000);
-          el.textContent = '(' + s + 's ago)';
-        }}
-
         async function copyTargetText(button) {{
-          markInteraction();
           var targetId = button.getAttribute('data-copy-target');
           if (!targetId) return;
           var el = document.getElementById(targetId);
@@ -1686,16 +1726,6 @@ class Dashboard:
             if (el) {{
               el.scrollTop = scrolls[id];
             }}
-          }});
-        }}
-
-        function userIsReadingScrollable() {{
-          var active = document.activeElement;
-          if (active && active.hasAttribute && active.hasAttribute('data-preserve-scroll')) {{
-            return true;
-          }}
-          return Array.from(document.querySelectorAll('[data-preserve-scroll]')).some(function(el) {{
-            return el.matches(':hover');
           }});
         }}
 
@@ -1800,41 +1830,17 @@ class Dashboard:
           }});
         }}
 
-        document.addEventListener('click', function(ev) {{
-          var button = ev.target.closest('[data-copy-target]');
-          if (!button) return;
-          ev.preventDefault();
-          copyTargetText(button);
-        }});
-        document.addEventListener('scroll', markInteraction, true);
-        document.addEventListener('wheel', markInteraction, {{ passive: true }});
-        document.addEventListener('touchmove', markInteraction, {{ passive: true }});
-        document.addEventListener('keydown', markInteraction, true);
-        document.addEventListener('pointerdown', markInteraction, true);
-        document.addEventListener('visibilitychange', function() {{
-          if (!document.hidden) {{
-            scheduleRefresh();
+        function applyDocumentText(htmlText) {{
+          if (!htmlText) return;
+          if (document.hidden || userIsEditingForm()) {{
+            pendingHtml = htmlText;
+            return;
           }}
-        }});
-
-        setInterval(updateAge, 1000);
-        updateAge();
-
-        async function refresh() {{
-          refreshPending = false;
           try {{
-            if (document.hidden) return;
-            if (Date.now() - lastInteractionAt < 1200) return;
-            if (userIsReadingScrollable()) return;
-            if (userIsEditingForm()) return;
-            var selection = window.getSelection ? window.getSelection().toString() : '';
-            if (selection) return;
             var y = window.scrollY;
             var preservedScrolls = preserveScrollState();
             var openDetails = captureOpenDetails();
-            var res = await fetch('/');
-            if (!res.ok) return;
-            var doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+            var doc = new DOMParser().parseFromString(htmlText, 'text/html');
             sectionIds.forEach(function(id) {{
               if (id === 'services-section') {{
                 syncServicesSection(doc);
@@ -1843,20 +1849,34 @@ class Dashboard:
               }}
             }});
             restoreOpenDetails(openDetails);
-            refreshedAt = Date.now();
-            updateAge();
             requestAnimationFrame(function() {{
               restoreScrollState(preservedScrolls);
               window.scrollTo(0, y);
             }});
-          }} catch(e) {{}}
+          }} catch (e) {{}}
         }}
 
-        function scheduleRefresh() {{
-          if (refreshPending) return;
-          refreshPending = true;
-          window.setTimeout(refresh, 120);
+        function flushPendingUpdate() {{
+          if (!pendingHtml || document.hidden || userIsEditingForm()) return;
+          var htmlText = pendingHtml;
+          pendingHtml = null;
+          applyDocumentText(htmlText);
         }}
+
+        document.addEventListener('click', function(ev) {{
+          var button = ev.target.closest('[data-copy-target]');
+          if (!button) return;
+          ev.preventDefault();
+          copyTargetText(button);
+        }});
+        document.addEventListener('focusout', function() {{
+          requestAnimationFrame(flushPendingUpdate);
+        }}, true);
+        document.addEventListener('visibilitychange', function() {{
+          if (!document.hidden) {{
+            flushPendingUpdate();
+          }}
+        }});
 
         function connectLive() {{
           if (!window.EventSource) return;
@@ -1864,8 +1884,11 @@ class Dashboard:
             liveSource.close();
           }}
           liveSource = new EventSource('/api/events');
-          liveSource.addEventListener('update', function() {{
-            scheduleRefresh();
+          liveSource.addEventListener('update', function(ev) {{
+            try {{
+              var payload = JSON.parse(ev.data || '{{}}');
+              applyDocumentText(payload.html || '');
+            }} catch (e) {{}}
           }});
           liveSource.onerror = function() {{
             if (liveSource) {{
@@ -1941,7 +1964,14 @@ class RequestHandler(BaseHTTPRequestHandler):
                     else 0
                 )
                 if runtime_mtime != last_runtime_mtime:
-                    payload = json.dumps({"updatedAt": iso_timestamp()}).encode("utf-8")
+                    session = self.current_session()
+                    state = self.dashboard.collect()
+                    payload = json.dumps(
+                        {
+                            "updatedAt": state.get("generatedAt") or iso_timestamp(),
+                            "html": self.dashboard.render_html(state, session=session),
+                        }
+                    ).encode("utf-8")
                     self.wfile.write(b"event: update\n")
                     self.wfile.write(b"data: ")
                     self.wfile.write(payload)
@@ -1953,7 +1983,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     self.wfile.write(b"event: ping\ndata: {}\n\n")
                     self.wfile.flush()
                     last_ping_at = time.time()
-                time.sleep(1.0)
+                time.sleep(0.25)
         except (BrokenPipeError, ConnectionResetError):
             return
 
