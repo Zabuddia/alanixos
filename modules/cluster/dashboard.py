@@ -1300,7 +1300,7 @@ class Dashboard:
       font-family: monospace; font-size: 0.78rem; line-height: 1.55;
       background: #1a211a; color: #dff2dc;
       padding: 0.75rem; border-radius: 0.6rem;
-      overflow: auto; max-height: 18rem; white-space: pre-wrap; word-break: break-all;
+      white-space: pre-wrap; word-break: break-all;
     }}
     /* ── utils ── */
     .muted {{ color: var(--muted); }}
