@@ -929,6 +929,8 @@ class Controller:
                     phase=f"replicating to {target['host']}",
                     percent=base_percent,
                     currentTarget=target["host"],
+                    currentTargetIndex=target_index + 1,
+                    totalTargets=target_count,
                 )
 
                 self.run_as_backup_user(
@@ -943,7 +945,11 @@ class Controller:
                         phase=f"replicating to {target['host']}",
                         base_percent=base_percent,
                         percent_span=target_span,
-                        extra={"currentTarget": target["host"]},
+                        extra={
+                            "currentTarget": target["host"],
+                            "currentTargetIndex": target_index + 1,
+                            "totalTargets": target_count,
+                        },
                     ),
                 )
                 self.ensure_backup_generation_current(generation, service_name)
@@ -970,6 +976,8 @@ class Controller:
                     phase=f"replicated to {target['host']}",
                     percent=base_percent + target_span,
                     currentTarget=target["host"],
+                    currentTargetIndex=target_index + 1,
+                    totalTargets=target_count,
                 )
                 successful_targets.append(target["host"])
                 log(
@@ -988,6 +996,8 @@ class Controller:
                     phase=f"failed replication to {target['host']}",
                     percent=base_percent,
                     currentTarget=target["host"],
+                    currentTargetIndex=target_index + 1,
+                    totalTargets=target_count,
                     error=summarize_error(str(exc)),
                 )
                 log(

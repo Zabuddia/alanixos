@@ -8,6 +8,7 @@ import json
 import os
 import secrets
 import shlex
+import shutil
 import subprocess
 import sys
 import threading
@@ -230,25 +231,50 @@ class Dashboard:
         if username != self.admin_username or not self.admin_password_file:
             return False
 
-        try:
-            hashed = Path(self.admin_password_file).read_text(encoding="utf-8").strip()
-        except OSError:
-            return False
-        if not hashed:
-            return False
+        for hashed in self.password_hash_candidates(username):
+            try:
+                proc = self.run(
+                    ["mkpasswd", "-S", hashed, "-s"],
+                    timeout=5.0,
+                    check=False,
+                    input_text=password + "\n",
+                )
+            except Exception:
+                continue
+            if proc.returncode == 0 and secrets.compare_digest(proc.stdout.strip(), hashed):
+                return True
+        return False
 
-        try:
-            proc = self.run(
-                ["mkpasswd", "-S", hashed, "-s"],
-                timeout=5.0,
-                check=False,
-                input_text=password + "\n",
-            )
-        except Exception:
-            return False
-        if proc.returncode != 0:
-            return False
-        return proc.stdout.strip() == hashed
+    def password_hash_candidates(self, username: str) -> list[str]:
+        candidates = []
+
+        getent_path = shutil.which("getent")
+        if not getent_path:
+            fallback_getent = Path("/run/current-system/sw/bin/getent")
+            if fallback_getent.exists():
+                getent_path = str(fallback_getent)
+
+        if getent_path:
+            try:
+                proc = self.run([getent_path, "shadow", username], timeout=5.0, check=False)
+            except Exception:
+                proc = None
+            if proc is not None and proc.returncode == 0:
+                parts = proc.stdout.strip().split(":")
+                if len(parts) >= 2:
+                    shadow_hash = parts[1].strip()
+                    if shadow_hash and shadow_hash not in {"!", "*", "x"}:
+                        candidates.append(shadow_hash)
+
+        if self.admin_password_file:
+            try:
+                hashed = Path(self.admin_password_file).read_text(encoding="utf-8").strip()
+            except OSError:
+                hashed = ""
+            if hashed and hashed not in {"!", "*", "x"} and hashed not in candidates:
+                candidates.append(hashed)
+
+        return candidates
 
     def create_session(self, username: str) -> dict:
         session_id = secrets.token_urlsafe(32)
@@ -818,7 +844,7 @@ class Dashboard:
                 "<section id='admin-tools' class='panel section'>"
                 "<div class='section-head'><h2>Admin Tools</h2></div>"
                 "<p class='muted'>Status stays readable for everyone. Sign in to queue backup, verify, restore, pin, and import actions.</p>"
-                f"<p class='muted'>Use your normal <strong>{html.escape(self.admin_username)}</strong> system password.</p>"
+                f"<p class='muted'>Use the current <strong>{html.escape(self.admin_username)}</strong> system password for this machine.</p>"
                 f"{login_error_html}"
                 "<form method='post' action='/login' class='admin-login'>"
                 f"<input type='hidden' name='next' value='/' />"
@@ -850,16 +876,27 @@ class Dashboard:
         hero_notice_html = ""
         if admin_enabled and not is_admin:
             hero_notice_html = (
-                f"<p class='hero-admin-note'>Admin tools are locked. Sign in as <strong>{html.escape(self.admin_username)}</strong> with this computer's normal password.</p>"
+                f"<p class='hero-admin-note'>Admin tools are locked. Sign in as <strong>{html.escape(self.admin_username)}</strong> with this computer's current system password.</p>"
             )
         elif admin_enabled and is_admin:
             hero_notice_html = (
                 f"<p class='hero-admin-note'>Admin tools unlocked for <strong>{html.escape(session['username'])}</strong>.</p>"
             )
+        if login_error:
+            hero_notice_html += f"<div class='admin-message admin-error'>{html.escape(login_error)}</div>"
 
         hero_actions_html = ""
         if admin_enabled and not is_admin:
-            hero_actions_html = "<a class='button button-subtle' href='#admin-tools'>Admin Sign In</a>"
+            hero_actions_html = (
+                "<a class='button button-subtle' href='#admin-tools'>Admin Tools</a>"
+                "<form method='post' action='/login' class='admin-login hero-login'>"
+                f"<input type='hidden' name='next' value='/' />"
+                f"<input type='hidden' name='username' value='{html.escape(self.admin_username)}' />"
+                f"<span class='badge badge-info'>admin {html.escape(self.admin_username)}</span>"
+                "<input type='password' name='password' autocomplete='current-password' placeholder='Current password' required />"
+                "<button type='submit' class='button'>Sign In</button>"
+                "</form>"
+            )
         elif admin_enabled and is_admin:
             hero_actions_html = "<a class='button button-subtle' href='#admin-tools'>Admin Tools</a>"
 
@@ -906,12 +943,16 @@ class Dashboard:
             if current_operation:
                 progress = current_operation.get("progress") or {}
                 detail_bits = []
+                if current_operation.get("currentTargetIndex") and current_operation.get("totalTargets"):
+                    detail_bits.append(
+                        f"overall {current_operation.get('percent', 0.0):.1f}% ({current_operation['currentTargetIndex']}/{current_operation['totalTargets']} targets)"
+                    )
                 if progress.get("bytesDone") is not None and progress.get("totalBytes") is not None:
                     detail_bits.append(
-                        f"{format_bytes(progress.get('bytesDone'))} / {format_bytes(progress.get('totalBytes'))}"
+                        f"current target {format_bytes(progress.get('bytesDone'))} / {format_bytes(progress.get('totalBytes'))}"
                     )
                 elif progress.get("filesDone") is not None and progress.get("totalFiles") is not None:
-                    detail_bits.append(f"{progress.get('filesDone')} / {progress.get('totalFiles')} files")
+                    detail_bits.append(f"current target {progress.get('filesDone')} / {progress.get('totalFiles')} files")
                 if current_operation.get("currentTarget"):
                     detail_bits.append(f"target {current_operation['currentTarget']}")
                 detail_html = (
@@ -924,7 +965,7 @@ class Dashboard:
                     "<div class='operation-row'>"
                     f"<strong>{html.escape(current_operation.get('action') or 'operation')}</strong>"
                     f"<span class='badge {badge_class('info')}'>{html.escape(current_operation.get('phase') or 'running')}</span>"
-                    f"<span class='op-percent'>{html.escape(str(current_operation.get('percent', 0.0)))}%</span>"
+                    f"<span class='op-percent'>{current_operation.get('percent', 0.0):.1f}% overall</span>"
                     "</div>"
                     f"<div class='progress-bar'><span style='width:{max(0.0, min(100.0, float(current_operation.get('percent', 0.0)))):.1f}%'></span></div>"
                     f"{detail_html}"
@@ -1040,7 +1081,7 @@ class Dashboard:
             ) or "<span class='muted'>Service not running on leader.</span>"
 
             service_sections.append(
-                "<article class='service-card'>"
+                f"<article class='service-card' data-service-name='{html.escape(service_name)}'>"
                 "<div class='service-header'>"
                 f"<h3>{html.escape(service_name)}</h3>"
                 f"<span class='badge {badge_class(readiness_kind)}'>{html.escape(readiness['reason'])}</span>"
@@ -1189,6 +1230,12 @@ class Dashboard:
         color: inherit;
       }}
       .admin-login input {{ flex: 1 1 12rem; }}
+      .hero-login {{
+        justify-content: flex-end;
+      }}
+      .hero-login input {{
+        flex: 0 1 13rem;
+      }}
       .admin-actions form {{ margin: 0; }}
       .admin-actions {{
         align-items: flex-start;
@@ -1652,6 +1699,18 @@ class Dashboard:
           }});
         }}
 
+        function userIsEditingForm() {{
+          var active = document.activeElement;
+          if (!active) return false;
+          if (active.matches && active.matches('input, textarea, select, button')) {{
+            return true;
+          }}
+          if (active.isContentEditable) {{
+            return true;
+          }}
+          return false;
+        }}
+
         function captureOpenDetails() {{
           var openKeys = new Set();
           document.querySelectorAll('details[data-detail-key]').forEach(function(el) {{
@@ -1689,6 +1748,58 @@ class Dashboard:
           current.replaceWith(next.cloneNode(true));
         }}
 
+        function syncServicesSection(doc) {{
+          var currentSection = document.getElementById('services-section');
+          var nextSection = doc.getElementById('services-section');
+          if (!currentSection || !nextSection) {{
+            replaceSectionFromDoc('services-section', doc);
+            return;
+          }}
+
+          var currentContainer = currentSection.querySelector('.services');
+          var nextContainer = nextSection.querySelector('.services');
+          if (!currentContainer || !nextContainer) {{
+            replaceSectionFromDoc('services-section', doc);
+            return;
+          }}
+
+          var currentCardsByName = {{}};
+          Array.from(currentContainer.querySelectorAll('.service-card[data-service-name]')).forEach(function(card) {{
+            currentCardsByName[card.getAttribute('data-service-name')] = card;
+          }});
+
+          var nextCards = Array.from(nextContainer.children);
+          nextCards.forEach(function(nextChild, index) {{
+            if (!nextChild.classList || !nextChild.classList.contains('service-card')) {{
+              replaceSectionFromDoc('services-section', doc);
+              currentContainer = null;
+              return;
+            }}
+            if (!currentContainer) return;
+            var name = nextChild.getAttribute('data-service-name');
+            var currentCard = currentCardsByName[name];
+            if (!currentCard) {{
+              currentCard = nextChild.cloneNode(true);
+            }} else if (currentCard.outerHTML !== nextChild.outerHTML) {{
+              currentCard.replaceWith(nextChild.cloneNode(true));
+              currentCard = currentContainer.querySelector('.service-card[data-service-name="' + name + '"]');
+            }}
+            var expectedSlot = currentContainer.children[index] || null;
+            if (currentCard !== expectedSlot) {{
+              currentContainer.insertBefore(currentCard, expectedSlot);
+            }}
+          }});
+          if (!currentContainer) return;
+
+          Array.from(currentContainer.querySelectorAll('.service-card[data-service-name]')).forEach(function(card) {{
+            var name = card.getAttribute('data-service-name');
+            var stillExists = nextContainer.querySelector('.service-card[data-service-name="' + name + '"]');
+            if (!stillExists) {{
+              card.remove();
+            }}
+          }});
+        }}
+
         document.addEventListener('click', function(ev) {{
           var button = ev.target.closest('[data-copy-target]');
           if (!button) return;
@@ -1715,6 +1826,7 @@ class Dashboard:
             if (document.hidden) return;
             if (Date.now() - lastInteractionAt < 1200) return;
             if (userIsReadingScrollable()) return;
+            if (userIsEditingForm()) return;
             var selection = window.getSelection ? window.getSelection().toString() : '';
             if (selection) return;
             var y = window.scrollY;
@@ -1724,7 +1836,11 @@ class Dashboard:
             if (!res.ok) return;
             var doc = new DOMParser().parseFromString(await res.text(), 'text/html');
             sectionIds.forEach(function(id) {{
-              replaceSectionFromDoc(id, doc);
+              if (id === 'services-section') {{
+                syncServicesSection(doc);
+              }} else {{
+                replaceSectionFromDoc(id, doc);
+              }}
             }});
             restoreOpenDetails(openDetails);
             refreshedAt = Date.now();
@@ -1764,7 +1880,6 @@ class Dashboard:
         }}
 
         connectLive();
-        setInterval(refresh, 30000);
       }})();
     </script>
   </body>
