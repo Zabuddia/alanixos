@@ -904,9 +904,11 @@ class Dashboard:
             cards.append(
                 f"<article class='svc-card' data-service-name='{html.escape(svc_name)}'>"
                 f"<div class='svc-hd'>"
+                f"<div class='svc-hd-top'>"
                 f"<div class='svc-title'><h3>{html.escape(svc_name)}</h3>{b(r_reason, r_kind)}</div>"
-                f"<div class='svc-links'>{links_row}</div>"
                 f"<div class='svc-acts'>{backup_btn}</div>"
+                f"</div>"
+                f"<div class='svc-links'>{links_row}</div>"
                 f"</div>"
                 f"{op_html}"
                 f"<div class='bkp-section'>{blist}</div>"
@@ -1100,11 +1102,12 @@ class Dashboard:
       border-radius: 0.75rem; padding: 0.85rem 1rem;
       display: flex; flex-direction: column; gap: 0.6rem;
     }}
-    .svc-hd {{ display: flex; align-items: flex-start; gap: 0.5rem; flex-wrap: wrap; }}
-    .svc-title {{ display: flex; align-items: center; gap: 0.4rem; flex: 1; min-width: 0; }}
-    .svc-title h3 {{ font-size: 0.95rem; font-weight: 700; }}
+    .svc-hd {{ display: flex; flex-direction: column; gap: 0.35rem; }}
+    .svc-hd-top {{ display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-width: 0; }}
+    .svc-title {{ display: flex; align-items: center; gap: 0.4rem; min-width: 0; overflow: hidden; }}
+    .svc-title h3 {{ font-size: 0.95rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
     .svc-links {{ display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; }}
-    .svc-acts {{ margin-left: auto; display: flex; gap: 0.3rem; align-items: center; }}
+    .svc-acts {{ flex-shrink: 0; display: flex; gap: 0.3rem; align-items: center; }}
     /* ── progress ── */
     .prog-wrap {{
       border: 1px solid rgba(36,69,45,0.12); border-radius: 0.6rem;
@@ -1142,20 +1145,6 @@ class Dashboard:
     .bkp-snap {{ font-family: monospace; font-size: 0.75rem; color: var(--muted); }}
     .bkp-act {{ justify-self: end; }}
     .bkp-note {{ font-size: 0.75rem; display: block; }}
-    /* ── import ── */
-    .import-wrap {{ margin-top: 0.1rem; }}
-    .import-wrap > summary {{
-      cursor: pointer; list-style: none; font-size: 0.78rem;
-      color: var(--muted); user-select: none;
-    }}
-    .import-wrap > summary::-webkit-details-marker {{ display: none; }}
-    .import-wrap > summary::before {{ content: "▸ "; font-size: 0.6rem; }}
-    .import-wrap[open] > summary::before {{ content: "▾ "; }}
-    .import-form {{
-      display: flex; flex-wrap: wrap; gap: 0.35rem;
-      margin-top: 0.4rem; align-items: center;
-    }}
-    .import-form input {{ flex: 1 1 10rem; }}
     /* ── cluster / units tables ── */
     table {{ width: 100%; border-collapse: collapse; font-size: 0.83rem; }}
     th, td {{
@@ -1182,8 +1171,6 @@ class Dashboard:
     .section {{ }}
     @media (max-width: 600px) {{
       .site-hd {{ flex-direction: column; align-items: flex-start; }}
-      .svc-hd {{ flex-direction: column; }}
-      .svc-acts {{ margin-left: 0; }}
       .bkp-row {{ grid-template-columns: 3rem 1fr auto; }}
       .bkp-snap, .bkp-st {{ display: none; }}
     }}
