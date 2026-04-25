@@ -146,8 +146,8 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "5m";
-        maxBackupAge = "15m";
+        backupInterval = "1h";
+        maxBackupAge = "6h";
         sameTorAddress = true;
       };
     };
@@ -185,8 +185,8 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "5m";
-        maxBackupAge = "15m";
+        backupInterval = "1h";
+        maxBackupAge = "6h";
       };
 
       users.buddia = {
@@ -234,8 +234,8 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "15m";
-        maxBackupAge = "1h";
+        backupInterval = "2h";
+        maxBackupAge = "12h";
       };
 
       users = {
@@ -286,8 +286,8 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "15m";
-        maxBackupAge = "1h";
+        backupInterval = "1h";
+        maxBackupAge = "6h";
       };
 
       users.buddia.passwordSecret = "radicale-passwords/buddia";
@@ -327,8 +327,8 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "5m";
-        maxBackupAge = "15m";
+        backupInterval = "1h";
+        maxBackupAge = "6h";
       };
 
       users.buddia = {
@@ -369,8 +369,8 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "15m";
-        maxBackupAge = "1h";
+        backupInterval = "4h";
+        maxBackupAge = "24h";
       };
 
       users.buddia = {
@@ -473,8 +473,8 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "30m";
-        maxBackupAge = "4h";
+        backupInterval = "12h";
+        maxBackupAge = "48h";
       };
     };
 

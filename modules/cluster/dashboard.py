@@ -536,7 +536,7 @@ class Dashboard:
             return result
 
         manifests = []
-        manifest_globs = service.get("localManifestGlobs") or [service["localManifestGlob"]]
+        manifest_globs = [service["localManifestGlob"]]
         seen = set()
         for manifest_glob in manifest_globs:
             for path in glob.glob(manifest_glob):
@@ -774,11 +774,15 @@ class Dashboard:
             fd = prog.get("filesDone")
             tf = prog.get("totalFiles")
             stats: list[str] = []
-            if bd is not None and tb:
+            # Only show bytes/files when the current sub-step is still in flight.
+            # If bytesDone >= totalBytes the sub-step finished and the stale numbers
+            # would contradict the overall percent (e.g. 239/239 MiB at 50%).
+            step_in_flight = bd is not None and tb and bd < tb
+            if step_in_flight:
                 stats.append(f"{format_bytes(bd)} / {format_bytes(tb)}")
-            elif bd is not None:
+            elif bd is not None and not tb:
                 stats.append(format_bytes(bd))
-            elif fd is not None and tf:
+            elif fd is not None and tf and fd < tf:
                 stats.append(f"{fd} / {tf} files")
             ti = op.get("currentTargetIndex")
             tt = op.get("totalTargets")
@@ -819,8 +823,7 @@ class Dashboard:
 
         # ── ops banner ────────────────────────────────────────────────────────
         cur_admin_op = controller_state.get("adminOperation")
-        recent_ops = controller_state.get("recentOperations") or []
-        if is_admin and (cur_admin_op or admin_queue or recent_ops):
+        if is_admin and (cur_admin_op or admin_queue):
             rows: list[str] = []
             if cur_admin_op:
                 rows.append(
@@ -836,18 +839,9 @@ class Dashboard:
                     f"<td>{b('queued','muted')}</td>"
                     f"<td class='muted'>{html.escape(q.get('requestedBy',''))}</td></tr>"
                 )
-            if not rows:
-                for r in recent_ops[:4]:
-                    sk = "good" if r.get("status") == "completed" else "warn"
-                    rows.append(
-                        f"<tr class='muted'><td>{html.escape(r.get('action',''))}</td>"
-                        f"<td>{html.escape(r.get('service',''))}</td>"
-                        f"<td>{b(r.get('status','done'), sk)}</td>"
-                        f"<td>{html.escape(r.get('message',''))}</td></tr>"
-                    )
             ops_banner = (
                 f"<section id='ops-banner' class='panel section'>"
-                f"<div class='sh'><h2>Operations</h2></div>"
+                f"<div class='sh'><h2>Admin Operations</h2></div>"
                 f"<table><thead><tr><th>Action</th><th>Service</th><th>Status</th><th>By</th></tr></thead>"
                 f"<tbody>{''.join(rows)}</tbody></table></section>"
             )
@@ -907,24 +901,6 @@ class Dashboard:
                     f"<div class='bkp-list'>{''.join(brows)}</div>"
                 )
 
-            import_html = ""
-            if is_admin and not is_decl:
-                import_html = (
-                    f"<details class='import-wrap' data-detail-key='import-{html.escape(svc_name)}'>"
-                    f"<summary>Import snapshot</summary>"
-                    f"<form method='post' action='/admin/action' class='import-form'>"
-                    f"<input type='hidden' name='csrf_token' value='{csrf}'/>"
-                    f"<input type='hidden' name='action' value='import-manifest'/>"
-                    f"<input type='hidden' name='service' value='{html.escape(svc_name)}'/>"
-                    f"<input type='text' name='repoPath' placeholder='Repo path'/>"
-                    f"<input type='text' name='snapshotId' placeholder='Snapshot ID'/>"
-                    f"<input type='text' name='sourceHost' placeholder='Source host (optional)'/>"
-                    f"<input type='text' name='completedAt' placeholder='Completed at (optional)'/>"
-                    f"<input type='text' name='note' placeholder='Note (optional)'/>"
-                    f"<button type='submit' class='button button-sm button-subtle'>Register</button>"
-                    f"</form></details>"
-                )
-
             cards.append(
                 f"<article class='svc-card' data-service-name='{html.escape(svc_name)}'>"
                 f"<div class='svc-hd'>"
@@ -934,7 +910,6 @@ class Dashboard:
                 f"</div>"
                 f"{op_html}"
                 f"<div class='bkp-section'>{blist}</div>"
-                f"{import_html}"
                 f"</article>"
             )
 

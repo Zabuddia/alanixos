@@ -133,6 +133,14 @@ in
           Backups for the same service are never overlapped.
         '';
       };
+
+      retainDays = lib.mkOption {
+        type = types.ints.positive;
+        default = 7;
+        description = ''
+          Number of days to keep timestamped backup manifests before pruning.
+        '';
+      };
     };
 
     dashboard = {
@@ -1989,11 +1997,9 @@ in
         ))
       ];
 
-      mkLocalManifestGlobs =
-        serviceName: [
-          "${cfg.backup.repoBaseDir}/${cfg.name}/${serviceName}/from-*/manifest.json"
-          "${cfg.backup.repoBaseDir}/${cfg.name}/${serviceName}/imports/*/manifest.json"
-        ];
+      mkLocalManifestGlob =
+        serviceName:
+        "${cfg.backup.repoBaseDir}/${cfg.name}/${serviceName}/from-*/manifest-*.json";
 
       controllerConfig = {
         cluster = {
@@ -2016,6 +2022,7 @@ in
             repoBaseDir = cfg.backup.repoBaseDir;
             passwordFile = config.sops.secrets.${cfg.backup.passwordSecret}.path;
             maxConcurrent = cfg.backup.maxConcurrent;
+            retainDays = cfg.backup.retainDays;
           };
           endpoints =
             map
@@ -2060,12 +2067,15 @@ in
                     host = peer;
                     address = hostTransportAddress peer;
                     repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/nextcloud/from-${hostname}/repo";
-                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/nextcloud/from-${hostname}/manifest.json";
+                    manifestDir = "${cfg.backup.repoBaseDir}/${cfg.name}/nextcloud/from-${hostname}";
                   })
                   (lib.filter (peer: peer != hostname) cfg.members);
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/nextcloud/from-*/repo";
-              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/nextcloud/from-*/manifest.json";
-              localManifestGlobs = mkLocalManifestGlobs "nextcloud";
+              localManifestGlob = mkLocalManifestGlob "nextcloud";
+              localTarget = {
+                repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/nextcloud/from-${hostname}/local-repo";
+                manifestDir = "${cfg.backup.repoBaseDir}/${cfg.name}/nextcloud/from-${hostname}";
+              };
               linksByHost = nextcloudLinksByHost;
               torUrl = mkTorUrl nextcloudCfg.expose.tor;
               tor = {
@@ -2094,12 +2104,15 @@ in
                     host = peer;
                     address = hostTransportAddress peer;
                     repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/filebrowser/from-${hostname}/repo";
-                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/filebrowser/from-${hostname}/manifest.json";
+                    manifestDir = "${cfg.backup.repoBaseDir}/${cfg.name}/filebrowser/from-${hostname}";
                   })
                   (lib.filter (peer: peer != hostname) cfg.members);
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/filebrowser/from-*/repo";
-              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/filebrowser/from-*/manifest.json";
-              localManifestGlobs = mkLocalManifestGlobs "filebrowser";
+              localManifestGlob = mkLocalManifestGlob "filebrowser";
+              localTarget = {
+                repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/filebrowser/from-${hostname}/local-repo";
+                manifestDir = "${cfg.backup.repoBaseDir}/${cfg.name}/filebrowser/from-${hostname}";
+              };
               linksByHost = filebrowserLinksByHost;
               torUrl = mkTorUrl filebrowserCfg.expose.tor;
               tor = {
@@ -2128,12 +2141,15 @@ in
                     host = peer;
                     address = hostTransportAddress peer;
                     repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/radicale/from-${hostname}/repo";
-                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/radicale/from-${hostname}/manifest.json";
+                    manifestDir = "${cfg.backup.repoBaseDir}/${cfg.name}/radicale/from-${hostname}";
                   })
                   (lib.filter (peer: peer != hostname) cfg.members);
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/radicale/from-*/repo";
-              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/radicale/from-*/manifest.json";
-              localManifestGlobs = mkLocalManifestGlobs "radicale";
+              localManifestGlob = mkLocalManifestGlob "radicale";
+              localTarget = {
+                repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/radicale/from-${hostname}/local-repo";
+                manifestDir = "${cfg.backup.repoBaseDir}/${cfg.name}/radicale/from-${hostname}";
+              };
               linksByHost = radicaleLinksByHost;
               torUrl = mkTorUrl radicaleCfg.expose.tor;
               tor = {
@@ -2162,12 +2178,15 @@ in
                     host = peer;
                     address = hostTransportAddress peer;
                     repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-${hostname}/repo";
-                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-${hostname}/manifest.json";
+                    manifestDir = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-${hostname}";
                   })
                   (lib.filter (peer: peer != hostname) cfg.members);
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-*/repo";
-              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-*/manifest.json";
-              localManifestGlobs = mkLocalManifestGlobs "vaultwarden";
+              localManifestGlob = mkLocalManifestGlob "vaultwarden";
+              localTarget = {
+                repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-${hostname}/local-repo";
+                manifestDir = "${cfg.backup.repoBaseDir}/${cfg.name}/vaultwarden/from-${hostname}";
+              };
               linksByHost = vaultwardenLinksByHost;
               torUrl = mkTorUrl vaultwardenCfg.expose.tor;
               tor = {
@@ -2195,12 +2214,15 @@ in
                     host = peer;
                     address = hostTransportAddress peer;
                     repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-${hostname}/repo";
-                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-${hostname}/manifest.json";
+                    manifestDir = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-${hostname}";
                   })
                   (lib.filter (peer: peer != hostname) cfg.members);
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-*/repo";
-              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-*/manifest.json";
-              localManifestGlobs = mkLocalManifestGlobs "forgejo";
+              localManifestGlob = mkLocalManifestGlob "forgejo";
+              localTarget = {
+                repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-${hostname}/local-repo";
+                manifestDir = "${cfg.backup.repoBaseDir}/${cfg.name}/forgejo/from-${hostname}";
+              };
               linksByHost = forgejoLinksByHost;
               torUrl = mkTorUrl forgejoCfg.expose.tor;
               tor = {
@@ -2229,12 +2251,15 @@ in
                     host = peer;
                     address = hostTransportAddress peer;
                     repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/invidious/from-${hostname}/repo";
-                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/invidious/from-${hostname}/manifest.json";
+                    manifestDir = "${cfg.backup.repoBaseDir}/${cfg.name}/invidious/from-${hostname}";
                   })
                   (lib.filter (peer: peer != hostname) cfg.members);
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/invidious/from-*/repo";
-              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/invidious/from-*/manifest.json";
-              localManifestGlobs = mkLocalManifestGlobs "invidious";
+              localManifestGlob = mkLocalManifestGlob "invidious";
+              localTarget = {
+                repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/invidious/from-${hostname}/local-repo";
+                manifestDir = "${cfg.backup.repoBaseDir}/${cfg.name}/invidious/from-${hostname}";
+              };
               linksByHost = invidiousLinksByHost;
               torUrl = mkTorUrl invidiousCfg.expose.tor;
               tor = {
@@ -2263,12 +2288,15 @@ in
                     host = peer;
                     address = hostTransportAddress peer;
                     repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/immich/from-${hostname}/repo";
-                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/immich/from-${hostname}/manifest.json";
+                    manifestDir = "${cfg.backup.repoBaseDir}/${cfg.name}/immich/from-${hostname}";
                   })
                   (lib.filter (peer: peer != hostname) cfg.members);
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/immich/from-*/repo";
-              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/immich/from-*/manifest.json";
-              localManifestGlobs = mkLocalManifestGlobs "immich";
+              localManifestGlob = mkLocalManifestGlob "immich";
+              localTarget = {
+                repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/immich/from-${hostname}/local-repo";
+                manifestDir = "${cfg.backup.repoBaseDir}/${cfg.name}/immich/from-${hostname}";
+              };
               linksByHost = immichLinksByHost;
               torUrl = mkTorUrl immichCfg.expose.tor;
               tor = {
@@ -2296,12 +2324,15 @@ in
                     host = peer;
                     address = hostTransportAddress peer;
                     repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/jellyfin/from-${hostname}/repo";
-                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/jellyfin/from-${hostname}/manifest.json";
+                    manifestDir = "${cfg.backup.repoBaseDir}/${cfg.name}/jellyfin/from-${hostname}";
                   })
                   (lib.filter (peer: peer != hostname) cfg.members);
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/jellyfin/from-*/repo";
-              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/jellyfin/from-*/manifest.json";
-              localManifestGlobs = mkLocalManifestGlobs "jellyfin";
+              localManifestGlob = mkLocalManifestGlob "jellyfin";
+              localTarget = {
+                repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/jellyfin/from-${hostname}/local-repo";
+                manifestDir = "${cfg.backup.repoBaseDir}/${cfg.name}/jellyfin/from-${hostname}";
+              };
               linksByHost = jellyfinLinksByHost;
               torUrl = mkTorUrl jellyfinCfg.expose.tor;
               tor = {
@@ -2329,12 +2360,15 @@ in
                     host = peer;
                     address = hostTransportAddress peer;
                     repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/openwebui/from-${hostname}/repo";
-                    manifestPath = "${cfg.backup.repoBaseDir}/${cfg.name}/openwebui/from-${hostname}/manifest.json";
+                    manifestDir = "${cfg.backup.repoBaseDir}/${cfg.name}/openwebui/from-${hostname}";
                   })
                   (lib.filter (peer: peer != hostname) cfg.members);
               localRepoGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/openwebui/from-*/repo";
-              localManifestGlob = "${cfg.backup.repoBaseDir}/${cfg.name}/openwebui/from-*/manifest.json";
-              localManifestGlobs = mkLocalManifestGlobs "openwebui";
+              localManifestGlob = mkLocalManifestGlob "openwebui";
+              localTarget = {
+                repoPath = "${cfg.backup.repoBaseDir}/${cfg.name}/openwebui/from-${hostname}/local-repo";
+                manifestDir = "${cfg.backup.repoBaseDir}/${cfg.name}/openwebui/from-${hostname}";
+              };
               linksByHost = openwebuiLinksByHost;
               torUrl = mkTorUrl openwebuiCfg.expose.tor;
               tor = {
