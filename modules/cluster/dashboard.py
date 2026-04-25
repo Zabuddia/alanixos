@@ -812,9 +812,10 @@ class Dashboard:
         )
         if admin_enabled and not is_admin:
             admin_panel_html = (
-                "<section class='panel section'>"
+                "<section id='admin-tools' class='panel section'>"
                 "<div class='section-head'><h2>Admin Tools</h2></div>"
                 "<p class='muted'>Status stays readable for everyone. Sign in to queue backup, verify, restore, pin, and import actions.</p>"
+                f"<p class='muted'>Use your normal <strong>{html.escape(self.admin_username)}</strong> system password.</p>"
                 f"{login_error_html}"
                 "<form method='post' action='/login' class='admin-login'>"
                 f"<input type='hidden' name='next' value='/' />"
@@ -826,7 +827,7 @@ class Dashboard:
             )
         elif admin_enabled and is_admin:
             admin_panel_html = (
-                "<section class='panel section'>"
+                "<section id='admin-tools' class='panel section'>"
                 "<div class='section-head'>"
                 "<h2>Admin Tools</h2>"
                 "<form method='post' action='/logout'>"
@@ -842,6 +843,12 @@ class Dashboard:
             )
         else:
             admin_panel_html = ""
+
+        hero_actions_html = ""
+        if admin_enabled and not is_admin:
+            hero_actions_html = "<a class='button button-subtle' href='#admin-tools'>Admin Sign In</a>"
+        elif admin_enabled and is_admin:
+            hero_actions_html = "<a class='button button-subtle' href='#admin-tools'>Admin Tools</a>"
 
         service_sections = []
         for service_name, service in services.items():
@@ -998,11 +1005,11 @@ class Dashboard:
                     "</tr>"
                 )
             manifests_table = (
-                "<table><thead><tr>"
+                "<div class='table-wrap'><table><thead><tr>"
                 "<th>Source</th><th>Snapshot</th><th>Completed</th><th>Status</th><th>Repo</th><th>Actions</th>"
                 "</tr></thead><tbody>"
                 + ("".join(manifest_rows) if manifest_rows else "<tr><td colspan='6' class='muted'>No local manifests</td></tr>")
-                + "</tbody></table>"
+                + "</tbody></table></div>"
             )
 
             active_units_html = "".join(
@@ -1135,6 +1142,13 @@ class Dashboard:
         padding: 0.35rem 0.55rem;
         font-size: 0.78rem;
       }}
+      .hero-actions {{
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }}
       .admin-login,
       .admin-actions,
       .import-form,
@@ -1203,14 +1217,24 @@ class Dashboard:
         background: linear-gradient(90deg, #406e4a, #82a55d);
       }}
       .table-actions form {{ margin: 0; }}
+      .table-actions form {{
+        align-items: flex-start;
+      }}
       .table-note {{
         margin-top: 0.3rem;
         color: var(--muted);
         font-size: 0.78rem;
       }}
+      .table-wrap {{
+        width: 100%;
+        overflow-x: auto;
+      }}
       .path-cell {{
-        max-width: 16rem;
-        word-break: break-all;
+        min-width: 14rem;
+        max-width: 26rem;
+        word-break: break-word;
+        white-space: normal;
+        font-size: 0.76rem;
       }}
       /* Hero */
       .hero {{
@@ -1303,8 +1327,13 @@ class Dashboard:
       /* Services */
       .services {{
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
         gap: 0.9rem;
+      }}
+      @supports selector(.service-card:has(details[open])) {{
+        .service-card:has(details[open]) {{
+          grid-column: 1 / -1;
+        }}
       }}
       .service-card {{ display: flex; flex-direction: column; gap: 0.55rem; }}
       .service-header {{
@@ -1329,6 +1358,7 @@ class Dashboard:
         text-align: left;
         border-top: 1px solid rgba(217,204,184,0.55);
         vertical-align: top;
+        overflow-wrap: anywhere;
       }}
       th {{
         color: var(--muted);
@@ -1415,6 +1445,7 @@ class Dashboard:
         .hero {{ flex-direction: column; align-items: flex-start; }}
         .services {{ grid-template-columns: 1fr; }}
         .member-name {{ width: auto; }}
+        .hero-actions {{ justify-content: flex-start; }}
       }}
     </style>
   </head>
@@ -1425,7 +1456,10 @@ class Dashboard:
           <h1>Alanix Cluster Dashboard</h1>
           <p class="hero-sub">{html.escape(self.hostname)} · {html.escape(state["cluster"]["name"])} · {html.escape(state["generatedAt"])} <span class="refresh-age" id="last-refreshed-age"></span></p>
         </div>
-        <span class="badge {badge_class(role['kind'])}">{html.escape(role['label'])}</span>
+        <div class="hero-actions">
+          {hero_actions_html}
+          <span class="badge {badge_class(role['kind'])}">{html.escape(role['label'])}</span>
+        </div>
       </section>
 
       <section class="grid">
@@ -1509,6 +1543,9 @@ class Dashboard:
       (function() {{
         var refreshedAt = Date.now();
         var lastInteractionAt = Date.now();
+        var refreshPending = false;
+        var liveSource = null;
+        var reconnectTimer = null;
 
         function markInteraction() {{
           lastInteractionAt = Date.now();
@@ -1591,11 +1628,17 @@ class Dashboard:
         document.addEventListener('touchmove', markInteraction, {{ passive: true }});
         document.addEventListener('keydown', markInteraction, true);
         document.addEventListener('pointerdown', markInteraction, true);
+        document.addEventListener('visibilitychange', function() {{
+          if (!document.hidden) {{
+            scheduleRefresh();
+          }}
+        }});
 
         setInterval(updateAge, 1000);
         updateAge();
 
         async function refresh() {{
+          refreshPending = false;
           try {{
             if (document.hidden) return;
             if (Date.now() - lastInteractionAt < 4000) return;
@@ -1627,7 +1670,36 @@ class Dashboard:
             }}
           }} catch(e) {{}}
         }}
-        setInterval(refresh, 10000);
+
+        function scheduleRefresh() {{
+          if (refreshPending) return;
+          refreshPending = true;
+          window.setTimeout(refresh, 120);
+        }}
+
+        function connectLive() {{
+          if (!window.EventSource) return;
+          if (liveSource) {{
+            liveSource.close();
+          }}
+          liveSource = new EventSource('/api/events');
+          liveSource.addEventListener('update', function() {{
+            scheduleRefresh();
+          }});
+          liveSource.onerror = function() {{
+            if (liveSource) {{
+              liveSource.close();
+              liveSource = null;
+            }}
+            if (reconnectTimer) {{
+              window.clearTimeout(reconnectTimer);
+            }}
+            reconnectTimer = window.setTimeout(connectLive, 3000);
+          }};
+        }}
+
+        connectLive();
+        setInterval(refresh, 30000);
       }})();
     </script>
   </body>
@@ -1670,10 +1742,49 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.send_header(key, value)
         self.end_headers()
 
+    def handle_event_stream(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+
+        last_runtime_mtime = None
+        last_ping_at = 0.0
+
+        try:
+            while True:
+                runtime_exists = self.dashboard.runtime_state_file.exists()
+                runtime_mtime = (
+                    self.dashboard.runtime_state_file.stat().st_mtime_ns
+                    if runtime_exists
+                    else 0
+                )
+                if runtime_mtime != last_runtime_mtime:
+                    payload = json.dumps({"updatedAt": iso_timestamp()}).encode("utf-8")
+                    self.wfile.write(b"event: update\n")
+                    self.wfile.write(b"data: ")
+                    self.wfile.write(payload)
+                    self.wfile.write(b"\n\n")
+                    self.wfile.flush()
+                    last_runtime_mtime = runtime_mtime
+                    last_ping_at = time.time()
+                elif time.time() - last_ping_at >= 15.0:
+                    self.wfile.write(b"event: ping\ndata: {}\n\n")
+                    self.wfile.flush()
+                    last_ping_at = time.time()
+                time.sleep(1.0)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+
     def do_GET(self) -> None:  # noqa: N802
+        path = urllib.parse.urlsplit(self.path).path
+        if path == "/api/events":
+            self.handle_event_stream()
+            return
+
         session = self.current_session()
         state = self.dashboard.collect()
-        path = urllib.parse.urlsplit(self.path).path
         if path == "/api/status":
             payload = json.dumps(state, indent=2).encode("utf-8")
             self.respond_bytes(200, payload, "application/json; charset=utf-8")
