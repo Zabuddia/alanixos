@@ -516,6 +516,32 @@ in
         else
           null;
 
+      backupPrepProgressHelpers = ''
+        export LC_ALL=C
+
+        emit_prep_step() {
+          local step_index="$1"
+          local step_total="$2"
+          local step_label="$3"
+
+          printf 'ALANIX-PROGRESS STEP %s %s %s\n' "$step_index" "$step_total" "$step_label"
+        }
+
+        rsync_prep_step() {
+          local step_index="$1"
+          local step_total="$2"
+          local step_label="$3"
+          local source_dir="$4"
+          local staged_dir="$5"
+
+          emit_prep_step "$step_index" "$step_total" "$step_label"
+          mkdir -p "$staged_dir"
+          if [[ -d "$source_dir" ]]; then
+            rsync -a --delete --info=progress2,name0 "$source_dir"/ "$staged_dir"/ 2>&1 | tr '\r' '\n'
+          fi
+        }
+      '';
+
       nextcloudDataDir = if nextcloudCfg.dataDir != null then nextcloudCfg.dataDir else nextcloudCfg.stateDir;
       nextcloudClusteredPaths = lib.unique (
         [ nextcloudCfg.stateDir ]
@@ -887,10 +913,13 @@ in
             backup_dir=${lib.escapeShellArg vaultwardenCfg.backupDir}
             backup_group=${lib.escapeShellArg backupRepoUserGroup}
 
+            ${backupPrepProgressHelpers}
+
             mkdir -p "$backup_dir"
             chown -R vaultwarden:vaultwarden "$backup_dir"
             chmod -R u=rwX,go= "$backup_dir"
 
+            emit_prep_step 1 1 ${lib.escapeShellArg "running vaultwarden backup service"}
             systemctl start backup-vaultwarden.service
 
             if [[ -d "$backup_dir" ]]; then
@@ -917,10 +946,13 @@ in
             staged_state_dir=${lib.escapeShellArg stagedStateDir}
             staged_db_path=${lib.escapeShellArg stagedDbPath}
 
+            ${backupPrepProgressHelpers}
+
             rm -rf "$backup_dir"
             mkdir -p "$staged_state_dir" "$(dirname "$staged_db_path")"
 
-            rsync -a --delete "$state_dir"/ "$staged_state_dir"/
+            rsync_prep_step 1 2 ${lib.escapeShellArg "staging ${forgejoCfg.stateDir}"} "$state_dir" "$staged_state_dir"
+            emit_prep_step 2 2 ${lib.escapeShellArg "snapshotting forgejo database"}
             sqlite3 "$db_path" ".backup '$staged_db_path'"
 
             chown -R forgejo:forgejo "$backup_dir"
@@ -952,18 +984,16 @@ in
             pg_user=${lib.escapeShellArg config.services.invidious.settings.db.user}
             pg_database=${lib.escapeShellArg config.services.invidious.settings.db.dbname}
 
+            ${backupPrepProgressHelpers}
+
             rm -rf "$backup_dir"
             mkdir -p "$staged_state_dir" "$staged_companion_dir" "$(dirname "$staged_dump")"
             chown -R invidious:invidious "$backup_dir"
 
-            if [[ -d "$state_dir" ]]; then
-              rsync -a --delete "$state_dir"/ "$staged_state_dir"/
-            fi
+            rsync_prep_step 1 3 ${lib.escapeShellArg "staging ${invidiousStateDir}"} "$state_dir" "$staged_state_dir"
+            rsync_prep_step 2 3 ${lib.escapeShellArg "staging ${companionStateDir}"} "$companion_dir" "$staged_companion_dir"
 
-            if [[ -d "$companion_dir" ]]; then
-              rsync -a --delete "$companion_dir"/ "$staged_companion_dir"/
-            fi
-
+            emit_prep_step 3 3 ${lib.escapeShellArg "dumping invidious database"}
             runuser -u invidious -- env \
               PGHOST=/run/postgresql \
               PGUSER="$pg_user" \
@@ -998,14 +1028,15 @@ in
             pg_user=${lib.escapeShellArg config.services.immich.database.user}
             pg_database=${lib.escapeShellArg config.services.immich.database.name}
 
+            ${backupPrepProgressHelpers}
+
             rm -rf "$backup_dir"
             mkdir -p "$staged_media_dir" "$(dirname "$staged_dump")"
             chown -R immich:immich "$backup_dir"
 
-            if [[ -d "$media_dir" ]]; then
-              rsync -a --delete "$media_dir"/ "$staged_media_dir"/
-            fi
+            rsync_prep_step 1 2 ${lib.escapeShellArg "staging ${toString immichCfg.mediaLocation}"} "$media_dir" "$staged_media_dir"
 
+            emit_prep_step 2 2 ${lib.escapeShellArg "dumping immich database"}
             runuser -u immich -- env \
               PGHOST="$pg_host" \
               PGUSER="$pg_user" \
@@ -1026,6 +1057,7 @@ in
         if nextcloudCluster then
           let
             stagedDatabaseDump = "${nextcloudCfg.backupDir}/database/nextcloud.pgcustom";
+            nextcloudPrepStepCount = builtins.length nextcloudClusteredPaths + 1;
           in
           pkgs.writeShellScript "alanix-nextcloud-cluster-backup-runtime" ''
             set -euo pipefail
@@ -1036,25 +1068,23 @@ in
             pg_host=${lib.escapeShellArg config.services.nextcloud.config.dbhost}
             pg_database=${lib.escapeShellArg config.services.nextcloud.config.dbname}
 
-            stage_dir() {
-              local source_dir="$1"
-              local staged_dir="$backup_dir$source_dir"
-
-              mkdir -p "$staged_dir"
-
-              if [[ -d "$source_dir" ]]; then
-                rsync -a --delete "$source_dir"/ "$staged_dir"/
-              fi
-            }
+            ${backupPrepProgressHelpers}
 
             rm -rf "$backup_dir"
             mkdir -p "$backup_dir" "$(dirname "$staged_dump")"
             chown -R nextcloud:nextcloud "$backup_dir"
 
-            ${lib.concatMapStringsSep "\n" (path: ''
-              stage_dir ${lib.escapeShellArg path}
-            '') nextcloudClusteredPaths}
+            ${lib.concatStringsSep "\n" (builtins.genList
+              (index:
+                let
+                  path = builtins.elemAt nextcloudClusteredPaths index;
+                in
+                ''
+                  rsync_prep_step ${toString (index + 1)} ${toString nextcloudPrepStepCount} ${lib.escapeShellArg "staging ${path}"} ${lib.escapeShellArg path} ${lib.escapeShellArg "${nextcloudCfg.backupDir}${path}"}
+                '')
+              (builtins.length nextcloudClusteredPaths))}
 
+            emit_prep_step ${toString nextcloudPrepStepCount} ${toString nextcloudPrepStepCount} ${lib.escapeShellArg "dumping nextcloud database"}
             runuser -u postgres -- env \
               PGHOST="$pg_host" \
               pg_dump \
@@ -1081,9 +1111,12 @@ in
             db_path=${lib.escapeShellArg filebrowserCfg.database}
             staged_db_path=${lib.escapeShellArg stagedDatabasePath}
 
+            ${backupPrepProgressHelpers}
+
             rm -rf "$backup_dir"
             mkdir -p "$(dirname "$staged_db_path")"
 
+            emit_prep_step 1 1 ${lib.escapeShellArg "snapshotting filebrowser database"}
             if [[ -f "$db_path" ]]; then
               cp -a "$db_path" "$staged_db_path"
             fi
@@ -1108,12 +1141,11 @@ in
             storage_dir=${lib.escapeShellArg radicaleCfg.storageDir}
             staged_storage_dir=${lib.escapeShellArg stagedStorageDir}
 
-            rm -rf "$backup_dir"
-            mkdir -p "$staged_storage_dir"
+            ${backupPrepProgressHelpers}
 
-            if [[ -d "$storage_dir" ]]; then
-              rsync -a --delete "$storage_dir"/ "$staged_storage_dir"/
-            fi
+            rm -rf "$backup_dir"
+
+            rsync_prep_step 1 1 ${lib.escapeShellArg "staging ${radicaleCfg.storageDir}"} "$storage_dir" "$staged_storage_dir"
 
             chown -R radicale:radicale "$backup_dir"
             chgrp -R "$backup_group" "$backup_dir"
@@ -1124,6 +1156,9 @@ in
 
       jellyfinBackupPrepScript =
         if jellyfinCluster then
+          let
+            jellyfinPrepStepCount = builtins.length jellyfinClusteredPaths + 1;
+          in
           pkgs.writeShellScript "alanix-jellyfin-cluster-backup-runtime" ''
             set -euo pipefail
 
@@ -1131,24 +1166,22 @@ in
             backup_group=${lib.escapeShellArg backupRepoUserGroup}
             data_dir=${lib.escapeShellArg jellyfinCfg.dataDir}
 
-            stage_dir() {
-              local source_dir="$1"
-              local staged_dir="$backup_dir$source_dir"
-
-              mkdir -p "$staged_dir"
-
-              if [[ -d "$source_dir" ]]; then
-                rsync -a --delete "$source_dir"/ "$staged_dir"/
-              fi
-            }
+            ${backupPrepProgressHelpers}
 
             rm -rf "$backup_dir"
             mkdir -p "$backup_dir"
 
-            ${lib.concatMapStringsSep "\n" (path: ''
-              stage_dir ${lib.escapeShellArg path}
-            '') jellyfinClusteredPaths}
+            ${lib.concatStringsSep "\n" (builtins.genList
+              (index:
+                let
+                  path = builtins.elemAt jellyfinClusteredPaths index;
+                in
+                ''
+                  rsync_prep_step ${toString (index + 1)} ${toString jellyfinPrepStepCount} ${lib.escapeShellArg "staging ${path}"} ${lib.escapeShellArg path} ${lib.escapeShellArg "${jellyfinCfg.backupDir}${path}"}
+                '')
+              (builtins.length jellyfinClusteredPaths))}
 
+            emit_prep_step ${toString jellyfinPrepStepCount} ${toString jellyfinPrepStepCount} ${lib.escapeShellArg "snapshotting jellyfin sqlite databases"}
             shopt -s globstar nullglob
             for db_path in "$data_dir"/**/*.db "$data_dir"/*.db; do
               [[ -f "$db_path" ]] || continue
@@ -1181,6 +1214,8 @@ in
             staged_state_dir=${lib.escapeShellArg stagedStateDir}
             environment_file=${lib.escapeShellArg environmentFile}
             default_database_url=${lib.escapeShellArg defaultDatabaseUrl}
+
+            ${backupPrepProgressHelpers}
 
             database_url="$default_database_url"
             if [[ -n "$environment_file" && -f "$environment_file" ]]; then
@@ -1217,10 +1252,9 @@ in
             mkdir -p "$staged_state_dir" "$(dirname "$staged_db_path")"
             chown -R open-webui:open-webui "$backup_dir"
 
-            if [[ -d "$state_dir" ]]; then
-              rsync -a --delete "$state_dir"/ "$staged_state_dir"/
-            fi
+            rsync_prep_step 1 2 ${lib.escapeShellArg "staging ${openwebuiCfg.stateDir}"} "$state_dir" "$staged_state_dir"
 
+            emit_prep_step 2 2 ${lib.escapeShellArg "snapshotting open webui database"}
             if [[ -f "$db_path" ]]; then
               sqlite3 "$db_path" ".backup '$staged_db_path'"
             fi
@@ -1245,13 +1279,12 @@ in
             state_dir=${lib.escapeShellArg searxngCfg.stateDir}
             staged_state_dir=${lib.escapeShellArg stagedStateDir}
 
+            ${backupPrepProgressHelpers}
+
             rm -rf "$backup_dir"
-            mkdir -p "$staged_state_dir"
             chown -R searx:searx "$backup_dir"
 
-            if [[ -d "$state_dir" ]]; then
-              rsync -a --delete "$state_dir"/ "$staged_state_dir"/
-            fi
+            rsync_prep_step 1 1 ${lib.escapeShellArg "staging ${searxngCfg.stateDir}"} "$state_dir" "$staged_state_dir"
 
             chown -R searx:searx "$backup_dir"
             chgrp -R "$backup_group" "$backup_dir"

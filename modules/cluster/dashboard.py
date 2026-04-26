@@ -897,6 +897,10 @@ class Dashboard:
                 stats.append(format_bytes(bd))
             elif fd is not None and tf and fd < tf:
                 stats.append(f"{fd} / {tf} files")
+            si = prog.get("stepIndex")
+            st = prog.get("stepTotal")
+            if si and st:
+                stats.append(f"step {si}/{st}")
             ti = op.get("currentTargetIndex")
             tt = op.get("totalTargets")
             if ti and tt:
