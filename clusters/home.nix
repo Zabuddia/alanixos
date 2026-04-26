@@ -35,6 +35,8 @@ in
         leaseTtl = "3m";
         renewEvery = "5s";
         acquisitionStep = "5s";
+        dialTimeout = "5s";
+        commandTimeout = "15s";
       };
 
       backup = {
@@ -82,6 +84,9 @@ in
       ddns = {
         enable = true;
         credentialsFile = config.sops.templates."cloudflare-env-cluster".path;
+        ipv4Provider = "cloudflare.trace";
+        ipv6Provider = "cloudflare.trace";
+        detectionTimeout = "15s";
         domains = [
           "dashboard.fifefin.com"
           "filebrowser.fifefin.com"
