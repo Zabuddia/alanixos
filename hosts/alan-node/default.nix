@@ -27,6 +27,7 @@
         curl
         git
         htop
+        iotop
         jq
         python3
         restic
