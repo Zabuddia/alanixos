@@ -636,10 +636,7 @@ class Controller:
 
     def service_manifest_globs(self, service_name):
         service = self.services[service_name]
-        manifest_glob = service.get("localManifestGlob")
-        if manifest_glob:
-            return [manifest_glob]
-        return []
+        return [glob_pattern for glob_pattern in service.get("manifestGlobs", []) if glob_pattern]
 
     def service_pin_dir(self, service_name):
         return self.cluster_data_dir / service_name / "pins"
@@ -1053,8 +1050,8 @@ class Controller:
         return len(delete_ids)
 
     def prune_service_local_repos(self, service_name: str, retain_days: int) -> int:
-        service_dir = self.cluster_data_dir / service_name
-        if not service_dir.exists():
+        manifest_dir = self.cluster_data_dir / service_name
+        if not manifest_dir.exists():
             return 0
 
         active_ids = set()
@@ -1065,21 +1062,12 @@ class Controller:
                 active_ids.add(snapshot_id)
 
         total_deleted = 0
-        for manifest_dir in sorted(service_dir.glob("from-*")):
-            if not manifest_dir.is_dir():
-                continue
+        self._prune_local_manifests(str(manifest_dir), retain_days, service_name)
+        keep_ids = self.repo_manifest_snapshot_ids(manifest_dir) | active_ids
 
-            self._prune_local_manifests(str(manifest_dir), retain_days, service_name)
-            keep_ids = self.repo_manifest_snapshot_ids(manifest_dir) | active_ids
-
-            repo_paths = [
-                str(candidate)
-                for candidate in (manifest_dir / "local-repo", manifest_dir / "repo")
-                if candidate.exists()
-            ]
-
-            for repo_path in repo_paths:
-                total_deleted += self.prune_local_repo_snapshots(service_name, repo_path, keep_ids)
+        repo_path = manifest_dir / "repo"
+        if repo_path.exists():
+            total_deleted += self.prune_local_repo_snapshots(service_name, str(repo_path), keep_ids)
 
         return total_deleted
 
@@ -1113,7 +1101,6 @@ class Controller:
         failed_targets: list[dict] = []
         target_span = 90.0 / max(1, target_count)
         cleanup_error = None
-        stop_replication_reason = None
 
         try:
             if service.get("preBackupCommand"):
@@ -1276,7 +1263,7 @@ class Controller:
                     ):
                         free_bytes = self.path_free_bytes(service["backupPaths"][0])
                         if free_bytes < self.min_backup_free_space_bytes:
-                            stop_replication_reason = (
+                            stop_reason = (
                                 "skipping remote replication because only "
                                 f"{format_bytes(free_bytes)} free remains after the local backup; "
                                 f"need at least {format_bytes(self.min_backup_free_space_bytes)}"
@@ -1287,10 +1274,10 @@ class Controller:
                                 failed_targets.append(
                                     {
                                         "host": remaining_target["host"],
-                                        "error": stop_replication_reason,
+                                        "error": stop_reason,
                                     }
                                 )
-                            log(f"{service_name}: {stop_replication_reason}")
+                            log(f"{service_name}: {stop_reason}")
                             break
                 except Exception as exc:
                     failed_targets.append({"host": host_label, "error": summarize_error(str(exc))})
