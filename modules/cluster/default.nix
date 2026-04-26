@@ -428,11 +428,19 @@ in
 
             backup_dir=${lib.escapeShellArg vaultwardenCfg.backupDir}
             data_dir=/var/lib/vaultwarden
+            trap 'rm -rf "$backup_dir"' EXIT
 
-            rm -rf "$data_dir"
+            if [[ -e "$data_dir" && ! -d "$data_dir" ]]; then
+              rm -rf "$data_dir"
+            fi
             mkdir -p "$data_dir"
-            cp -a "$backup_dir"/. "$data_dir"/
-            chown -R vaultwarden:vaultwarden "$backup_dir" "$data_dir"
+            if [[ -d "$backup_dir" ]]; then
+              rsync -a --delete "$backup_dir"/ "$data_dir"/
+            else
+              rm -rf "$data_dir"
+              mkdir -p "$data_dir"
+            fi
+            chown -R vaultwarden:vaultwarden "$data_dir"
           ''
         else
           null;
@@ -448,6 +456,7 @@ in
             backup_dir=${lib.escapeShellArg filebrowserCfg.backupDir}
             db_path=${lib.escapeShellArg filebrowserCfg.database}
             staged_db_path=${lib.escapeShellArg stagedDatabasePath}
+            trap 'rm -rf "$backup_dir"' EXIT
 
             mkdir -p "$(dirname "$db_path")"
 
@@ -455,8 +464,6 @@ in
               cp -a "$staged_db_path" "$db_path"
               chown filebrowser:filebrowser "$db_path"
             fi
-
-            chown -R filebrowser:filebrowser "$backup_dir"
           ''
         else
           null;
@@ -472,15 +479,21 @@ in
             backup_dir=${lib.escapeShellArg radicaleCfg.backupDir}
             storage_dir=${lib.escapeShellArg radicaleCfg.storageDir}
             staged_storage_dir=${lib.escapeShellArg stagedStorageDir}
+            trap 'rm -rf "$backup_dir"' EXIT
 
-            rm -rf "$storage_dir"
+            if [[ -e "$storage_dir" && ! -d "$storage_dir" ]]; then
+              rm -rf "$storage_dir"
+            fi
             mkdir -p "$storage_dir"
 
             if [[ -d "$staged_storage_dir" ]]; then
-              cp -a "$staged_storage_dir"/. "$storage_dir"/
+              rsync -a --delete "$staged_storage_dir"/ "$storage_dir"/
+            else
+              rm -rf "$storage_dir"
+              mkdir -p "$storage_dir"
             fi
 
-            chown -R radicale:radicale "$backup_dir" "$storage_dir"
+            chown -R radicale:radicale "$storage_dir"
           ''
         else
           null;
@@ -514,17 +527,23 @@ in
             db_path=${lib.escapeShellArg config.services.forgejo.database.path}
             staged_state_dir=${lib.escapeShellArg stagedStateDir}
             staged_db_path=${lib.escapeShellArg stagedDbPath}
+            trap 'rm -rf "$backup_dir"' EXIT
 
-            rm -rf "$state_dir"
+            if [[ -e "$state_dir" && ! -d "$state_dir" ]]; then
+              rm -rf "$state_dir"
+            fi
             mkdir -p "$state_dir"
             if [[ -d "$staged_state_dir" ]]; then
-              cp -a "$staged_state_dir"/. "$state_dir"/
+              rsync -a --delete "$staged_state_dir"/ "$state_dir"/
+            else
+              rm -rf "$state_dir"
+              mkdir -p "$state_dir"
             fi
 
             mkdir -p "$(dirname "$db_path")"
             cp -a "$staged_db_path" "$db_path"
 
-            chown -R forgejo:forgejo "$backup_dir" "$state_dir"
+            chown -R forgejo:forgejo "$state_dir"
             chown forgejo:forgejo "$db_path"
           ''
         else
@@ -550,19 +569,31 @@ in
             staged_dump=${lib.escapeShellArg stagedDatabaseDump}
             pg_user=${lib.escapeShellArg config.services.invidious.settings.db.user}
             pg_database=${lib.escapeShellArg config.services.invidious.settings.db.dbname}
+            trap 'rm -rf "$backup_dir"' EXIT
 
-            rm -rf "$state_dir" "$companion_dir"
+            if [[ -e "$state_dir" && ! -d "$state_dir" ]]; then
+              rm -rf "$state_dir"
+            fi
+            if [[ -e "$companion_dir" && ! -d "$companion_dir" ]]; then
+              rm -rf "$companion_dir"
+            fi
             mkdir -p "$state_dir" "$companion_dir"
 
             if [[ -d "$staged_state_dir" ]]; then
-              cp -a "$staged_state_dir"/. "$state_dir"/
+              rsync -a --delete "$staged_state_dir"/ "$state_dir"/
+            else
+              rm -rf "$state_dir"
+              mkdir -p "$state_dir"
             fi
 
             if [[ -d "$staged_companion_dir" ]]; then
-              cp -a "$staged_companion_dir"/. "$companion_dir"/
+              rsync -a --delete "$staged_companion_dir"/ "$companion_dir"/
+            else
+              rm -rf "$companion_dir"
+              mkdir -p "$companion_dir"
             fi
 
-            chown -R invidious:invidious "$backup_dir" "$state_dir" "$companion_dir"
+            chown -R invidious:invidious "$state_dir" "$companion_dir"
 
             if [[ -f "$staged_dump" ]]; then
               runuser -u invidious -- env \
@@ -598,20 +629,31 @@ in
             pg_host=${lib.escapeShellArg config.services.immich.database.host}
             pg_user=${lib.escapeShellArg config.services.immich.database.user}
             pg_database=${lib.escapeShellArg config.services.immich.database.name}
+            restore_dump=""
+            cleanup() {
+              if [[ -n "$restore_dump" && -e "$restore_dump" ]]; then
+                rm -f "$restore_dump"
+              fi
+              rm -rf "$backup_dir"
+            }
+            trap cleanup EXIT
 
-            rm -rf "$media_dir"
+            if [[ -e "$media_dir" && ! -d "$media_dir" ]]; then
+              rm -rf "$media_dir"
+            fi
             mkdir -p "$media_dir"
 
             if [[ -d "$staged_media_dir" ]]; then
-              cp -a "$staged_media_dir"/. "$media_dir"/
+              rsync -a --delete "$staged_media_dir"/ "$media_dir"/
+            else
+              rm -rf "$media_dir"
+              mkdir -p "$media_dir"
             fi
 
-            chown -R immich:immich "$backup_dir" "$media_dir"
+            chown -R immich:immich "$media_dir"
 
             if [[ -f "$staged_dump" ]]; then
               restore_dump="$(mktemp /var/tmp/alanix-immich-restore-XXXXXX.pgcustom)"
-              trap 'rm -f "$restore_dump"' EXIT
-
               install -m 0600 -o postgres -g postgres "$staged_dump" "$restore_dump"
 
               runuser -u postgres -- env \
@@ -649,16 +691,29 @@ in
             pg_host=${lib.escapeShellArg config.services.nextcloud.config.dbhost}
             pg_user=${lib.escapeShellArg config.services.nextcloud.config.dbuser}
             pg_database=${lib.escapeShellArg config.services.nextcloud.config.dbname}
+            restore_dump=""
+            cleanup() {
+              if [[ -n "$restore_dump" && -e "$restore_dump" ]]; then
+                rm -f "$restore_dump"
+              fi
+              rm -rf "$backup_dir"
+            }
+            trap cleanup EXIT
 
             restore_dir() {
               local target="$1"
               local staged_dir="$backup_dir$target"
 
-              rm -rf "$target"
+              if [[ -e "$target" && ! -d "$target" ]]; then
+                rm -rf "$target"
+              fi
               mkdir -p "$target"
 
               if [[ -d "$staged_dir" ]]; then
-                cp -a "$staged_dir"/. "$target"/
+                rsync -a --delete "$staged_dir"/ "$target"/
+              else
+                rm -rf "$target"
+                mkdir -p "$target"
               fi
             }
 
@@ -679,8 +734,6 @@ in
 
             if [[ -f "$staged_dump" ]]; then
               restore_dump="$(mktemp /var/tmp/alanix-nextcloud-restore-XXXXXX.pgcustom)"
-              trap 'rm -f "$restore_dump"' EXIT
-
               install -m 0600 -o postgres -g postgres "$staged_dump" "$restore_dump"
 
               runuser -u postgres -- env \
@@ -725,16 +778,22 @@ in
             set -euo pipefail
 
             backup_dir=${lib.escapeShellArg jellyfinCfg.backupDir}
+            trap 'rm -rf "$backup_dir"' EXIT
 
             restore_dir() {
               local target="$1"
               local staged_dir="$backup_dir$target"
 
-              rm -rf "$target"
+              if [[ -e "$target" && ! -d "$target" ]]; then
+                rm -rf "$target"
+              fi
               mkdir -p "$target"
 
               if [[ -d "$staged_dir" ]]; then
-                cp -a "$staged_dir"/. "$target"/
+                rsync -a --delete "$staged_dir"/ "$target"/
+              else
+                rm -rf "$target"
+                mkdir -p "$target"
               fi
             }
 
@@ -765,15 +824,21 @@ in
             backup_dir=${lib.escapeShellArg openwebuiCfg.backupDir}
             state_dir=${lib.escapeShellArg openwebuiCfg.stateDir}
             staged_state_dir=${lib.escapeShellArg stagedStateDir}
+            trap 'rm -rf "$backup_dir"' EXIT
 
-            rm -rf "$state_dir"
+            if [[ -e "$state_dir" && ! -d "$state_dir" ]]; then
+              rm -rf "$state_dir"
+            fi
             mkdir -p "$state_dir"
 
             if [[ -d "$staged_state_dir" ]]; then
-              cp -a "$staged_state_dir"/. "$state_dir"/
+              rsync -a --delete "$staged_state_dir"/ "$state_dir"/
+            else
+              rm -rf "$state_dir"
+              mkdir -p "$state_dir"
             fi
 
-            chown -R open-webui:open-webui "$backup_dir" "$state_dir"
+            chown -R open-webui:open-webui "$state_dir"
           ''
         else
           null;
@@ -2085,7 +2150,9 @@ in
                 ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
               backupPaths = [ nextcloudCfg.backupDir ];
               preBackupCommand = [ nextcloudBackupPrepScript ];
+              postBackupCommand = [ "rm" "-rf" nextcloudCfg.backupDir ];
               postRestoreCommand = [ nextcloudRestoreScript ];
+              restoreTarget = "/";
               remoteTargets =
                 map
                   (peer: {
@@ -2122,7 +2189,9 @@ in
                 ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
               backupPaths = [ filebrowserCfg.backupDir ];
               preBackupCommand = [ filebrowserBackupPrepScript ];
+              postBackupCommand = [ "rm" "-rf" filebrowserCfg.backupDir ];
               postRestoreCommand = [ filebrowserRestoreScript ];
+              restoreTarget = "/";
               remoteTargets =
                 map
                   (peer: {
@@ -2159,7 +2228,9 @@ in
                 ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
               backupPaths = [ radicaleCfg.backupDir ];
               preBackupCommand = [ radicaleBackupPrepScript ];
+              postBackupCommand = [ "rm" "-rf" radicaleCfg.backupDir ];
               postRestoreCommand = [ radicaleRestoreScript ];
+              restoreTarget = "/";
               remoteTargets =
                 map
                   (peer: {
@@ -2196,7 +2267,9 @@ in
                 ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
               backupPaths = [ vaultwardenCfg.backupDir ];
               preBackupCommand = [ vaultwardenBackupPrepScript ];
+              postBackupCommand = [ "rm" "-rf" vaultwardenCfg.backupDir ];
               postRestoreCommand = [ vaultwardenRestoreScript ];
+              restoreTarget = "/";
               remoteTargets =
                 map
                   (peer: {
@@ -2232,7 +2305,9 @@ in
                 ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
               backupPaths = [ forgejoCfg.backupDir ];
               preBackupCommand = [ forgejoBackupPrepScript ];
+              postBackupCommand = [ "rm" "-rf" forgejoCfg.backupDir ];
               postRestoreCommand = [ forgejoRestoreScript ];
+              restoreTarget = "/";
               remoteTargets =
                 map
                   (peer: {
@@ -2269,7 +2344,9 @@ in
                 ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
               backupPaths = [ invidiousCfg.backupDir ];
               preBackupCommand = [ invidiousBackupPrepScript ];
+              postBackupCommand = [ "rm" "-rf" invidiousCfg.backupDir ];
               postRestoreCommand = [ invidiousRestoreScript ];
+              restoreTarget = "/";
               remoteTargets =
                 map
                   (peer: {
@@ -2306,7 +2383,9 @@ in
                 ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
               backupPaths = [ immichCfg.backupDir ];
               preBackupCommand = [ immichBackupPrepScript ];
+              postBackupCommand = [ "rm" "-rf" immichCfg.backupDir ];
               postRestoreCommand = [ immichRestoreScript ];
+              restoreTarget = "/";
               remoteTargets =
                 map
                   (peer: {
@@ -2342,7 +2421,9 @@ in
                 ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
               backupPaths = [ jellyfinCfg.backupDir ];
               preBackupCommand = [ jellyfinBackupPrepScript ];
+              postBackupCommand = [ "rm" "-rf" jellyfinCfg.backupDir ];
               postRestoreCommand = [ jellyfinRestoreScript ];
+              restoreTarget = "/";
               remoteTargets =
                 map
                   (peer: {
@@ -2378,7 +2459,9 @@ in
                 ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
               backupPaths = [ openwebuiCfg.backupDir ];
               preBackupCommand = [ openwebuiBackupPrepScript ];
+              postBackupCommand = [ "rm" "-rf" openwebuiCfg.backupDir ];
               postRestoreCommand = [ openwebuiRestoreScript ];
+              restoreTarget = "/";
               remoteTargets =
                 map
                   (peer: {

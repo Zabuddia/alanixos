@@ -179,6 +179,15 @@ def atomic_write_json(
             temp_path.unlink(missing_ok=True)
 
 
+def remove_path(path: str) -> None:
+    if not os.path.lexists(path):
+        return
+    if os.path.isdir(path) and not os.path.islink(path):
+        shutil.rmtree(path)
+        return
+    os.remove(path)
+
+
 def format_bytes(value: int | float | None) -> str:
     if value is None:
         return "unknown"
@@ -958,199 +967,240 @@ class Controller:
             requested_by=requested_by,
         )
         log(f"starting backup for {service_name} to {target_count} target{'s' if target_count != 1 else ''}")
-        if service.get("preBackupCommand"):
-            prep_started_at = time.monotonic()
-            self.run(service["preBackupCommand"])
-            self.ensure_backup_generation_current(generation, service_name)
-            self.update_service_operation(
-                service_name,
-                phase="prepared backup payload",
-                percent=5.0,
-            )
-            log(f"{service_name}: prepared backup payload in {format_duration(time.monotonic() - prep_started_at)}")
-
         successful_targets: list[str] = []
         failed_targets: list[dict] = []
         target_span = 90.0 / max(1, target_count)
+        cleanup_error = None
 
-        for target_index, target in enumerate(all_targets):
-            self.ensure_backup_generation_current(generation, service_name)
-            target_started_at = time.monotonic()
-            is_local = target.get("_local", False)
-            host_label = "local" if is_local else target["host"]
-            repo_path = target["repoPath"]
-            manifest_dir = target["manifestDir"]
-            base_percent = 5.0 + target_index * target_span
+        try:
+            if service.get("preBackupCommand"):
+                prep_started_at = time.monotonic()
+                self.run(service["preBackupCommand"])
+                self.ensure_backup_generation_current(generation, service_name)
+                self.update_service_operation(
+                    service_name,
+                    phase="prepared backup payload",
+                    percent=5.0,
+                )
+                log(f"{service_name}: prepared backup payload in {format_duration(time.monotonic() - prep_started_at)}")
 
-            try:
-                if is_local:
-                    phase = "backing up locally"
-                    self.update_service_operation(
-                        service_name,
-                        phase=phase,
-                        percent=base_percent,
-                        currentTarget="local",
-                        currentTargetIndex=target_index + 1,
-                        totalTargets=target_count,
-                    )
-                    self.run(["install", "-d", "-m", "755", "-o", self.repo_user, repo_path, manifest_dir])
-                    self.ensure_restic_repo(repo_path)
-                    self.ensure_backup_generation_current(generation, service_name)
-                    self.run_as_backup_user_stream(
-                        ["restic", "--json", "-r", repo_path, "backup"] + service["backupPaths"],
-                        on_line=self.restic_progress_updater(
+            for target_index, target in enumerate(all_targets):
+                self.ensure_backup_generation_current(generation, service_name)
+                target_started_at = time.monotonic()
+                is_local = target.get("_local", False)
+                host_label = "local" if is_local else target["host"]
+                repo_path = target["repoPath"]
+                manifest_dir = target["manifestDir"]
+                base_percent = 5.0 + target_index * target_span
+
+                try:
+                    if is_local:
+                        phase = "backing up locally"
+                        self.update_service_operation(
                             service_name,
                             phase=phase,
-                            base_percent=base_percent,
-                            percent_span=target_span,
-                            extra={
-                                "currentTarget": "local",
-                                "currentTargetIndex": target_index + 1,
-                                "totalTargets": target_count,
-                            },
-                        ),
-                    )
-                    self.ensure_backup_generation_current(generation, service_name)
-                    snapshot_id = self.latest_snapshot_id(repo_path)
-                    if snapshot_id is None:
-                        raise RuntimeError(f"no snapshot found after local backup for {service_name}")
-                    snap_size = self.restic_snapshot_size(repo_path, snapshot_id)
-                    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-                    manifest_path = os.path.join(manifest_dir, f"manifest-{timestamp}.json")
-                    manifest = {
-                        "service": service_name,
-                        "sourceHost": self.hostname,
-                        "leaderRevision": self.leader_revision,
-                        "completedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-                        "snapshotId": snapshot_id,
-                        "repoPath": repo_path,
-                        "repoUri": repo_path,
-                        "snapshotSizeBytes": snap_size,
-                    }
-                    atomic_write_json(
-                        Path(manifest_path),
-                        manifest,
-                        owner_uid=self.repo_uid,
-                        owner_gid=self.repo_gid,
-                        mode=0o644,
-                    )
-                    self._prune_local_manifests(manifest_dir, retain_days)
-                else:
-                    phase = f"replicating to {target['host']}"
-                    remote_uri = f"sftp:{self.repo_user}@{target['address']}:{repo_path}"
-                    remote_dir = os.path.dirname(repo_path)
-                    self.update_service_operation(
-                        service_name,
-                        phase=phase,
-                        percent=base_percent,
-                        currentTarget=target["host"],
-                        currentTargetIndex=target_index + 1,
-                        totalTargets=target_count,
-                    )
-                    self.run_as_backup_user(
-                        ["ssh", target["address"], f"mkdir -p {shlex.quote(remote_dir)} {shlex.quote(manifest_dir)}"]
-                    )
-                    self.ensure_restic_repo(remote_uri)
-                    self.ensure_backup_generation_current(generation, service_name)
-                    self.run_as_backup_user_stream(
-                        ["restic", "--json", "-r", remote_uri, "backup"] + service["backupPaths"],
-                        on_line=self.restic_progress_updater(
-                            service_name,
-                            phase=phase,
-                            base_percent=base_percent,
-                            percent_span=target_span,
-                            extra={
-                                "currentTarget": target["host"],
-                                "currentTargetIndex": target_index + 1,
-                                "totalTargets": target_count,
-                            },
-                        ),
-                    )
-                    self.ensure_backup_generation_current(generation, service_name)
-                    snapshot_id = self.latest_snapshot_id(remote_uri)
-                    if snapshot_id is None:
-                        raise RuntimeError(f"no snapshot found after backing up {service_name} to {target['host']}")
-                    snap_size = self.restic_snapshot_size(remote_uri, snapshot_id)
-                    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-                    manifest_path = os.path.join(manifest_dir, f"manifest-{timestamp}.json")
-                    manifest = {
-                        "service": service_name,
-                        "sourceHost": self.hostname,
-                        "leaderRevision": self.leader_revision,
-                        "completedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-                        "snapshotId": snapshot_id,
-                        "repoPath": repo_path,
-                        "repoUri": remote_uri,
-                        "snapshotSizeBytes": snap_size,
-                    }
-                    self.ensure_backup_generation_current(generation, service_name)
-                    self.run_as_backup_user(
-                        [
-                            "ssh",
-                            target["address"],
-                            (
-                                f"install -m 644 /dev/null {shlex.quote(manifest_path)} "
-                                f"&& cat > {shlex.quote(manifest_path)}"
+                            percent=base_percent,
+                            currentTarget="local",
+                            currentTargetIndex=target_index + 1,
+                            totalTargets=target_count,
+                        )
+                        self.run(["install", "-d", "-m", "755", "-o", self.repo_user, repo_path, manifest_dir])
+                        self.ensure_restic_repo(repo_path)
+                        self.ensure_backup_generation_current(generation, service_name)
+                        self.run_as_backup_user_stream(
+                            ["restic", "--json", "-r", repo_path, "backup"] + service["backupPaths"],
+                            on_line=self.restic_progress_updater(
+                                service_name,
+                                phase=phase,
+                                base_percent=base_percent,
+                                percent_span=target_span,
+                                extra={
+                                    "currentTarget": "local",
+                                    "currentTargetIndex": target_index + 1,
+                                    "totalTargets": target_count,
+                                },
                             ),
-                        ],
-                        input_text=json.dumps(manifest, indent=2) + "\n",
-                    )
-                    prune_cmd = (
-                        f"find {shlex.quote(manifest_dir)} -name 'manifest-*.json' "
-                        f"-mtime +{retain_days} -delete 2>/dev/null || true"
-                    )
-                    self.run_as_backup_user(["ssh", target["address"], prune_cmd], check=False)
+                        )
+                        self.ensure_backup_generation_current(generation, service_name)
+                        snapshot_id = self.latest_snapshot_id(repo_path)
+                        if snapshot_id is None:
+                            raise RuntimeError(f"no snapshot found after local backup for {service_name}")
+                        snap_size = self.restic_snapshot_size(repo_path, snapshot_id)
+                        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+                        manifest_path = os.path.join(manifest_dir, f"manifest-{timestamp}.json")
+                        manifest = {
+                            "service": service_name,
+                            "sourceHost": self.hostname,
+                            "leaderRevision": self.leader_revision,
+                            "completedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+                            "snapshotId": snapshot_id,
+                            "repoPath": repo_path,
+                            "repoUri": repo_path,
+                            "snapshotSizeBytes": snap_size,
+                        }
+                        atomic_write_json(
+                            Path(manifest_path),
+                            manifest,
+                            owner_uid=self.repo_uid,
+                            owner_gid=self.repo_gid,
+                            mode=0o644,
+                        )
+                        self._prune_local_manifests(manifest_dir, retain_days)
+                    else:
+                        phase = f"replicating to {target['host']}"
+                        remote_uri = f"sftp:{self.repo_user}@{target['address']}:{repo_path}"
+                        remote_dir = os.path.dirname(repo_path)
+                        self.update_service_operation(
+                            service_name,
+                            phase=phase,
+                            percent=base_percent,
+                            currentTarget=target["host"],
+                            currentTargetIndex=target_index + 1,
+                            totalTargets=target_count,
+                        )
+                        self.run_as_backup_user(
+                            ["ssh", target["address"], f"mkdir -p {shlex.quote(remote_dir)} {shlex.quote(manifest_dir)}"]
+                        )
+                        self.ensure_restic_repo(remote_uri)
+                        self.ensure_backup_generation_current(generation, service_name)
+                        self.run_as_backup_user_stream(
+                            ["restic", "--json", "-r", remote_uri, "backup"] + service["backupPaths"],
+                            on_line=self.restic_progress_updater(
+                                service_name,
+                                phase=phase,
+                                base_percent=base_percent,
+                                percent_span=target_span,
+                                extra={
+                                    "currentTarget": target["host"],
+                                    "currentTargetIndex": target_index + 1,
+                                    "totalTargets": target_count,
+                                },
+                            ),
+                        )
+                        self.ensure_backup_generation_current(generation, service_name)
+                        snapshot_id = self.latest_snapshot_id(remote_uri)
+                        if snapshot_id is None:
+                            raise RuntimeError(f"no snapshot found after backing up {service_name} to {target['host']}")
+                        snap_size = self.restic_snapshot_size(remote_uri, snapshot_id)
+                        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+                        manifest_path = os.path.join(manifest_dir, f"manifest-{timestamp}.json")
+                        manifest = {
+                            "service": service_name,
+                            "sourceHost": self.hostname,
+                            "leaderRevision": self.leader_revision,
+                            "completedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+                            "snapshotId": snapshot_id,
+                            "repoPath": repo_path,
+                            "repoUri": remote_uri,
+                            "snapshotSizeBytes": snap_size,
+                        }
+                        self.ensure_backup_generation_current(generation, service_name)
+                        self.run_as_backup_user(
+                            [
+                                "ssh",
+                                target["address"],
+                                (
+                                    f"install -m 644 /dev/null {shlex.quote(manifest_path)} "
+                                    f"&& cat > {shlex.quote(manifest_path)}"
+                                ),
+                            ],
+                            input_text=json.dumps(manifest, indent=2) + "\n",
+                        )
+                        prune_cmd = (
+                            f"find {shlex.quote(manifest_dir)} -name 'manifest-*.json' "
+                            f"-mtime +{retain_days} -delete 2>/dev/null || true"
+                        )
+                        self.run_as_backup_user(["ssh", target["address"], prune_cmd], check=False)
 
-                self.update_service_operation(
-                    service_name,
-                    phase=f"backed up locally" if is_local else f"replicated to {target['host']}",
-                    percent=base_percent + target_span,
-                    currentTarget=host_label,
-                    currentTargetIndex=target_index + 1,
-                    totalTargets=target_count,
-                )
-                successful_targets.append(host_label)
-                log(
-                    f"{service_name}: {'local backup' if is_local else f'replicated backup to {host_label}'} "
-                    f"completed in {format_duration(time.monotonic() - target_started_at)}"
-                )
-            except Exception as exc:
-                failed_targets.append({"host": host_label, "error": summarize_error(str(exc))})
-                self.update_service_operation(
-                    service_name,
-                    phase=f"failed local backup" if is_local else f"failed replication to {host_label}",
-                    percent=base_percent,
-                    currentTarget=host_label,
-                    currentTargetIndex=target_index + 1,
-                    totalTargets=target_count,
-                    error=summarize_error(str(exc)),
-                )
-                log(
-                    f"{service_name}: {'local backup' if is_local else f'replication to {host_label}'} failed after "
-                    f"{format_duration(time.monotonic() - target_started_at)}: {summarize_error(str(exc))}"
-                )
-
-        result = {
-            "successfulTargets": successful_targets,
-            "failedTargets": failed_targets,
-            "totalTargets": target_count,
-            "durationSeconds": time.monotonic() - backup_started_at,
-        }
-        if failed_targets:
-            message = (
-                f"backed up to {len(successful_targets)}/{target_count} targets"
-                if successful_targets
-                else "backup failed on all targets"
-            )
-            self.clear_service_operation(service_name, status="degraded", message=message, details=result)
-        else:
+                    self.update_service_operation(
+                        service_name,
+                        phase=f"backed up locally" if is_local else f"replicated to {target['host']}",
+                        percent=base_percent + target_span,
+                        currentTarget=host_label,
+                        currentTargetIndex=target_index + 1,
+                        totalTargets=target_count,
+                    )
+                    successful_targets.append(host_label)
+                    log(
+                        f"{service_name}: {'local backup' if is_local else f'replicated backup to {host_label}'} "
+                        f"completed in {format_duration(time.monotonic() - target_started_at)}"
+                    )
+                except Exception as exc:
+                    failed_targets.append({"host": host_label, "error": summarize_error(str(exc))})
+                    self.update_service_operation(
+                        service_name,
+                        phase=f"failed local backup" if is_local else f"failed replication to {host_label}",
+                        percent=base_percent,
+                        currentTarget=host_label,
+                        currentTargetIndex=target_index + 1,
+                        totalTargets=target_count,
+                        error=summarize_error(str(exc)),
+                    )
+                    log(
+                        f"{service_name}: {'local backup' if is_local else f'replication to {host_label}'} failed after "
+                        f"{format_duration(time.monotonic() - target_started_at)}: {summarize_error(str(exc))}"
+                    )
+        except Exception as exc:
+            if service.get("postBackupCommand"):
+                try:
+                    self.update_service_operation(
+                        service_name,
+                        phase="cleaning up staged backup payload",
+                        percent=96.0,
+                    )
+                    self.run(service["postBackupCommand"])
+                except Exception as cleanup_exc:
+                    cleanup_error = summarize_error(str(cleanup_exc))
+                    log(f"{service_name}: backup cleanup failed: {cleanup_error}")
             self.clear_service_operation(
                 service_name,
-                status="completed",
-                message=f"backup completed in {format_duration(result['durationSeconds'])}",
-                details=result,
+                status="failed",
+                message=summarize_error(str(exc)),
+                details=({"cleanupError": cleanup_error} if cleanup_error else None),
             )
-        return result
+            raise
+        else:
+            if service.get("postBackupCommand"):
+                try:
+                    self.update_service_operation(
+                        service_name,
+                        phase="cleaning up staged backup payload",
+                        percent=96.0,
+                    )
+                    cleanup_started_at = time.monotonic()
+                    self.run(service["postBackupCommand"])
+                    log(
+                        f"{service_name}: cleaned up staged backup payload in "
+                        f"{format_duration(time.monotonic() - cleanup_started_at)}"
+                    )
+                except Exception as exc:
+                    cleanup_error = summarize_error(str(exc))
+                    failed_targets.append({"host": "cleanup", "error": cleanup_error})
+                    log(f"{service_name}: backup cleanup failed: {cleanup_error}")
+
+            result = {
+                "successfulTargets": successful_targets,
+                "failedTargets": failed_targets,
+                "totalTargets": target_count,
+                "durationSeconds": time.monotonic() - backup_started_at,
+            }
+            if cleanup_error:
+                result["cleanupError"] = cleanup_error
+            if failed_targets:
+                message = (
+                    f"backed up to {len(successful_targets)}/{target_count} targets"
+                    if successful_targets
+                    else "backup failed on all targets"
+                )
+                self.clear_service_operation(service_name, status="degraded", message=message, details=result)
+            else:
+                self.clear_service_operation(
+                    service_name,
+                    status="completed",
+                    message=f"backup completed in {format_duration(result['durationSeconds'])}",
+                    details=result,
+                )
+            return result
 
     def restore_service(self, service_name, manifest, *, progress_callback=None):
         service = self.services[service_name]
@@ -1163,26 +1213,29 @@ class Controller:
             f"starting restore for {service_name} from {source_host} "
             f"(snapshot {snapshot_id}, completed {completed_at})"
         )
-        restore_root = tempfile.mkdtemp(prefix=f"alanix-cluster-{service_name}-", dir="/var/tmp")
+        restore_target = service.get("restoreTarget")
+        restore_root = restore_target or tempfile.mkdtemp(prefix=f"alanix-cluster-{service_name}-", dir="/var/tmp")
         try:
+            if restore_target:
+                for backup_path in service["backupPaths"]:
+                    remove_path(backup_path)
+                    os.makedirs(os.path.dirname(backup_path), exist_ok=True)
             self.run_stream(
                 ["restic", "--json", "-r", repo_path, "restore", snapshot_id, "--target", restore_root],
                 env={"RESTIC_PASSWORD_FILE": self.password_file},
                 on_line=progress_callback,
             )
-            for backup_path in service["backupPaths"]:
-                source_path = os.path.join(restore_root, backup_path.lstrip("/"))
-                if not os.path.exists(source_path):
-                    raise RuntimeError(f"restore path missing for {service_name}: {source_path}")
-                if os.path.isdir(backup_path):
-                    shutil.rmtree(backup_path, ignore_errors=True)
-                elif os.path.isfile(backup_path):
-                    os.remove(backup_path)
-                os.makedirs(os.path.dirname(backup_path), exist_ok=True)
-                if os.path.isdir(source_path):
-                    shutil.copytree(source_path, backup_path, symlinks=True)
-                else:
-                    shutil.copy2(source_path, backup_path)
+            if not restore_target:
+                for backup_path in service["backupPaths"]:
+                    source_path = os.path.join(restore_root, backup_path.lstrip("/"))
+                    if not os.path.exists(source_path):
+                        raise RuntimeError(f"restore path missing for {service_name}: {source_path}")
+                    remove_path(backup_path)
+                    os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+                    if os.path.isdir(source_path):
+                        shutil.copytree(source_path, backup_path, symlinks=True)
+                    else:
+                        shutil.copy2(source_path, backup_path)
             if service.get("postRestoreCommand"):
                 self.run(service["postRestoreCommand"])
             log(
@@ -1190,7 +1243,8 @@ class Controller:
                 f"{format_duration(time.monotonic() - restore_started_at)}"
             )
         finally:
-            shutil.rmtree(restore_root, ignore_errors=True)
+            if not restore_target:
+                shutil.rmtree(restore_root, ignore_errors=True)
 
     def verify_manifest(self, service_name, manifest, *, requested_by=None):
         repo_path = manifest["repoPath"]
