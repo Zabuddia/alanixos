@@ -254,6 +254,37 @@ def parse_restic_progress_line(line: str) -> dict | None:
     return None
 
 
+def parse_prep_progress_line(line: str) -> dict | None:
+    stripped = line.strip()
+    if not stripped:
+        return None
+
+    step_match = re.match(r"^ALANIX-PROGRESS STEP ([0-9]+) ([0-9]+) (.+)$", stripped)
+    if step_match:
+        return {
+            "kind": "step",
+            "stepIndex": max(1, int(step_match.group(1))),
+            "stepTotal": max(1, int(step_match.group(2))),
+            "label": step_match.group(3).strip(),
+        }
+
+    rsync_match = re.match(r"^\s*([0-9][0-9,]*)\s+([0-9]+)%\s+", line)
+    if rsync_match:
+        bytes_done = int(rsync_match.group(1).replace(",", ""))
+        percent = float(rsync_match.group(2))
+        total_bytes = None
+        if 0.0 < percent <= 100.0:
+            total_bytes = max(bytes_done, int(round(bytes_done * 100.0 / percent)))
+        return {
+            "kind": "progress",
+            "bytesDone": bytes_done,
+            "totalBytes": total_bytes,
+            "percent": percent,
+        }
+
+    return None
+
+
 class EtcdUnavailable(RuntimeError):
     pass
 
@@ -804,6 +835,57 @@ class Controller:
 
         return handle
 
+    def prep_progress_updater(self, service_name, *, phase, base_percent, percent_span):
+        state = {
+            "stepIndex": 1,
+            "stepTotal": 1,
+            "label": phase,
+        }
+
+        def overall_percent(step_fraction: float) -> float:
+            step_total = max(1, int(state["stepTotal"]))
+            step_index = min(max(1, int(state["stepIndex"])), step_total)
+            fraction = max(0.0, min(1.0, step_fraction))
+            return base_percent + percent_span * (((step_index - 1) + fraction) / step_total)
+
+        def handle(line):
+            progress = parse_prep_progress_line(line)
+            if progress is None:
+                return
+
+            if progress["kind"] == "step":
+                state["stepIndex"] = progress["stepIndex"]
+                state["stepTotal"] = progress["stepTotal"]
+                state["label"] = progress.get("label") or phase
+                self.update_service_operation(
+                    service_name,
+                    phase=state["label"],
+                    percent=overall_percent(0.0),
+                    progress={
+                        "kind": "prep-step",
+                        "stepIndex": state["stepIndex"],
+                        "stepTotal": state["stepTotal"],
+                    },
+                )
+                return
+
+            if progress["kind"] == "progress":
+                self.update_service_operation(
+                    service_name,
+                    phase=state["label"],
+                    percent=overall_percent(progress.get("percent", 0.0) / 100.0),
+                    progress={
+                        "kind": "prep-progress",
+                        "stepIndex": state["stepIndex"],
+                        "stepTotal": state["stepTotal"],
+                        "bytesDone": progress.get("bytesDone"),
+                        "totalBytes": progress.get("totalBytes"),
+                        "percent": progress.get("percent"),
+                    },
+                )
+
+        return handle
+
     def find_manifest(self, service_name, manifest_path):
         for manifest in self.local_manifests_for_service(service_name):
             if manifest.get("_path") == manifest_path:
@@ -1079,6 +1161,10 @@ class Controller:
         service = self.services[service_name]
         backup_started_at = time.monotonic()
         retain_days = self.cluster.get("backup", {}).get("retainDays", 7)
+        prep_base_percent = 1.0
+        prep_end_percent = 20.0
+        work_end_percent = 95.0
+        cleanup_percent = 96.0
 
         local_target = service.get("localTarget")
         all_targets: list[dict] = []
@@ -1086,6 +1172,7 @@ class Controller:
             all_targets.append({"_local": True, **local_target})
         all_targets.extend(service.get("remoteTargets", []))
         target_count = len(all_targets)
+        work_start_percent = prep_end_percent if service.get("preBackupCommand") else prep_base_percent
 
         self.ensure_backup_generation_current(generation, service_name)
         self.start_service_operation(
@@ -1093,24 +1180,32 @@ class Controller:
             action="backup",
             origin=origin,
             phase="preparing backup payload",
-            percent=1.0,
+            percent=prep_base_percent,
             requested_by=requested_by,
         )
         log(f"starting backup for {service_name} to {target_count} target{'s' if target_count != 1 else ''}")
         successful_targets: list[str] = []
         failed_targets: list[dict] = []
-        target_span = 90.0 / max(1, target_count)
+        target_span = (work_end_percent - work_start_percent) / max(1, target_count)
         cleanup_error = None
 
         try:
             if service.get("preBackupCommand"):
                 prep_started_at = time.monotonic()
-                self.run(service["preBackupCommand"])
+                self.run_stream(
+                    service["preBackupCommand"],
+                    on_line=self.prep_progress_updater(
+                        service_name,
+                        phase="preparing backup payload",
+                        base_percent=prep_base_percent,
+                        percent_span=prep_end_percent - prep_base_percent,
+                    ),
+                )
                 self.ensure_backup_generation_current(generation, service_name)
                 self.update_service_operation(
                     service_name,
                     phase="prepared backup payload",
-                    percent=5.0,
+                    percent=work_start_percent,
                 )
                 log(f"{service_name}: prepared backup payload in {format_duration(time.monotonic() - prep_started_at)}")
 
@@ -1121,7 +1216,7 @@ class Controller:
                 host_label = "local" if is_local else target["host"]
                 repo_path = target["repoPath"]
                 manifest_dir = target["manifestDir"]
-                base_percent = 5.0 + target_index * target_span
+                base_percent = work_start_percent + target_index * target_span
 
                 try:
                     if is_local:
@@ -1301,7 +1396,7 @@ class Controller:
                     self.update_service_operation(
                         service_name,
                         phase="cleaning up staged backup payload",
-                        percent=96.0,
+                        percent=cleanup_percent,
                     )
                     self.run(service["postBackupCommand"])
                 except Exception as cleanup_exc:
@@ -1320,7 +1415,7 @@ class Controller:
                     self.update_service_operation(
                         service_name,
                         phase="cleaning up staged backup payload",
-                        percent=96.0,
+                        percent=cleanup_percent,
                     )
                     cleanup_started_at = time.monotonic()
                     self.run(service["postBackupCommand"])
