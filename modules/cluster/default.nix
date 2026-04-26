@@ -206,6 +206,24 @@ in
         description = "Domains to point at the current cluster leader via Cloudflare DDNS.";
       };
 
+      ipv4Provider = lib.mkOption {
+        type = types.str;
+        default = "cloudflare.trace";
+        description = "IPv4 detection provider passed to cloudflare-ddns.";
+      };
+
+      ipv6Provider = lib.mkOption {
+        type = types.str;
+        default = "none";
+        description = "IPv6 detection provider passed to cloudflare-ddns.";
+      };
+
+      detectionTimeout = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Optional detection timeout passed to cloudflare-ddns.";
+      };
+
       credentialsFile = lib.mkOption {
         type = types.path;
         description = "Path to file containing CLOUDFLARE_API_TOKEN=<token>.";
@@ -3620,15 +3638,19 @@ in
             "sops-nix.service"
           ];
           wants = [ "network-online.target" ];
-          environment = {
-            DOMAINS = lib.concatStringsSep " " ddnsCfg.domains;
-            IP4_PROVIDER = "cloudflare.trace";
-            IP6_PROVIDER = "none";
-            UPDATE_CRON = "@every 5m";
-            UPDATE_ON_START = "true";
-            DELETE_ON_STOP = "false";
-            TTL = "1";
-          };
+          environment =
+            {
+              DOMAINS = lib.concatStringsSep " " ddnsCfg.domains;
+              IP4_PROVIDER = ddnsCfg.ipv4Provider;
+              IP6_PROVIDER = ddnsCfg.ipv6Provider;
+              UPDATE_CRON = "@every 5m";
+              UPDATE_ON_START = "true";
+              DELETE_ON_STOP = "false";
+              TTL = "1";
+            }
+            // lib.optionalAttrs (ddnsCfg.detectionTimeout != null) {
+              DETECTION_TIMEOUT = ddnsCfg.detectionTimeout;
+            };
           serviceConfig = {
             ExecStart = "${pkgs.cloudflare-ddns}/bin/ddns";
             EnvironmentFile = ddnsCfg.credentialsFile;
