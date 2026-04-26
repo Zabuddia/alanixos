@@ -1498,6 +1498,10 @@ class Controller:
         # Start renewing immediately after we acquire the lease so it stays valid
         # while we recover local state and start leader-only units.
         self.start_keepalive(self.lease_id)
+        if self.running_backups:
+            running = list(self.running_backups.keys())
+            log(f"waiting for {len(running)} in-flight backup(s) to finish before restoring: {', '.join(running)}")
+            concurrent.futures.wait([b["future"] for b in self.running_backups.values()])
         self.recover_services(allow_stale=allow_stale)
         self.start_target()
         for service_name in self.next_backup_at:
