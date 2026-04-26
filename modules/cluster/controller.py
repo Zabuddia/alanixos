@@ -599,10 +599,15 @@ class Controller:
         )
 
     def start_target(self):
+        log(f"starting target {self.target}")
         self.run(["systemctl", "start", self.target])
 
     def stop_target(self):
-        self.run(["systemctl", "stop"] + self.managed_units(), check=False)
+        units = self.managed_units()
+        log(f"stopping {len(units)} managed unit(s): {', '.join(units)}")
+        proc = self.run(["systemctl", "stop"] + units, check=False)
+        if proc.returncode != 0:
+            log(f"stop target exited {proc.returncode}: {summarize_error(proc.stderr or proc.stdout or '')}")
 
     def demote(self, reason):
         log(f"demoting: {reason}")
@@ -737,9 +742,13 @@ class Controller:
         self.write_runtime_state()
 
     def requeue_stale_admin_requests(self):
+        requeued = []
         for path in sorted(self.admin_inflight_dir.glob("*.json")):
             target = self.admin_queue_dir / path.name
             path.replace(target)
+            requeued.append(path.name)
+        if requeued:
+            log(f"requeued {len(requeued)} stale admin request(s) from previous run: {', '.join(requeued)}")
 
     def take_next_admin_request(self):
         for path in sorted(self.admin_queue_dir.glob("*.json")):
@@ -751,12 +760,14 @@ class Controller:
             try:
                 payload = json.loads(inflight_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError as exc:
+                msg = f"invalid admin request {path.name}: {summarize_error(str(exc))}"
+                log(f"dropping corrupt admin request: {msg}")
                 inflight_path.unlink(missing_ok=True)
                 self.record_operation_history(
                     {
                         "action": "admin-request",
                         "status": "failed",
-                        "message": f"invalid admin request {path.name}: {summarize_error(str(exc))}",
+                        "message": msg,
                     }
                 )
                 continue
@@ -829,7 +840,8 @@ class Controller:
                 seen.add(manifest_key)
                 try:
                     data = json.loads(manifest_path.read_text(encoding="utf-8"))
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, OSError) as exc:
+                    log(f"skipping unreadable manifest {manifest_path}: {summarize_error(str(exc))}")
                     continue
                 data["_path"] = str(manifest_path)
                 manifests.append(data)
@@ -867,18 +879,25 @@ class Controller:
             return None
         try:
             return json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
+        except json.JSONDecodeError as exc:
+            log(f"{service_name}: corrupt active snapshot record, will re-restore: {summarize_error(str(exc))}")
+            return None
+        except OSError as exc:
+            log(f"{service_name}: cannot read active snapshot record, will re-restore: {summarize_error(str(exc))}")
             return None
 
     def write_active_snapshot(self, service_name, manifest):
         path = self.active_snapshot_path(service_name)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(
-            json.dumps({"snapshotId": manifest["snapshotId"]}),
-            encoding="utf-8",
-        )
-        tmp.replace(path)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(
+                json.dumps({"snapshotId": manifest["snapshotId"]}),
+                encoding="utf-8",
+            )
+            tmp.replace(path)
+        except Exception as exc:
+            log(f"{service_name}: failed to write active snapshot record; next promotion will re-restore: {summarize_error(str(exc))}")
 
     def local_recovery_profile(self):
         manifests = {}
@@ -932,6 +951,7 @@ class Controller:
         check = self.run_as_backup_user(["restic", "-r", remote_uri, "snapshots"], check=False)
         if check.returncode == 0:
             return
+        log(f"initializing new restic repo at {remote_uri}")
         self.run_as_backup_user(["restic", "-r", remote_uri, "init"])
 
     def latest_snapshot_id(self, remote_uri):
@@ -957,13 +977,16 @@ class Controller:
         except Exception:
             return None
 
-    def _prune_local_manifests(self, manifest_dir: str, retain_days: int) -> None:
+    def _prune_local_manifests(self, manifest_dir: str, retain_days: int, service_name: str) -> None:
         cutoff = time.time() - retain_days * 86400
         for p in Path(manifest_dir).glob("manifest-*.json"):
             try:
-                if p.stat().st_mtime < cutoff:
-                    p.unlink()
-                    log(f"pruned old manifest: {p}")
+                if p.stat().st_mtime >= cutoff:
+                    continue
+                if self.read_pin_record(service_name, str(p)) is not None:
+                    continue
+                p.unlink()
+                log(f"pruned old manifest: {p}")
             except OSError:
                 pass
 
@@ -1067,7 +1090,7 @@ class Controller:
                             owner_gid=self.repo_gid,
                             mode=0o644,
                         )
-                        self._prune_local_manifests(manifest_dir, retain_days)
+                        self._prune_local_manifests(manifest_dir, retain_days, service_name)
                     else:
                         phase = f"replicating to {target['host']}"
                         remote_uri = f"sftp:{self.repo_user}@{target['address']}:{repo_path}"
@@ -1163,6 +1186,7 @@ class Controller:
                         f"{format_duration(time.monotonic() - target_started_at)}: {summarize_error(str(exc))}"
                     )
         except Exception as exc:
+            log(f"{service_name}: backup failed: {summarize_error(str(exc))}")
             if service.get("postBackupCommand"):
                 try:
                     self.update_service_operation(
@@ -1209,12 +1233,11 @@ class Controller:
             if cleanup_error:
                 result["cleanupError"] = cleanup_error
             if failed_targets:
-                message = (
-                    f"backed up to {len(successful_targets)}/{target_count} targets"
-                    if successful_targets
-                    else "backup failed on all targets"
-                )
-                self.clear_service_operation(service_name, status="degraded", message=message, details=result)
+                if successful_targets:
+                    message = f"backed up to {len(successful_targets)}/{target_count} targets"
+                    self.clear_service_operation(service_name, status="degraded", message=message, details=result)
+                else:
+                    self.clear_service_operation(service_name, status="failed", message="backup failed on all targets", details=result)
             else:
                 self.clear_service_operation(
                     service_name,
@@ -1242,11 +1265,13 @@ class Controller:
                 for backup_path in service["backupPaths"]:
                     remove_path(backup_path)
                     os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+            restic_started_at = time.monotonic()
             self.run_stream(
                 ["restic", "--json", "-r", repo_path, "restore", snapshot_id, "--target", restore_root],
                 env={"RESTIC_PASSWORD_FILE": self.password_file},
                 on_line=progress_callback,
             )
+            log(f"{service_name}: restic restore complete in {format_duration(time.monotonic() - restic_started_at)}")
             if not restore_target:
                 for backup_path in service["backupPaths"]:
                     source_path = os.path.join(restore_root, backup_path.lstrip("/"))
@@ -1254,17 +1279,26 @@ class Controller:
                         raise RuntimeError(f"restore path missing for {service_name}: {source_path}")
                     remove_path(backup_path)
                     os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+                    copy_started_at = time.monotonic()
                     if os.path.isdir(source_path):
                         shutil.copytree(source_path, backup_path, symlinks=True)
                     else:
                         shutil.copy2(source_path, backup_path)
+                    log(f"{service_name}: copied {backup_path} in {format_duration(time.monotonic() - copy_started_at)}")
             if service.get("postRestoreCommand"):
+                post_started_at = time.monotonic()
+                log(f"{service_name}: running post-restore command")
                 self.run(service["postRestoreCommand"])
+                log(f"{service_name}: post-restore command complete in {format_duration(time.monotonic() - post_started_at)}")
             self.write_active_snapshot(service_name, manifest)
             log(
                 f"completed restore for {service_name} from {source_host} in "
                 f"{format_duration(time.monotonic() - restore_started_at)}"
             )
+        except Exception as exc:
+            log(f"restore failed for {service_name} from {source_host} after "
+                f"{format_duration(time.monotonic() - restore_started_at)}: {summarize_error(str(exc))}")
+            raise
         finally:
             if not restore_target:
                 shutil.rmtree(restore_root, ignore_errors=True)
@@ -1272,6 +1306,7 @@ class Controller:
     def verify_manifest(self, service_name, manifest, *, requested_by=None):
         repo_path = manifest["repoPath"]
         snapshot_id = manifest["snapshotId"]
+        log(f"{service_name}: verifying snapshot {snapshot_id} in {repo_path}")
         self.start_service_operation(
             service_name,
             action="verify",
@@ -1307,6 +1342,7 @@ class Controller:
             message=f"verified snapshot {details['snapshotId']}",
             details=details,
         )
+        log(f"{service_name}: verified snapshot {details['snapshotId']}")
         return details
 
     def restore_manifest(self, service_name, manifest, *, requested_by=None):
@@ -1338,7 +1374,8 @@ class Controller:
                     percent_span=70.0,
                 ),
             )
-        except Exception:
+        except Exception as exc:
+            log(f"{service_name}: manual restore failed: {summarize_error(str(exc))}")
             if was_active and self.lease_id is not None:
                 try:
                     self.start_target()
@@ -1365,6 +1402,7 @@ class Controller:
         )
 
     def pin_manifest(self, service_name, manifest, *, requested_by=None, note=None):
+        log(f"{service_name}: pinning snapshot {manifest.get('snapshotId')}" + (f" ({note})" if note else ""))
         pin_path = self.pin_record_path(service_name, manifest["_path"])
         record = {
             "service": service_name,
@@ -1389,6 +1427,7 @@ class Controller:
         return record
 
     def unpin_manifest(self, service_name, manifest, *, requested_by=None):
+        log(f"{service_name}: unpinning snapshot {manifest.get('snapshotId')}")
         pin_path = self.pin_record_path(service_name, manifest["_path"])
         pin_path.unlink(missing_ok=True)
         record = {
@@ -1429,6 +1468,7 @@ class Controller:
         )
         if proc.returncode != 0:
             detail = summarize_error(proc.stderr or proc.stdout or "restic forget failed")
+            log(f"{service_name}: failed to delete snapshot {snapshot_id}: {detail}")
             raise RuntimeError(f"failed to delete snapshot {snapshot_id}: {detail}")
 
         Path(manifest_path).unlink(missing_ok=True)
@@ -1671,8 +1711,11 @@ class Controller:
         if action == "backup-now" and self.lease_id is None:
             raise RuntimeError("manual backups may only run on the current leader")
 
-        if action in {"backup-now", "verify-manifest", "restore-manifest", "delete-manifest"} and self.running_backups:
+        if action in {"backup-now", "verify-manifest", "restore-manifest"} and self.running_backups:
             raise RuntimeError("another backup is already running; wait for it to finish and try again")
+
+        if action == "delete-manifest" and service_name in self.running_backups:
+            raise RuntimeError(f"a backup for {service_name} is in progress; wait for it to finish and try again")
 
         state = {
             "action": action,
@@ -1690,11 +1733,14 @@ class Controller:
         self.write_runtime_state()
 
     def fail_admin_request(self, request, message):
+        action = request.get("action", "unknown")
+        service = request.get("service", "unknown")
+        log(f"admin request failed [{action} {service}]: {message}")
         self.complete_admin_request_file(request)
         self.record_operation_history(
             {
                 "service": request.get("service"),
-                "action": request.get("action"),
+                "action": action,
                 "status": "failed",
                 "requestedBy": request.get("requestedBy"),
                 "message": message,
@@ -1719,6 +1765,7 @@ class Controller:
         try:
             result = future.result()
         except Exception as exc:
+            log(f"admin request failed [{action} {service_name}]: {summarize_error(str(exc))}")
             if action in {"pin-manifest", "unpin-manifest"}:
                 self.record_operation_history(
                     {
