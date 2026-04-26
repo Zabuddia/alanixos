@@ -134,6 +134,18 @@ in
         '';
       };
 
+      minFreeSpaceBytes = lib.mkOption {
+        type = types.ints.positive;
+        default = 100 * 1024 * 1024 * 1024;
+        description = ''
+          Minimum free space that should remain on the filesystem holding staged
+          backup payloads after the local snapshot completes. When the remaining
+          space falls below this threshold, the controller keeps the local
+          snapshot but skips slower remote replications so staged data can be
+          cleaned up promptly.
+        '';
+      };
+
       retainDays = lib.mkOption {
         type = types.ints.positive;
         default = 7;
@@ -2111,6 +2123,7 @@ in
             repoBaseDir = cfg.backup.repoBaseDir;
             passwordFile = config.sops.secrets.${cfg.backup.passwordSecret}.path;
             maxConcurrent = cfg.backup.maxConcurrent;
+            minFreeSpaceBytes = cfg.backup.minFreeSpaceBytes;
             retainDays = cfg.backup.retainDays;
           };
           endpoints =
