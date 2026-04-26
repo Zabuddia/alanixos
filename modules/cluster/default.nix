@@ -593,7 +593,7 @@ in
               mkdir -p "$companion_dir"
             fi
 
-            chown -R invidious:invidious "$state_dir" "$companion_dir"
+            chown -R invidious:invidious "$backup_dir" "$state_dir" "$companion_dir"
 
             if [[ -f "$staged_dump" ]]; then
               runuser -u invidious -- env \
