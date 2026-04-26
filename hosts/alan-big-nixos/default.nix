@@ -8,7 +8,7 @@
       ./hardware-configuration.nix
       ./secrets.nix
       ../../clusters/home.nix
-      ../../modules/services/bitcoin.nix
+      # ../../modules/services/bitcoin.nix
     ];
 
     alanix.system = {
