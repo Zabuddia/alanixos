@@ -63,57 +63,32 @@ let
         })
       cfg.libraries;
 
-  effectiveTvheadendBaseUrl =
-    if hasValue cfg.liveTv.tvheadend.baseUrl then
-      cfg.liveTv.tvheadend.baseUrl
-    else if tvheadendCfg.enable then
-      "http://${tvheadendCfg.listenAddress}:${toString tvheadendCfg.port}"
-    else
-      null;
-
   effectiveTvheadendSources =
-    if cfg.liveTv.tvheadend.sources != { } then
-      lib.mapAttrs
-        (sourceName: sourceCfg: {
-          inherit (sourceCfg)
-            enable
-            playlistPath
-            xmltvPath
-            username
-            password
-            passwordFile
-            passwordSecret
-            ;
-          baseUrl =
-            if hasValue sourceCfg.baseUrl then
-              sourceCfg.baseUrl
-            else if tvheadendCfg.enable then
-              "http://${tvheadendCfg.listenAddress}:${toString tvheadendCfg.port}"
-            else
-              null;
-          friendlyName =
-            if hasValue sourceCfg.friendlyName then
-              sourceCfg.friendlyName
-            else
-              sourceName;
-        })
-        cfg.liveTv.tvheadend.sources
-    else
-      {
-        default = {
-          enable = cfg.liveTv.tvheadend.enable;
-          baseUrl = effectiveTvheadendBaseUrl;
-          friendlyName = "TVHeadend";
-          inherit (cfg.liveTv.tvheadend)
-            playlistPath
-            xmltvPath
-            username
-            password
-            passwordFile
-            passwordSecret
-            ;
-        };
-      };
+    lib.mapAttrs
+      (sourceName: sourceCfg: {
+        inherit (sourceCfg)
+          enable
+          playlistPath
+          xmltvPath
+          username
+          password
+          passwordFile
+          passwordSecret
+          ;
+        baseUrl =
+          if hasValue sourceCfg.baseUrl then
+            sourceCfg.baseUrl
+          else if tvheadendCfg.enable then
+            "http://${tvheadendCfg.listenAddress}:${toString tvheadendCfg.port}"
+          else
+            null;
+        friendlyName =
+          if hasValue sourceCfg.friendlyName then
+            sourceCfg.friendlyName
+          else
+            sourceName;
+      })
+      cfg.liveTv.tvheadend.sources;
 
   effectiveLiveTvRecordingPath =
     if cfg.liveTv.recordingPath != null then
@@ -320,54 +295,6 @@ in
       };
 
       tvheadend = {
-        enable = lib.mkOption {
-          type = lib.types.bool;
-          default = false;
-          description = "Configure Jellyfin Live TV from TVHeadend using its M3U and XMLTV endpoints.";
-        };
-
-        baseUrl = lib.mkOption {
-          type = lib.types.nullOr lib.types.str;
-          default = null;
-          description = "Optional TVHeadend base URL. Defaults to alanix.tvheadend.listenAddress/port.";
-        };
-
-        playlistPath = lib.mkOption {
-          type = lib.types.str;
-          default = "/playlist/channels";
-          description = "Path appended to baseUrl for the TVHeadend M3U playlist.";
-        };
-
-        xmltvPath = lib.mkOption {
-          type = lib.types.str;
-          default = "/xmltv/channels";
-          description = "Path appended to baseUrl for the TVHeadend XMLTV guide.";
-        };
-
-        username = lib.mkOption {
-          type = lib.types.nullOr lib.types.str;
-          default = null;
-          description = "Optional TVHeadend username if the playlist and XMLTV endpoints require auth.";
-        };
-
-        password = lib.mkOption {
-          type = lib.types.nullOr lib.types.str;
-          default = null;
-          description = "Plaintext TVHeadend password (simple, not recommended).";
-        };
-
-        passwordFile = lib.mkOption {
-          type = lib.types.nullOr lib.types.path;
-          default = null;
-          description = "Path to a file containing the plaintext TVHeadend password.";
-        };
-
-        passwordSecret = lib.mkOption {
-          type = lib.types.nullOr lib.types.str;
-          default = null;
-          description = "Name of a sops secret containing the plaintext TVHeadend password.";
-        };
-
         sources = lib.mkOption {
           type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
             options = {
@@ -427,11 +354,7 @@ in
             };
           }));
           default = { };
-          description = ''
-            Multiple named TVHeadend sources for Jellyfin Live TV. When this is non-empty,
-            the top-level liveTv.tvheadend.* options act only as compatibility shorthands
-            for older single-source configs.
-          '';
+          description = "Named TVHeadend sources for Jellyfin Live TV.";
         };
       };
     };
@@ -476,48 +399,8 @@ in
             message = "alanix.jellyfin: declarative libraries and Live TV require at least one declared admin user.";
           }
           {
-            assertion = !liveTvEnabled || cfg.liveTv.tvheadend.sources != { } || hasValue effectiveTvheadendBaseUrl;
-            message = "alanix.jellyfin.liveTv.tvheadend.enable requires either alanix.jellyfin.liveTv.tvheadend.baseUrl, a configured liveTv.tvheadend.sources.<name>.baseUrl, or an enabled alanix.tvheadend service.";
-          }
-          {
-            assertion = effectiveTvheadendBaseUrl == null || builtins.match "^https?://.+" effectiveTvheadendBaseUrl != null;
-            message = "alanix.jellyfin.liveTv.tvheadend.baseUrl must start with http:// or https://.";
-          }
-          {
-            assertion = lib.hasPrefix "/" cfg.liveTv.tvheadend.playlistPath;
-            message = "alanix.jellyfin.liveTv.tvheadend.playlistPath must start with /.";
-          }
-          {
-            assertion = lib.hasPrefix "/" cfg.liveTv.tvheadend.xmltvPath;
-            message = "alanix.jellyfin.liveTv.tvheadend.xmltvPath must start with /.";
-          }
-          {
             assertion = effectiveLiveTvRecordingPath == null || lib.hasPrefix "/" effectiveLiveTvRecordingPath;
             message = "alanix.jellyfin.liveTv.recordingPath must be an absolute path.";
-          }
-          {
-            assertion =
-              let
-                chosen =
-                  builtins.length (
-                    lib.filter (x: x) [
-                      (cfg.liveTv.tvheadend.password != null)
-                      (cfg.liveTv.tvheadend.passwordFile != null)
-                      (cfg.liveTv.tvheadend.passwordSecret != null)
-                    ]
-                  );
-              in
-              if hasValue cfg.liveTv.tvheadend.username || chosen != 0 then
-                hasValue cfg.liveTv.tvheadend.username && chosen == 1
-              else
-                true;
-            message = "alanix.jellyfin.liveTv.tvheadend: set username plus exactly one of password, passwordFile, or passwordSecret when TVHeadend auth is required.";
-          }
-          {
-            assertion =
-              cfg.liveTv.tvheadend.passwordSecret == null
-              || lib.hasAttrByPath [ "sops" "secrets" cfg.liveTv.tvheadend.passwordSecret ] config;
-            message = "alanix.jellyfin.liveTv.tvheadend.passwordSecret must reference a declared sops secret.";
           }
           {
             assertion = !clusterCfg.enable || cfg.backupDir != null;

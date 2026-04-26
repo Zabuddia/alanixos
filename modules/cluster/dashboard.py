@@ -631,7 +631,7 @@ class Dashboard:
             return result
 
         manifests = []
-        manifest_globs = [service["localManifestGlob"]]
+        manifest_globs = [glob_pattern for glob_pattern in service.get("manifestGlobs", []) if glob_pattern]
         seen = set()
         for manifest_glob in manifest_globs:
             for path in glob.glob(manifest_glob):
@@ -1637,10 +1637,6 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "action": action,
                 "service": form.get("service"),
                 "manifestPath": form.get("manifestPath"),
-                "repoPath": form.get("repoPath"),
-                "snapshotId": form.get("snapshotId"),
-                "sourceHost": form.get("sourceHost"),
-                "completedAt": form.get("completedAt"),
                 "note": form.get("note"),
                 "requestedBy": session["username"],
             }
