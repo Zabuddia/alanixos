@@ -274,6 +274,7 @@ class Controller:
         self.repo_gid = repo_account.pw_gid
         self.password_file = self.cluster["backup"]["passwordFile"]
         self.max_concurrent_backups = max(1, int(self.cluster["backup"].get("maxConcurrent", 2)))
+        self.min_backup_free_space_bytes = int(self.cluster["backup"].get("minFreeSpaceBytes", 0))
         self.endpoints = self.cluster["endpoints"]
         self.etcd_dial_timeout = self.cluster["etcd"].get("dialTimeout", "1s")
         self.etcd_command_timeout = self.cluster["etcd"].get("commandTimeout", "3s")
@@ -990,6 +991,102 @@ class Controller:
             except OSError:
                 pass
 
+    def repo_snapshot_ids(self, repo_path: str) -> list[dict]:
+        proc = self.run_as_backup_user(["restic", "-r", repo_path, "snapshots", "--json"], check=False)
+        if proc.returncode != 0:
+            detail = summarize_error(proc.stderr or proc.stdout or "restic snapshots failed")
+            raise RuntimeError(f"cannot list snapshots in {repo_path}: {detail}")
+
+        try:
+            payload = json.loads(proc.stdout or "[]")
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"invalid restic snapshot response for {repo_path}: {exc}") from exc
+
+        if not isinstance(payload, list):
+            raise RuntimeError(f"invalid restic snapshot payload for {repo_path}")
+
+        snapshots = []
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            snapshot_id = item.get("id")
+            short_id = item.get("short_id")
+            if not snapshot_id:
+                continue
+            snapshots.append({"id": snapshot_id, "short_id": short_id})
+        return snapshots
+
+    def repo_manifest_snapshot_ids(self, manifest_dir: Path) -> set[str]:
+        keep_ids = set()
+        for manifest_path in manifest_dir.glob("manifest-*.json"):
+            try:
+                payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            snapshot_id = payload.get("snapshotId")
+            if snapshot_id:
+                keep_ids.add(snapshot_id)
+        return keep_ids
+
+    def prune_local_repo_snapshots(self, service_name: str, repo_path: str, keep_ids: set[str]) -> int:
+        snapshots = self.repo_snapshot_ids(repo_path)
+        delete_ids = []
+        for snapshot in snapshots:
+            snapshot_id = snapshot["id"]
+            short_id = snapshot.get("short_id")
+            if snapshot_id in keep_ids or (short_id and short_id in keep_ids):
+                continue
+            delete_ids.append(snapshot_id)
+
+        if not delete_ids:
+            return 0
+
+        log(f"{service_name}: pruning {len(delete_ids)} old snapshot(s) from {repo_path}")
+        proc = self.run_as_backup_user(
+            ["restic", "-r", repo_path, "forget", "--prune"] + delete_ids,
+            check=False,
+        )
+        if proc.returncode != 0:
+            detail = summarize_error(proc.stderr or proc.stdout or "restic forget failed")
+            raise RuntimeError(f"failed to prune old snapshots from {repo_path}: {detail}")
+
+        return len(delete_ids)
+
+    def prune_service_local_repos(self, service_name: str, retain_days: int) -> int:
+        service_dir = self.cluster_data_dir / service_name
+        if not service_dir.exists():
+            return 0
+
+        active_ids = set()
+        active_snapshot = self.read_active_snapshot(service_name)
+        if active_snapshot is not None:
+            snapshot_id = active_snapshot.get("snapshotId")
+            if snapshot_id:
+                active_ids.add(snapshot_id)
+
+        total_deleted = 0
+        for manifest_dir in sorted(service_dir.glob("from-*")):
+            if not manifest_dir.is_dir():
+                continue
+
+            self._prune_local_manifests(str(manifest_dir), retain_days, service_name)
+            keep_ids = self.repo_manifest_snapshot_ids(manifest_dir) | active_ids
+
+            repo_paths = [
+                str(candidate)
+                for candidate in (manifest_dir / "local-repo", manifest_dir / "repo")
+                if candidate.exists()
+            ]
+
+            for repo_path in repo_paths:
+                total_deleted += self.prune_local_repo_snapshots(service_name, repo_path, keep_ids)
+
+        return total_deleted
+
+    def path_free_bytes(self, path: str) -> int:
+        stat = os.statvfs(path)
+        return stat.f_bavail * stat.f_frsize
+
     def backup_service(self, service_name, generation, *, origin="automatic", requested_by=None):
         service = self.services[service_name]
         backup_started_at = time.monotonic()
@@ -1016,6 +1113,7 @@ class Controller:
         failed_targets: list[dict] = []
         target_span = 90.0 / max(1, target_count)
         cleanup_error = None
+        stop_replication_reason = None
 
         try:
             if service.get("preBackupCommand"):
@@ -1170,6 +1268,30 @@ class Controller:
                         f"{service_name}: {'local backup' if is_local else f'replicated backup to {host_label}'} "
                         f"completed in {format_duration(time.monotonic() - target_started_at)}"
                     )
+                    if (
+                        is_local
+                        and self.min_backup_free_space_bytes > 0
+                        and target_index + 1 < target_count
+                        and service.get("backupPaths")
+                    ):
+                        free_bytes = self.path_free_bytes(service["backupPaths"][0])
+                        if free_bytes < self.min_backup_free_space_bytes:
+                            stop_replication_reason = (
+                                "skipping remote replication because only "
+                                f"{format_bytes(free_bytes)} free remains after the local backup; "
+                                f"need at least {format_bytes(self.min_backup_free_space_bytes)}"
+                            )
+                            for remaining_target in all_targets[target_index + 1 :]:
+                                if remaining_target.get("_local", False):
+                                    continue
+                                failed_targets.append(
+                                    {
+                                        "host": remaining_target["host"],
+                                        "error": stop_replication_reason,
+                                    }
+                                )
+                            log(f"{service_name}: {stop_replication_reason}")
+                            break
                 except Exception as exc:
                     failed_targets.append({"host": host_label, "error": summarize_error(str(exc))})
                     self.update_service_operation(
@@ -1232,6 +1354,15 @@ class Controller:
             }
             if cleanup_error:
                 result["cleanupError"] = cleanup_error
+            try:
+                pruned_snapshot_count = self.prune_service_local_repos(service_name, retain_days)
+            except Exception as exc:
+                maintenance_error = summarize_error(str(exc))
+                result["maintenanceError"] = maintenance_error
+                log(f"{service_name}: local backup maintenance failed: {maintenance_error}")
+            else:
+                if pruned_snapshot_count > 0:
+                    result["prunedSnapshotCount"] = pruned_snapshot_count
             if failed_targets:
                 if successful_targets:
                     message = f"backed up to {len(successful_targets)}/{target_count} targets"
