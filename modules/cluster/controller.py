@@ -858,6 +858,28 @@ class Controller:
         age = self.manifest_age_seconds(manifest)
         return age <= max_age_seconds
 
+    def active_snapshot_path(self, service_name):
+        return self.cluster_data_dir / service_name / "active-snapshot.json"
+
+    def read_active_snapshot(self, service_name):
+        path = self.active_snapshot_path(service_name)
+        if not path.exists():
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+
+    def write_active_snapshot(self, service_name, manifest):
+        path = self.active_snapshot_path(service_name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(
+            json.dumps({"snapshotId": manifest["snapshotId"]}),
+            encoding="utf-8",
+        )
+        tmp.replace(path)
+
     def local_recovery_profile(self):
         manifests = {}
         all_fresh = True
@@ -1238,6 +1260,7 @@ class Controller:
                         shutil.copy2(source_path, backup_path)
             if service.get("postRestoreCommand"):
                 self.run(service["postRestoreCommand"])
+            self.write_active_snapshot(service_name, manifest)
             log(
                 f"completed restore for {service_name} from {source_host} in "
                 f"{format_duration(time.monotonic() - restore_started_at)}"
@@ -1483,6 +1506,10 @@ class Controller:
                     )
                 else:
                     raise RuntimeError(f"{service_name}: freshest backup is older than maxBackupAge")
+            active = self.read_active_snapshot(service_name)
+            if active is not None and active.get("snapshotId") == manifest.get("snapshotId"):
+                log(f"{service_name}: local state matches snapshot {manifest['snapshotId'][:8]}; skipping restore")
+                continue
             self.restore_service(service_name, manifest)
 
     def promote(self, leader, *, allow_stale=False):
