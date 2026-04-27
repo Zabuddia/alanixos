@@ -327,11 +327,13 @@ in
               local want_admin="$3"
               local name="$4"
               local email="$5"
+              local current_password="''${6:-}"
               jq -cn \
                 --arg userName "$username" \
                 --arg password "$password" \
                 --arg name "$name" \
                 --arg email "$email" \
+                --arg currentPassword "$current_password" \
                 --argjson isAdmin "$want_admin" \
                 '{
                   userName: $userName,
@@ -339,7 +341,7 @@ in
                   name: $name,
                   email: $email,
                   isAdmin: $isAdmin
-                }'
+                } + (if $currentPassword != "" then { currentPassword: $currentPassword } else {} end)'
             }
 
             login_or_bootstrap_admin() {
@@ -416,7 +418,7 @@ in
                 user_id="$(printf '%s' "$user_json" | jq -r '.id')"
                 current_name="$(printf '%s' "$user_json" | jq -r '.name // ""')"
                 current_email="$(printf '%s' "$user_json" | jq -r '.email // ""')"
-                payload="$(user_payload "$username" "$pass" "$want_admin" "$current_name" "$current_email")"
+                payload="$(user_payload "$username" "$pass" "$want_admin" "$current_name" "$current_email" "$pass")"
                 http_json PUT "/api/user/$user_id/" "$payload" "$token"
                 if ! is_success_status "$RESPONSE_STATUS"; then
                   echo "Warning: Failed to reconcile Navidrome user '$username' (HTTP $RESPONSE_STATUS)." >&2
