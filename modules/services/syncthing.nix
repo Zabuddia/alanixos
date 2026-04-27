@@ -113,6 +113,16 @@ let
     };
   };
 
+  navidromeMediaFolders = {
+    "media-music" = {
+      label = "media/music";
+      path = "/srv/media/music";
+      user = "buddia";
+      group = "navidrome";
+      mode = "0775";
+    };
+  };
+
   filebrowserFilesFolders = {
     "filebrowser-root" = {
       label = "filebrowser";
@@ -127,6 +137,7 @@ let
   folderCatalog = {
     emulation = emulationFolders;
     jellyfin-media = jellyfinMediaFolders;
+    navidrome-media = navidromeMediaFolders;
     filebrowser-files = filebrowserFilesFolders;
   };
 
@@ -376,7 +387,7 @@ in
     };
 
     folderSets = lib.mkOption {
-      type = lib.types.listOf (lib.types.enum [ "emulation" "jellyfin-media" "filebrowser-files" ]);
+      type = lib.types.listOf (lib.types.enum [ "emulation" "jellyfin-media" "navidrome-media" "filebrowser-files" ]);
       default = [ ];
       description = "Named folder sets enabled on this host.";
     };

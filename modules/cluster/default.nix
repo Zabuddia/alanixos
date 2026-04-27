@@ -258,6 +258,7 @@ in
       invidiousCfg = config.alanix.invidious;
       immichCfg = config.alanix.immich;
       jellyfinCfg = config.alanix.jellyfin;
+      navidromeCfg = config.alanix.navidrome;
       openwebuiCfg = config.alanix.openwebui;
       searxngCfg = config.alanix.searxng;
       nextcloudCluster = nextcloudCfg.enable && nextcloudCfg.cluster.enable;
@@ -268,6 +269,7 @@ in
       invidiousCluster = invidiousCfg.enable && invidiousCfg.cluster.enable;
       immichCluster = immichCfg.enable && immichCfg.cluster.enable;
       jellyfinCluster = jellyfinCfg.enable && jellyfinCfg.cluster.enable;
+      navidromeCluster = navidromeCfg.enable && navidromeCfg.cluster.enable;
       openwebuiCluster = openwebuiCfg.enable && openwebuiCfg.cluster.enable;
       searxngCluster = searxngCfg.enable && searxngCfg.cluster.enable;
       dashboardCfg = cfg.dashboard;
@@ -550,6 +552,9 @@ in
 
       jellyfinClusteredPaths =
         [ jellyfinCfg.dataDir ];
+
+      navidromeClusteredPaths =
+        [ navidromeCfg.dataDir ];
 
       forgejoRestoreScript =
         if forgejoCluster then
@@ -847,6 +852,40 @@ in
             if [[ -f "$system_xml" ]]; then
               ${pkgs.gnused}/bin/sed -i 's|<ServerName>[^<]*</ServerName>|<ServerName>${hostname}</ServerName>|' "$system_xml"
             fi
+          ''
+        else
+          null;
+
+      navidromeRestoreScript =
+        if navidromeCluster then
+          pkgs.writeShellScript "alanix-navidrome-cluster-restore-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg navidromeCfg.backupDir}
+            trap 'rm -rf "$backup_dir"' EXIT
+
+            restore_dir() {
+              local target="$1"
+              local staged_dir="$backup_dir$target"
+
+              if [[ -e "$target" && ! -d "$target" ]]; then
+                rm -rf "$target"
+              fi
+              mkdir -p "$target"
+
+              if [[ -d "$staged_dir" ]]; then
+                rsync -a --delete "$staged_dir"/ "$target"/
+              else
+                rm -rf "$target"
+                mkdir -p "$target"
+              fi
+            }
+
+            ${lib.concatMapStringsSep "\n" (path: ''
+              restore_dir ${lib.escapeShellArg path}
+            '') navidromeClusteredPaths}
+
+            chown -R navidrome:navidrome ${lib.escapeShellArg navidromeCfg.dataDir}
           ''
         else
           null;
@@ -1182,6 +1221,49 @@ in
               (builtins.length jellyfinClusteredPaths))}
 
             emit_prep_step ${toString jellyfinPrepStepCount} ${toString jellyfinPrepStepCount} ${lib.escapeShellArg "snapshotting jellyfin sqlite databases"}
+            shopt -s globstar nullglob
+            for db_path in "$data_dir"/**/*.db "$data_dir"/*.db; do
+              [[ -f "$db_path" ]] || continue
+              staged_db="$backup_dir$db_path"
+              mkdir -p "$(dirname "$staged_db")"
+              sqlite3 "$db_path" ".backup '$staged_db'"
+            done
+            shopt -u globstar nullglob
+
+            chgrp -R "$backup_group" "$backup_dir"
+            chmod -R u=rwX,g=rX,o= "$backup_dir"
+          ''
+        else
+          null;
+
+      navidromeBackupPrepScript =
+        if navidromeCluster then
+          let
+            navidromePrepStepCount = builtins.length navidromeClusteredPaths + 1;
+          in
+          pkgs.writeShellScript "alanix-navidrome-cluster-backup-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg navidromeCfg.backupDir}
+            backup_group=${lib.escapeShellArg backupRepoUserGroup}
+            data_dir=${lib.escapeShellArg navidromeCfg.dataDir}
+
+            ${backupPrepProgressHelpers}
+
+            rm -rf "$backup_dir"
+            mkdir -p "$backup_dir"
+
+            ${lib.concatStringsSep "\n" (builtins.genList
+              (index:
+                let
+                  path = builtins.elemAt navidromeClusteredPaths index;
+                in
+                ''
+                  rsync_prep_step ${toString (index + 1)} ${toString navidromePrepStepCount} ${lib.escapeShellArg "staging ${path}"} ${lib.escapeShellArg path} ${lib.escapeShellArg "${navidromeCfg.backupDir}${path}"}
+                '')
+              (builtins.length navidromeClusteredPaths))}
+
+            emit_prep_step ${toString navidromePrepStepCount} ${toString navidromePrepStepCount} ${lib.escapeShellArg "snapshotting navidrome sqlite databases"}
             shopt -s globstar nullglob
             for db_path in "$data_dir"/**/*.db "$data_dir"/*.db; do
               [[ -f "$db_path" ]] || continue
@@ -1581,6 +1663,38 @@ in
         else
           null;
 
+      navidromeWireguardAddress =
+        if navidromeCfg.expose.wireguard.address != null then
+          navidromeCfg.expose.wireguard.address
+        else
+          config.alanix.wireguard.vpnIP;
+
+      navidromeTailscaleTlsName =
+        if navidromeCfg.expose.tailscale.tlsName != null then
+          navidromeCfg.expose.tailscale.tlsName
+        else
+          config.alanix.tailscale.address;
+
+      navidromeTorTargetAddress =
+        normalizeLocalAddress (
+          if navidromeCfg.expose.tor.targetAddress != null then
+            navidromeCfg.expose.tor.targetAddress
+          else
+            navidromeCfg.listenAddress
+        );
+
+      navidromeTorTargetPort =
+        if navidromeCfg.expose.tor.tls then
+          navidromeCfg.expose.tor.publicPort
+        else
+          navidromeCfg.port;
+
+      navidromeTorSecretPath =
+        if navidromeCfg.expose.tor.secretKeyBase64Secret != null then
+          config.sops.secrets.${navidromeCfg.expose.tor.secretKeyBase64Secret}.path
+        else
+          null;
+
       openwebuiWireguardAddress =
         if openwebuiCfg.expose.wireguard.address != null then
           openwebuiCfg.expose.wireguard.address
@@ -1719,6 +1833,14 @@ in
           )
         )
         || (
+          navidromeCluster
+          && (
+            navidromeCfg.expose.tailscale.enable
+            || navidromeCfg.expose.wireguard.enable
+            || (navidromeCfg.expose.tor.enable && navidromeCfg.expose.tor.tls)
+          )
+        )
+        || (
           openwebuiCluster
           && (
             openwebuiCfg.expose.tailscale.enable
@@ -1746,6 +1868,7 @@ in
         || (invidiousCluster && invidiousCfg.expose.wan.enable)
         || (immichCluster && immichCfg.expose.wan.enable)
         || (jellyfinCluster && jellyfinCfg.expose.wan.enable)
+        || (navidromeCluster && navidromeCfg.expose.wan.enable)
         || (searxngCluster && searxngCfg.expose.wan.enable);
 
       anyTailscaleCaddyExposure =
@@ -1758,6 +1881,7 @@ in
         || (invidiousCluster && invidiousCfg.expose.tailscale.enable)
         || (immichCluster && immichCfg.expose.tailscale.enable)
         || (jellyfinCluster && jellyfinCfg.expose.tailscale.enable)
+        || (navidromeCluster && navidromeCfg.expose.tailscale.enable)
         || (openwebuiCluster && openwebuiCfg.expose.tailscale.enable)
         || (searxngCluster && searxngCfg.expose.tailscale.enable);
 
@@ -1771,6 +1895,7 @@ in
         || (invidiousCluster && invidiousCfg.expose.tor.enable)
         || (immichCluster && immichCfg.expose.tor.enable)
         || (jellyfinCluster && jellyfinCfg.expose.tor.enable)
+        || (navidromeCluster && navidromeCfg.expose.tor.enable)
         || (openwebuiCluster && openwebuiCfg.expose.tor.enable)
         || (searxngCluster && searxngCfg.expose.tor.enable);
 
@@ -2069,6 +2194,36 @@ in
               label = "Jellyfin (wan)";
               transport = "wan";
               url = "https://${jellyfinCfg.expose.wan.domain}/";
+            }
+          ]
+        ))
+      ];
+
+      navidromeLinksByHost = mergeLinksByHost [
+        (lib.optionalAttrs (navidromeCluster && navidromeCfg.expose.tailscale.enable) (
+          mkPeerLinksByHost {
+            label = "Navidrome";
+            transport = "tailscale";
+            scheme = if navidromeCfg.expose.tailscale.tls then "https" else "http";
+            port = navidromeCfg.expose.tailscale.port;
+            addressFn = peerTailscaleAddress;
+          }
+        ))
+        (lib.optionalAttrs (navidromeCluster && navidromeCfg.expose.wireguard.enable) (
+          mkPeerLinksByHost {
+            label = "Navidrome";
+            transport = "wireguard";
+            scheme = if navidromeCfg.expose.wireguard.tls then "https" else "http";
+            port = navidromeCfg.expose.wireguard.port;
+            addressFn = peerWireguardAddress;
+          }
+        ))
+        (lib.optionalAttrs (navidromeCluster && navidromeCfg.expose.wan.enable) (
+          mkConstantLinksByHost [
+            {
+              label = "Navidrome (wan)";
+              transport = "wan";
+              url = "https://${navidromeCfg.expose.wan.domain}/";
             }
           ]
         ))
@@ -2424,6 +2579,32 @@ in
                 tls = jellyfinCfg.expose.tor.tls;
                 publicPort = jellyfinCfg.expose.tor.publicPort;
                 stateDirName = "jellyfin";
+              };
+            };
+          })
+          // (lib.optionalAttrs navidromeCluster {
+            navidrome = {
+              name = "navidrome";
+              backupInterval = navidromeCfg.cluster.backupInterval;
+              maxBackupAge = navidromeCfg.cluster.maxBackupAge;
+              activeUnits =
+                [ "navidrome.service" ]
+                ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
+              backupPaths = [ navidromeCfg.backupDir ];
+              preBackupCommand = [ navidromeBackupPrepScript ];
+              postBackupCommand = [ "rm" "-rf" navidromeCfg.backupDir ];
+              postRestoreCommand = [ navidromeRestoreScript ];
+              restoreTarget = "/";
+              remoteTargets = mkRemoteTargets "navidrome";
+              manifestGlobs = mkManifestGlobs "navidrome";
+              localTarget = mkLocalTarget "navidrome";
+              linksByHost = navidromeLinksByHost;
+              torUrl = mkTorUrl navidromeCfg.expose.tor;
+              tor = {
+                enabled = navidromeCfg.expose.tor.enable;
+                tls = navidromeCfg.expose.tor.tls;
+                publicPort = navidromeCfg.expose.tor.publicPort;
+                stateDirName = "navidrome";
               };
             };
           })
@@ -2996,6 +3177,61 @@ in
             EOF
           ''}
 
+          ${lib.optionalString (navidromeCluster && navidromeCfg.expose.tailscale.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if navidromeCfg.expose.tailscale.tls then "https" else "http"}://${navidromeTailscaleTlsName}:${toString navidromeCfg.expose.tailscale.port} {
+              bind $ts_ip
+              ${lib.optionalString navidromeCfg.expose.tailscale.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress navidromeCfg.listenAddress}:${toString navidromeCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (navidromeCluster && navidromeCfg.expose.wireguard.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if navidromeCfg.expose.wireguard.tls then "https" else "http"}://${navidromeWireguardAddress}:${toString navidromeCfg.expose.wireguard.port} {
+              bind ${navidromeWireguardAddress}
+              ${lib.optionalString navidromeCfg.expose.wireguard.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress navidromeCfg.listenAddress}:${toString navidromeCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (navidromeCluster && navidromeCfg.expose.tor.enable && navidromeCfg.expose.tor.tls) ''
+            cat >> "$caddy_file" <<EOF
+            https://${navidromeCfg.expose.tor.tlsName}:${toString navidromeCfg.expose.tor.publicPort} {
+              bind ${navidromeTorTargetAddress}
+              tls internal
+              reverse_proxy ${normalizeLocalAddress navidromeCfg.listenAddress}:${toString navidromeCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (navidromeCluster && navidromeCfg.expose.tor.enable) ''
+            rm -rf "$tor_state_dir/navidrome"
+            mkdir -p "$tor_state_dir/navidrome"
+            chown tor:tor "$tor_state_dir/navidrome"
+            chmod 0700 "$tor_state_dir/navidrome"
+          ''}
+
+          ${lib.optionalString (navidromeCluster && navidromeCfg.expose.tor.enable && navidromeTorSecretPath != null) ''
+            base64 --decode ${lib.escapeShellArg navidromeTorSecretPath} > "$tor_state_dir/navidrome/hs_ed25519_secret_key"
+            chown tor:tor "$tor_state_dir/navidrome/hs_ed25519_secret_key"
+            chmod 0600 "$tor_state_dir/navidrome/hs_ed25519_secret_key"
+          ''}
+
+          ${lib.optionalString (navidromeCluster && navidromeCfg.expose.tor.enable) ''
+            cat >> "$tor_file" <<EOF
+            HiddenServiceDir $tor_state_dir/navidrome
+            HiddenServiceVersion 3
+            HiddenServicePort ${toString navidromeCfg.expose.tor.publicPort} ${navidromeTorTargetAddress}:${toString navidromeTorTargetPort}
+
+            EOF
+          ''}
+
           ${lib.optionalString (openwebuiCluster && openwebuiCfg.expose.tailscale.enable) ''
             cat >> "$caddy_file" <<EOF
             ${if openwebuiCfg.expose.tailscale.tls then "https" else "http"}://${openwebuiTailscaleTlsName}:${toString openwebuiCfg.expose.tailscale.port} {
@@ -3169,6 +3405,15 @@ in
             EOF
           ''}
 
+          ${lib.optionalString (navidromeCluster && navidromeCfg.expose.wan.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${navidromeCfg.expose.wan.domain} {
+              reverse_proxy ${normalizeLocalAddress navidromeCfg.listenAddress}:${toString navidromeCfg.port}
+            }
+
+            EOF
+          ''}
+
           ${lib.optionalString (nextcloudCluster && nextcloudCfg.expose.wan.enable) ''
             cat >> "$caddy_file" <<EOF
             ${nextcloudCfg.expose.wan.domain} {
@@ -3250,6 +3495,9 @@ in
             ${lib.optionalString (jellyfinCluster && jellyfinCfg.expose.tor.enable) ''
               publish_tor_hostname jellyfin
             ''}
+            ${lib.optionalString (navidromeCluster && navidromeCfg.expose.tor.enable) ''
+              publish_tor_hostname navidrome
+            ''}
             ${lib.optionalString (openwebuiCluster && openwebuiCfg.expose.tor.enable) ''
               publish_tor_hostname openwebui
             ''}
@@ -3265,6 +3513,7 @@ in
           rm -rf "$tor_state_dir/invidious"
           rm -rf "$tor_state_dir/immich"
           rm -rf "$tor_state_dir/jellyfin"
+          rm -rf "$tor_state_dir/navidrome"
           rm -rf "$tor_state_dir/filebrowser"
           rm -rf "$tor_state_dir/radicale"
           rm -rf "$tor_state_dir/nextcloud"
@@ -3449,6 +3698,16 @@ in
               message = "Jellyfin cluster mode requires alanix.jellyfin.backupDir to be an absolute path.";
             }
           ]
+          ++ lib.optionals navidromeCluster [
+            {
+              assertion = lib.hasPrefix "/" navidromeCfg.dataDir;
+              message = "Navidrome cluster mode requires alanix.navidrome.dataDir to be an absolute path.";
+            }
+            {
+              assertion = lib.hasPrefix "/" navidromeCfg.backupDir;
+              message = "Navidrome cluster mode requires alanix.navidrome.backupDir to be an absolute path.";
+            }
+          ]
           ++ lib.optionals openwebuiCluster [
             {
               assertion = lib.hasPrefix "/" openwebuiCfg.stateDir;
@@ -3574,6 +3833,9 @@ in
           ]
           ++ lib.optionals jellyfinCluster [
             "d ${jellyfinCfg.backupDir} 0750 jellyfin ${backupRepoUserGroup} - -"
+          ]
+          ++ lib.optionals navidromeCluster [
+            "d ${navidromeCfg.backupDir} 0750 navidrome ${backupRepoUserGroup} - -"
           ]
           ++ lib.optionals openwebuiCluster [
             "d ${openwebuiCfg.backupDir} 0750 open-webui ${backupRepoUserGroup} - -"
@@ -3732,6 +3994,7 @@ in
             ++ lib.optionals invidiousCluster [ "invidious.service" ]
             ++ lib.optionals immichCluster [ "immich-server.service" ]
             ++ lib.optionals jellyfinCluster [ "jellyfin.service" ]
+            ++ lib.optionals navidromeCluster [ "navidrome.service" ]
             ++ lib.optionals openwebuiCluster [ "open-webui.service" ]
             ++ lib.optionals searxngCluster [ "searx.service" ];
           wants =
@@ -3747,6 +4010,7 @@ in
             ++ lib.optionals invidiousCluster [ "invidious.service" ]
             ++ lib.optionals immichCluster [ "immich-server.service" ]
             ++ lib.optionals jellyfinCluster [ "jellyfin.service" ]
+            ++ lib.optionals navidromeCluster [ "navidrome.service" ]
             ++ lib.optionals openwebuiCluster [ "open-webui.service" ]
             ++ lib.optionals searxngCluster [ "searx.service" ];
           path =
@@ -3849,6 +4113,13 @@ in
 
       (lib.mkIf jellyfinCluster {
         systemd.services.jellyfin = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+      })
+
+      (lib.mkIf navidromeCluster {
+        systemd.services.navidrome = {
           wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
           partOf = [ "alanix-cluster-active.target" ];
         };

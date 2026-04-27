@@ -267,6 +267,20 @@
     mode = "0400";
   };
 
+  sops.secrets."navidrome-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/navidrome/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."wifi-passwords/cinnamon-tree" = {
     sopsFile = (import ../../secrets/files.nix).network;
     owner = "root";
