@@ -864,17 +864,51 @@ class Dashboard:
                 f"target='_blank' rel='noreferrer'>{html.escape(link.get('transport', 'link'))}</a>"
             )
 
-        def admin_btn(action: str, svc: str, *, manifest: str = "", extra: str = "", label: str, css: str = "button button-sm", confirm_msg: str = "") -> str:
+        running_backups = controller_state.get("runningBackups") or []
+        backup_slots = controller_state.get("backupSlots") or {}
+        service_operations = controller_state.get("serviceOperations") or {}
+        fallback_running_backup_services = [
+            service_name
+            for service_name, operation in service_operations.items()
+            if operation and operation.get("action") == "backup"
+        ]
+        running_backup_services = []
+        for item in running_backups:
+            service_name = item.get("service")
+            if service_name and service_name not in running_backup_services:
+                running_backup_services.append(service_name)
+        for service_name in fallback_running_backup_services:
+            if service_name not in running_backup_services:
+                running_backup_services.append(service_name)
+        backup_slot_max = int(backup_slots.get("max") or self.cluster.get("backup", {}).get("maxConcurrent", 1) or 1)
+        backup_slot_used = backup_slots.get("used")
+        if backup_slot_used is None:
+            backup_slot_used = len(running_backup_services)
+        else:
+            backup_slot_used = max(int(backup_slot_used), len(running_backup_services))
+
+        def admin_btn(
+            action: str,
+            svc: str,
+            *,
+            manifest: str = "",
+            extra: str = "",
+            label: str,
+            css: str = "button button-sm",
+            confirm_msg: str = "",
+            disabled_reason: str = "",
+        ) -> str:
             mp = f"<input type='hidden' name='manifestPath' value='{html.escape(manifest)}'/>" if manifest else ""
             confirm_js = html.escape(json.dumps(confirm_msg), quote=True) if confirm_msg else ""
             confirm_attr = f' onclick="return confirm({confirm_js})"' if confirm_msg else ""
+            disabled_attr = f" disabled title='{html.escape(disabled_reason, quote=True)}'" if disabled_reason else ""
             return (
                 f"<form method='post' action='/admin/action' class='ifrm'>"
                 f"<input type='hidden' name='csrf_token' value='{csrf}'/>"
                 f"<input type='hidden' name='action' value='{html.escape(action)}'/>"
                 f"<input type='hidden' name='service' value='{html.escape(svc)}'/>"
                 f"{mp}{extra}"
-                f"<button type='submit' class='{html.escape(css)}'{confirm_attr}>{html.escape(label)}</button>"
+                f"<button type='submit' class='{html.escape(css)}'{confirm_attr}{disabled_attr}>{html.escape(label)}</button>"
                 f"</form>"
             )
 
@@ -965,6 +999,18 @@ class Dashboard:
         else:
             ops_banner = "<section id='ops-banner'></section>"
 
+        if is_admin and backup_slot_used > 0:
+            running_label = ", ".join(html.escape(name) for name in running_backup_services) or "unknown"
+            slot_word = "slot" if backup_slot_max == 1 else "slots"
+            backup_slots_banner = (
+                f"<section id='backup-slots-banner' class='panel section'>"
+                f"<div class='sh'><h2>Backup Activity</h2></div>"
+                f"<p class='muted small'>Using {backup_slot_used}/{backup_slot_max} backup {slot_word}. "
+                f"Running: {running_label}.</p></section>"
+            )
+        else:
+            backup_slots_banner = "<section id='backup-slots-banner'></section>"
+
         # ── service cards ─────────────────────────────────────────────────────
         cards: list[str] = []
         for svc_name, svc in services.items():
@@ -977,7 +1023,26 @@ class Dashboard:
             r_kind = "good" if readiness["ready"] else "warn"
             r_reason = readiness["reason"]
             links_row = "".join(chip_link(l) for l in active_links) or "<span class='muted'>Service not on leader.</span>"
-            backup_btn = admin_btn("backup-now", svc_name, label="Backup Now") if (is_admin and not is_decl) else ""
+            backup_btn = ""
+            if is_admin and not is_decl:
+                backup_disabled_reason = ""
+                if cur_op:
+                    cur_action = (cur_op.get("action") or "operation").replace("-", " ")
+                    if cur_op.get("action") == "backup":
+                        backup_disabled_reason = "A backup for this service is already running."
+                    else:
+                        backup_disabled_reason = f"This service is busy with a {cur_action} operation."
+                elif backup_slot_used >= backup_slot_max and backup_slot_max > 0:
+                    running_label = ", ".join(running_backup_services) or "another service"
+                    backup_disabled_reason = (
+                        f"All backup slots are busy ({backup_slot_used}/{backup_slot_max}): {running_label}."
+                    )
+                backup_btn = admin_btn(
+                    "backup-now",
+                    svc_name,
+                    label="Backup Now",
+                    disabled_reason=backup_disabled_reason,
+                )
             op_html = progress_html(cur_op) if cur_op else ""
 
             if is_decl:
@@ -1330,6 +1395,7 @@ class Dashboard:
   <main>
     {admin_bar}
     {ops_banner}
+    {backup_slots_banner}
     {services_html}
     {cluster_panel}
     {units_panel}
@@ -1341,7 +1407,7 @@ class Dashboard:
       var pendingHtml = null;
       var reconnectTimer = null;
       var sectionIds = [
-        'admin-bar', 'ops-banner', 'services-section',
+        'admin-bar', 'ops-banner', 'backup-slots-banner', 'services-section',
         'cluster-panel', 'units-panel', 'events-panel'
       ];
 
