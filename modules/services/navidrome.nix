@@ -450,6 +450,13 @@ in
           restartTriggers = [ (builtins.toJSON sanitizedUsersForRestart) ];
         };
 
+      system.activationScripts.alanixNavidromeReconcile =
+        lib.mkIf (reconcileEnabled && baseConfigReady) ''
+          if ${pkgs.systemd}/bin/systemctl --quiet is-active navidrome.service; then
+            ${pkgs.systemd}/bin/systemctl start navidrome-reconcile-users.service || true
+          fi
+        '';
+
       systemd.tmpfiles.rules = lib.mkIf baseConfigReady mediaTmpfilesRules;
     }
 
