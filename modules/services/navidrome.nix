@@ -232,18 +232,13 @@ in
         openFirewall = false;
       };
 
-      systemd.services.navidrome = lib.mkIf (baseConfigReady && reconcileEnabled) {
-        serviceConfig.ExecStartPost =
-          "+${pkgs.writeShellScript "alanix-navidrome-trigger-reconcile" ''
-            ${config.systemd.package}/bin/systemctl --no-block start navidrome-reconcile-users.service >/dev/null 2>&1 || true
-          ''}";
-      };
-
       systemd.services.navidrome-reconcile-users =
         lib.mkIf (reconcileEnabled && baseConfigReady) {
           description = "Reconcile Navidrome users";
           after = [ "navidrome.service" "sops-nix.service" ];
-          wants = [ "sops-nix.service" ];
+          wants = [ "navidrome.service" "sops-nix.service" ];
+          partOf = [ "navidrome.service" ];
+          wantedBy = [ "navidrome.service" ];
 
           serviceConfig = {
             Type = "oneshot";
