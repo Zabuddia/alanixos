@@ -74,6 +74,7 @@
             marktext
             xournalpp
             libreoffice
+            lrcget
             remmina
             tor-browser
             hyprpicker
@@ -218,6 +219,8 @@
       { ssid = "Cinnamon Tree"; pskSecret = "wifi-passwords/cinnamon-tree"; }
     ];
 
+    users.groups.navidrome = {};
+
     alanix.syncthing = {
       enable = true;
       transport = "tailscale";
@@ -225,9 +228,11 @@
       listenPort = 22000;
       peers = [
         "alan-big-nixos"
+        "alan-node"
         "alan-framework"
+        "randy-big-nixos"
       ];
-      folderSets = [ "emulation" ];
+      folderSets = [ "emulation" "navidrome-media" ];
       linkFolderSets = [ "emulation" ];
     };
 

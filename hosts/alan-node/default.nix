@@ -143,6 +143,7 @@
       deviceId = "VMTMWXV-KWNAOOA-INEEIN5-7SH6WBI-TGO4LBZ-7E66ZWN-XJU7AS6-NGHXXQ5";
       peers = [
         "alan-big-nixos"
+        "alan-framework-laptop"
         "alan-optiplex"
         "randy-big-nixos"
       ];
