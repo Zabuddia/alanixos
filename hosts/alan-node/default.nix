@@ -57,6 +57,7 @@
           stateVersion = "25.11";
           files = { };
           packages = with pkgs; [
+            lrcget
             tmux
           ];
           unstablePackages = with pkgs-unstable; [ yt-dlp ];
