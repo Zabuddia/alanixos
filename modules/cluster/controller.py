@@ -691,6 +691,18 @@ class Controller:
                 "leaseId": self.lease_id,
                 "leaderRevision": self.leader_revision,
                 "isLeader": self.lease_id is not None,
+                "backupSlots": {
+                    "used": len(self.running_backups),
+                    "max": self.max_concurrent_backups,
+                },
+                "runningBackups": [
+                    {
+                        "service": service_name,
+                        "origin": backup.get("origin", "automatic"),
+                        "requestedBy": backup.get("requestedBy"),
+                    }
+                    for service_name, backup in sorted(self.running_backups.items())
+                ],
                 "serviceOperations": self.service_operations,
                 "adminOperation": self.running_admin_operation["state"] if self.running_admin_operation else None,
                 "recentOperations": list(self.operation_history),
@@ -1806,14 +1818,23 @@ class Controller:
             f"{format_duration(time.monotonic() - adoption_started_at)}"
         )
 
-    def schedule_backup(self, service_name):
+    def schedule_backup(self, service_name, *, origin="automatic", requested_by=None):
         generation = self.backup_generation
-        future = self.backup_executor.submit(self.backup_service, service_name, generation)
+        future = self.backup_executor.submit(
+            self.backup_service,
+            service_name,
+            generation,
+            origin=origin,
+            requested_by=requested_by,
+        )
         self.running_backups[service_name] = {
             "future": future,
             "generation": generation,
             "startedAt": time.monotonic(),
+            "origin": origin,
+            "requestedBy": requested_by,
         }
+        self.write_runtime_state()
 
     def schedule_due_backups(self, now):
         if self.running_admin_operation is not None:
@@ -1836,12 +1857,14 @@ class Controller:
             available_slots -= 1
 
     def collect_finished_backups(self):
+        state_changed = False
         for service_name, running in list(self.running_backups.items()):
             future = running["future"]
             if not future.done():
                 continue
 
             del self.running_backups[service_name]
+            state_changed = True
             generation = running["generation"]
             if generation != self.backup_generation:
                 try:
@@ -1911,6 +1934,9 @@ class Controller:
                     f"duration {format_duration(result['durationSeconds'])}"
                 )
 
+        if state_changed:
+            self.write_runtime_state()
+
     def start_admin_request(self, request):
         action = request["action"]
         service_name = request.get("service")
@@ -1924,8 +1950,24 @@ class Controller:
         if action == "backup-now" and self.lease_id is None:
             raise RuntimeError("manual backups may only run on the current leader")
 
-        if action in {"backup-now", "verify-manifest", "restore-manifest"} and self.running_backups:
-            raise RuntimeError("another backup is already running; wait for it to finish and try again")
+        if action == "backup-now":
+            if service_name in self.running_backups:
+                raise RuntimeError(f"{service_name} backup is already running")
+            if len(self.running_backups) >= self.max_concurrent_backups:
+                running = ", ".join(sorted(self.running_backups)) or "unknown"
+                raise RuntimeError(
+                    f"all backup slots are busy ({len(self.running_backups)}/{self.max_concurrent_backups}); "
+                    f"running: {running}"
+                )
+            self.schedule_backup(service_name, origin="manual", requested_by=requested_by)
+            self.complete_admin_request_file(request)
+            return
+
+        if action in {"verify-manifest", "restore-manifest"} and self.running_backups:
+            running = ", ".join(sorted(self.running_backups)) or "unknown"
+            raise RuntimeError(
+                f"another backup is already running ({running}); wait for it to finish and try again"
+            )
 
         if action == "delete-manifest" and service_name in self.running_backups:
             raise RuntimeError(f"a backup for {service_name} is in progress; wait for it to finish and try again")
