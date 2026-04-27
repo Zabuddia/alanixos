@@ -512,7 +512,7 @@ in
           enable = true;
           publicPort = 80;
           secretKeyBase64Secret = "tor/navidrome/secret-key-base64";
-          hostname = null;
+          hostname = "kzqxdpzahx7rxsok4hvwquwekmek2jdzw57n5xn6yzbpbbbs6k4d2oqd.onion";
         };
 
         tailscale = {
