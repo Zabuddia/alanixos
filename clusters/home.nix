@@ -97,6 +97,7 @@ in
           "invidious.fifefin.com"
           "vaultwarden.fifefin.com"
           "jellyfin.fifefin.com"
+          "navidrome.fifefin.com"
           "radicale.fifefin.com"
           "searxng.fifefin.com"
         ];
@@ -109,7 +110,7 @@ in
       enable = true;
       transport = "tailscale";
       listenPort = 22000;
-      folderSets = [ "jellyfin-media" "filebrowser-files" ];
+      folderSets = [ "jellyfin-media" "navidrome-media" "filebrowser-files" ];
     };
 
     alanix.vaultwarden = {
@@ -473,6 +474,55 @@ in
           user = "root";
           group = "root";
           mode = "0755";
+        };
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "12h";
+        maxBackupAge = "48h";
+      };
+    };
+
+    alanix.navidrome = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 4533;
+      backupDir = "/var/backup/navidrome";
+      users.buddia = {
+        admin = true;
+        passwordSecret = "navidrome-passwords/buddia";
+      };
+
+      mediaFolders.music = {
+        path = "/srv/media/music";
+        create = true;
+        user = "buddia";
+        group = "navidrome";
+        mode = "0775";
+      };
+
+      expose = {
+        wan = {
+          enable = true;
+          domain = "navidrome.fifefin.com";
+        };
+
+        tor = {
+          enable = true;
+          publicPort = 80;
+          secretKeyBase64Secret = "tor/navidrome/secret-key-base64";
+          hostname = null;
+        };
+
+        tailscale = {
+          enable = true;
+          port = 14533;
+        };
+
+        wireguard = {
+          enable = true;
+          port = 4533;
         };
       };
 

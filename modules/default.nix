@@ -18,6 +18,7 @@
     ./services/invidious.nix
     ./services/jellyfin.nix
     ./services/llm.nix
+    ./services/navidrome.nix
     ./services/nextcloud.nix
     ./services/openclaw.nix
     ./services/openwebui.nix
