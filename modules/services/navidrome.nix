@@ -23,27 +23,14 @@ let
   adminUsers = lib.filterAttrs (_: userCfg: userCfg.admin) cfg.users;
   adminUserNames = builtins.attrNames adminUsers;
   bootstrapAdminName = if adminUserNames == [ ] then null else builtins.head adminUserNames;
-  bootstrapAdminSecret =
-    if bootstrapAdminName != null
-    then adminUsers.${bootstrapAdminName}.passwordSecret
-    else null;
-
   reconcileEnabled = cfg.users != { };
 
   sanitizedUsersForRestart =
     lib.mapAttrs (_: userCfg: { inherit (userCfg) admin passwordSecret; }) cfg.users;
 
-  templateEnvContent =
-    if bootstrapAdminName != null && bootstrapAdminSecret != null
-    then ''
-      ND_DEFAULTADMINUSERNAME=${bootstrapAdminName}
-      ND_DEFAULTADMINPASSWORD=${config.sops.placeholder.${bootstrapAdminSecret}}
-    ''
-    else "";
-
   adminPassfilePath =
-    if bootstrapAdminSecret != null
-    then config.sops.secrets.${bootstrapAdminSecret}.path
+    if bootstrapAdminName != null
+    then config.sops.secrets.${adminUsers.${bootstrapAdminName}.passwordSecret}.path
     else "";
 
   passfileLines =
@@ -52,17 +39,6 @@ let
         (uname: userCfg:
           let var = "PASSFILE_" + sanitizeUserKey uname;
           in ''${var}=${lib.escapeShellArg config.sops.secrets.${userCfg.passwordSecret}.path}'')
-        cfg.users);
-
-  ensureUserLines =
-    lib.concatStringsSep "\n"
-      (lib.mapAttrsToList
-        (uname: userCfg:
-          let
-            var = "PASSFILE_" + sanitizeUserKey uname;
-            wantAdmin = if userCfg.admin then "true" else "false";
-          in
-          ''ensure_user ${lib.escapeShellArg uname} "${"$"}${var}" ${wantAdmin}'')
         cfg.users);
 
   mediaTmpfilesRules =
@@ -122,7 +98,7 @@ in
       default = { };
       description = ''
         Declarative Navidrome users. Passwords are read from sops secrets and
-        enforced on every service restart via the Subsonic API.
+        enforced on every service restart via Navidrome's native HTTP API.
         The first declared admin user is used to bootstrap the initial admin account.
       '';
     };
@@ -256,26 +232,12 @@ in
         openFirewall = false;
       };
 
-      sops.templates."alanix-navidrome-env" = lib.mkIf (bootstrapAdminName != null) {
-        content = templateEnvContent;
-        owner = "navidrome";
-        group = "navidrome";
-        mode = "0400";
+      systemd.services.navidrome = lib.mkIf (baseConfigReady && reconcileEnabled) {
+        serviceConfig.ExecStartPost =
+          "+${pkgs.writeShellScript "alanix-navidrome-trigger-reconcile" ''
+            ${config.systemd.package}/bin/systemctl --no-block start navidrome-reconcile-users.service >/dev/null 2>&1 || true
+          ''}";
       };
-
-      systemd.services.navidrome = lib.mkIf baseConfigReady (lib.mkMerge [
-        (lib.mkIf (bootstrapAdminName != null) {
-          after = [ "sops-nix.service" ];
-          wants = [ "sops-nix.service" ];
-          serviceConfig.EnvironmentFile = config.sops.templates."alanix-navidrome-env".path;
-        })
-        (lib.mkIf reconcileEnabled {
-          serviceConfig.ExecStartPost =
-            "+${pkgs.writeShellScript "alanix-navidrome-trigger-reconcile" ''
-              ${config.systemd.package}/bin/systemctl --no-block start navidrome-reconcile-users.service >/dev/null 2>&1 || true
-            ''}";
-        })
-      ]);
 
       systemd.services.navidrome-reconcile-users =
         lib.mkIf (reconcileEnabled && baseConfigReady) {
@@ -302,30 +264,15 @@ in
 
             ${passfileLines}
 
-            hex_encode() {
-              printf '%s' "$1" | od -An -tx1 | tr -d ' \n'
-            }
-
-            subsonic_get() {
-              local endpoint="$1"; shift
-              local pass hex
-              pass="$(tr -d '\r\n' < "$ADMIN_PASSFILE")"
-              hex="$(hex_encode "$pass")"
-              curl -sf --get "$BASE_URL/rest/$endpoint.view" \
-                -d "u=$ADMIN_USER" \
-                -d "p=enc:$hex" \
-                -d "v=1.16.1" -d "c=alanix-reconcile" -d "f=json" "$@"
-            }
-
-            check_ok() {
-              [ "$(printf '%s' "$1" | jq -r '."subsonic-response".status')" = "ok" ]
-            }
+            RESPONSE_STATUS=""
+            RESPONSE_BODY=""
 
             wait_for_server() {
-              local attempts=120 response
+              local attempts=120
               while [ "$attempts" -gt 0 ]; do
-                response="$(subsonic_get ping 2>/dev/null || true)"
-                if check_ok "$response" 2>/dev/null; then return 0; fi
+                if curl -sf "$BASE_URL/app/" >/dev/null 2>&1; then
+                  return 0
+                fi
                 sleep 1
                 attempts=$((attempts - 1))
               done
@@ -333,52 +280,172 @@ in
               return 1
             }
 
+            http_json() {
+              local method="$1"
+              local path="$2"
+              local payload="''${3:-}"
+              local token="''${4:-}"
+              local body_file
+              local curl_args
+
+              body_file="$(mktemp)"
+              curl_args=(
+                -sS
+                -o
+                "$body_file"
+                -w
+                "%{http_code}"
+                -X
+                "$method"
+                "$BASE_URL$path"
+                -H
+                "Content-Type: application/json"
+              )
+              if [ -n "$token" ]; then
+                curl_args+=(-H "X-ND-Authorization: Bearer $token")
+              fi
+              if [ -n "$payload" ]; then
+                curl_args+=(--data "$payload")
+              fi
+
+              RESPONSE_STATUS="$(curl "''${curl_args[@]}" || true)"
+              RESPONSE_BODY="$(cat "$body_file")"
+              rm -f "$body_file"
+            }
+
+            is_success_status() {
+              [ "$1" = "200" ] || [ "$1" = "201" ]
+            }
+
+            auth_payload() {
+              local username="$1"
+              local password="$2"
+              jq -cn \
+                --arg username "$username" \
+                --arg password "$password" \
+                '{ username: $username, password: $password }'
+            }
+
+            user_payload() {
+              local username="$1"
+              local password="$2"
+              local want_admin="$3"
+              local name="$4"
+              local email="$5"
+              jq -cn \
+                --arg userName "$username" \
+                --arg password "$password" \
+                --arg name "$name" \
+                --arg email "$email" \
+                --argjson isAdmin "$want_admin" \
+                '{
+                  userName: $userName,
+                  password: $password,
+                  name: $name,
+                  email: $email,
+                  isAdmin: $isAdmin
+                }'
+            }
+
+            login_or_bootstrap_admin() {
+              local password payload token login_status create_status
+
+              password="$(tr -d '\r\n' < "$ADMIN_PASSFILE")"
+              payload="$(auth_payload "$ADMIN_USER" "$password")"
+
+              http_json POST "/auth/login" "$payload"
+              login_status="$RESPONSE_STATUS"
+              if is_success_status "$login_status"; then
+                token="$(printf '%s' "$RESPONSE_BODY" | jq -r '.token // empty')"
+                if [ -n "$token" ]; then
+                  printf '%s' "$token"
+                  return 0
+                fi
+              fi
+
+              http_json POST "/auth/createAdmin" "$payload"
+              create_status="$RESPONSE_STATUS"
+              if is_success_status "$create_status"; then
+                token="$(printf '%s' "$RESPONSE_BODY" | jq -r '.token // empty')"
+                if [ -n "$token" ]; then
+                  echo "Bootstrapped initial Navidrome admin: $ADMIN_USER" >&2
+                  printf '%s' "$token"
+                  return 0
+                fi
+              fi
+
+              echo "Warning: Unable to authenticate or bootstrap the declared Navidrome admin user '$ADMIN_USER'." >&2
+              echo "Login status: $login_status; createAdmin status: $create_status" >&2
+              if [ "$create_status" = "403" ]; then
+                echo "Navidrome already has users, but the declared admin password could not log in." >&2
+              fi
+              return 1
+            }
+
+            get_users() {
+              local token="$1"
+
+              http_json GET "/api/user/" "" "$token"
+              if ! is_success_status "$RESPONSE_STATUS"; then
+                echo "Warning: Unable to list Navidrome users (HTTP $RESPONSE_STATUS)." >&2
+                return 1
+              fi
+
+              printf '%s' "$RESPONSE_BODY"
+            }
+
             ensure_user() {
               local username="$1"
               local passfile="$2"
               local want_admin="$3"
-              local pass hex users_response user_exists
+              local token="$4"
+              local pass users_response user_json user_id current_name current_email payload
 
               pass="$(tr -d '\r\n' < "$passfile")"
-              hex="$(hex_encode "$pass")"
+              users_response="$(get_users "$token" || true)"
+              if [ -z "$users_response" ]; then
+                return 0
+              fi
+              user_json="$(printf '%s' "$users_response" | jq -c --arg u "$username" '.[] | select(.userName == $u)' | head -n 1)"
 
-              users_response="$(subsonic_get getUsers)"
-              user_exists="$(
-                printf '%s' "$users_response" | jq -r --arg u "$username" '
-                  ."subsonic-response".users.user // [] |
-                  if type == "array" then . else [.] end |
-                  any(.username == $u)
-                '
-              )"
-
-              if [ "$user_exists" = "false" ]; then
+              if [ -z "$user_json" ]; then
                 echo "Creating Navidrome user: $username"
-                subsonic_get createUser \
-                  --data-urlencode "username=$username" \
-                  -d "password=enc:$hex" \
-                  -d "adminRole=$want_admin" \
-                  -d "email=" >/dev/null
+                payload="$(user_payload "$username" "$pass" "$want_admin" "$username" "")"
+                http_json POST "/api/user/" "$payload" "$token"
+                if ! is_success_status "$RESPONSE_STATUS"; then
+                  echo "Warning: Failed to create Navidrome user '$username' (HTTP $RESPONSE_STATUS)." >&2
+                  printf '%s\n' "$RESPONSE_BODY" >&2
+                fi
               else
                 echo "Reconciling Navidrome user: $username"
-                subsonic_get changePassword \
-                  --data-urlencode "username=$username" \
-                  -d "password=enc:$hex" >/dev/null
-                subsonic_get updateUser \
-                  --data-urlencode "username=$username" \
-                  -d "adminRole=$want_admin" >/dev/null
+                user_id="$(printf '%s' "$user_json" | jq -r '.id')"
+                current_name="$(printf '%s' "$user_json" | jq -r '.name // ""')"
+                current_email="$(printf '%s' "$user_json" | jq -r '.email // ""')"
+                payload="$(user_payload "$username" "$pass" "$want_admin" "$current_name" "$current_email")"
+                http_json PUT "/api/user/$user_id/" "$payload" "$token"
+                if ! is_success_status "$RESPONSE_STATUS"; then
+                  echo "Warning: Failed to reconcile Navidrome user '$username' (HTTP $RESPONSE_STATUS)." >&2
+                  printf '%s\n' "$RESPONSE_BODY" >&2
+                fi
               fi
             }
 
             wait_for_server
 
-            response="$(subsonic_get ping 2>/dev/null || true)"
-            if ! check_ok "$response" 2>/dev/null; then
-              echo "Warning: Cannot authenticate to Navidrome as $ADMIN_USER." >&2
-              echo "If the password diverged from the declared value, remove ${cfg.dataDir} to reset." >&2
+            token="$(login_or_bootstrap_admin || true)"
+            if [ -z "''${token:-}" ]; then
               exit 0
             fi
 
-            ${ensureUserLines}
+            ${lib.concatStringsSep "\n"
+              (lib.mapAttrsToList
+                (uname: userCfg:
+                  let
+                    var = "PASSFILE_" + sanitizeUserKey uname;
+                    wantAdmin = if userCfg.admin then "true" else "false";
+                  in
+                  ''ensure_user ${lib.escapeShellArg uname} "${"$"}${var}" ${wantAdmin} "$token"'')
+                cfg.users)}
 
             echo "Navidrome user reconciliation complete."
           '';
