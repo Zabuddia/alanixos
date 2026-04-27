@@ -151,6 +151,7 @@
       deviceId = "WOQMMD4-ZYSB3YY-F4WFRQJ-O7T4X2A-UV54S74-Z26UPI2-DCNKC2I-ALDOWAN";
       peers = [
         "alan-big-nixos"
+        "alan-framework-laptop"
         "alan-node"
         "alan-optiplex"
       ];
