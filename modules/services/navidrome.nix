@@ -80,6 +80,12 @@ in
       description = "Cluster backup staging directory. Required when cluster.enable = true.";
     };
 
+    extraGroups = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = "Extra groups granted to the Navidrome service user so it can read media files.";
+    };
+
     users = lib.mkOption {
       type = lib.types.attrsOf (lib.types.submodule ({ ... }: {
         options = {
@@ -231,6 +237,8 @@ in
         };
         openFirewall = false;
       };
+
+      users.users.${config.services.navidrome.user}.extraGroups = cfg.extraGroups;
 
       systemd.services.navidrome-reconcile-users =
         lib.mkIf (reconcileEnabled && baseConfigReady) {

@@ -140,27 +140,27 @@ let
   jellyfinMediaFolders = {
     "media-movies" = {
       label = "media/movies";
-      path = "/srv/media/movies";
+      relativePath = "media/movies";
       user = "buddia";
-      group = "jellyfin";
-      mode = "0775";
+      group = "users";
+      mode = "2775";
     };
     "media-shows" = {
       label = "media/shows";
-      path = "/srv/media/shows";
+      relativePath = "media/shows";
       user = "buddia";
-      group = "jellyfin";
-      mode = "0775";
+      group = "users";
+      mode = "2775";
     };
   };
 
   navidromeMediaFolders = {
     "media-music" = {
       label = "media/music";
-      path = "/srv/media/music";
+      relativePath = "media/music";
       user = "buddia";
-      group = "navidrome";
-      mode = "0775";
+      group = "users";
+      mode = "2775";
     };
   };
 
