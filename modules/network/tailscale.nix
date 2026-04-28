@@ -46,7 +46,7 @@ in
       # Forward Tailscale MagicDNS queries to 100.100.100.100 when kresd is the system resolver.
       # Without this, kresd can't resolve .ts.net names and etcd peer connections fail.
       services.kresd.extraConfig = ''
-        policy.add(policy.suffix(policy.STUB({'100.100.100.100'}), {kres.str2dname('ts.net.')}))
+        policy.add(policy.suffix(policy.FORWARD({'100.100.100.100'}), {kres.str2dname('ts.net.')}))
       '';
 
       systemd.services.alanix-tailscale-ready = {
