@@ -6,6 +6,11 @@ let
     "alan-node"
   ];
 
+  mailDkimTxt = lib.concatStrings [
+    "v=DKIM1; k=rsa; p="
+    "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnKr7G7M2LwNDdniDSDjXRk5L/6mX/egNq4m1lPVK1BgrHhJYn5XPsJQ6XXlKVUWiUlLBR6Fe8OgS9QxlEAhJzNEyaRpMMbAV/OK/Eb1LNN3hQMp47LNKP0kfCDBUJUANYg1I02hFjQt8LDBFZ2u5vt66bs0Sio1LEz+iMyUHSqJfaHqz8hJiuPJgEb7JZBxI0Uq6xpaOyNd7lhR7heSukrMj5f9iK7mah3NMo9QcjwpZObX7YRbU7XBcu/sffe58PmVBa4BplzmpM2x9m4J8Zyb8BNsZgy+S0gidYtTxmpQ2KMG/7qlP8ZLIxKtEf8PnOMeESiYJr5ZAbwsBUI6kbQIDAQAB"
+  ];
+
   isMember = builtins.elem hostname members;
 in
 {
@@ -104,6 +109,7 @@ in
           "invidious.fifefin.com"
           "vaultwarden.fifefin.com"
           "jellyfin.fifefin.com"
+          "mail.fifefin.com"
           "mqtt.fifefin.com"
           "navidrome.fifefin.com"
           "owntracks.fifefin.com"
@@ -111,6 +117,40 @@ in
           "searxng.fifefin.com"
         ];
       };
+    };
+
+    alanix.cloudflare.dns = {
+      enable = true;
+      credentialsFile = config.sops.templates."cloudflare-env-cluster".path;
+      cluster.enable = true;
+
+      zones."fifefin.com".records = [
+        {
+          name = "@";
+          type = "MX";
+          content = "mail.fifefin.com";
+          priority = 10;
+          comment = "primary mail exchanger";
+        }
+        {
+          name = "@";
+          type = "TXT";
+          content = "v=spf1 mx -all";
+          comment = "SPF for fifefin.com mail";
+        }
+        {
+          name = "_dmarc";
+          type = "TXT";
+          content = "v=DMARC1; p=none; rua=mailto:postmaster@fifefin.com";
+          comment = "DMARC aggregate reports";
+        }
+        {
+          name = "mail._domainkey";
+          type = "TXT";
+          content = mailDkimTxt;
+          comment = "DKIM public key for simple-nixos-mailserver";
+        }
+      ];
     };
 
     alanix.users.accounts.buddia.extraGroups = [ "filebrowser" ];
@@ -306,6 +346,43 @@ in
       };
 
       users.buddia.passwordSecret = "radicale-passwords/buddia";
+    };
+
+    alanix.mail = {
+      enable = true;
+      domain = "fifefin.com";
+      fqdn = "mail.fifefin.com";
+      sendingFqdn = "mail.fifefin.com";
+      systemContact = "postmaster@fifefin.com";
+      certificateScheme = "acme";
+
+      acme = {
+        dnsProvider = "cloudflare";
+        credentialsFile = config.sops.templates."cloudflare-acme-cluster".path;
+      };
+
+      accounts.buddia = {
+        passwordHashSecret = "mail-password-hashes/buddia";
+        aliases = [
+          "abuse@fifefin.com"
+          "admin@fifefin.com"
+          "alan@fifefin.com"
+          "fife.alan@fifefin.com"
+          "postmaster@fifefin.com"
+        ];
+      };
+
+      dkim = {
+        privateKeySecrets."fifefin.com" = "mail-dkim/fifefin.com/mail-private-key";
+        publicTxtRecords."fifefin.com" = mailDkimTxt;
+      };
+
+      cluster = {
+        enable = true;
+        backupDir = "/var/backup/mail";
+        backupInterval = "15m";
+        maxBackupAge = "1h";
+      };
     };
 
     alanix.owntracks = {
