@@ -168,7 +168,7 @@ let
     "filebrowser-root" = {
       label = "filebrowser";
       relativePath = "filebrowser";
-      group = "filebrowser";
+      group = "users";
       mode = "2775";
       ignorePerms = true;
     };
