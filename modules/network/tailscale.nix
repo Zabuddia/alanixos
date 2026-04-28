@@ -46,6 +46,9 @@ in
       # Forward Tailscale MagicDNS queries to 100.100.100.100 when kresd is the system resolver.
       # Without this, kresd can't resolve .ts.net names and etcd peer connections fail.
       services.kresd.extraConfig = ''
+        -- Tailscale MagicDNS: forward .ts.net queries to 100.100.100.100.
+        -- ts.net zones are not DNSSEC-signed, so mark them insecure to suppress validation failures.
+        trust_anchors.set_insecure({'ts.net.'})
         policy.add(policy.suffix(policy.FORWARD({'100.100.100.100'}), {kres.str2dname('ts.net.')}))
       '';
 
