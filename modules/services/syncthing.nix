@@ -78,10 +78,6 @@ let
       label = "${azaharNandRelativeBase}/extdata";
       relativePath = "${azaharNandRelativeBase}/extdata";
     };
-    "games-azahar-emu-states" = {
-      label = "games/azahar-emu/states";
-      relativePath = "games/azahar-emu/states";
-    };
   };
 
   dolphinFolders = {
@@ -105,10 +101,6 @@ let
       label = "games/dolphin-emu/Load/Riivolution";
       relativePath = "games/dolphin-emu/Load/Riivolution";
     };
-    "games-dolphin-emu-state-saves" = {
-      label = "games/dolphin-emu/StateSaves";
-      relativePath = "games/dolphin-emu/StateSaves";
-    };
   };
 
   melondsFolders = {
@@ -119,10 +111,6 @@ let
     "games-melonds-saves" = {
       label = "games/melonDS/saves";
       relativePath = "games/melonDS/saves";
-    };
-    "games-melonds-states" = {
-      label = "games/melonDS/states";
-      relativePath = "games/melonDS/states";
     };
   };
 
@@ -194,9 +182,6 @@ let
     "${azaharLocalNandBase}/extdata" = {
       relativePath = "${azaharNandRelativeBase}/extdata";
     };
-    ".local/share/azahar-emu/states" = {
-      relativePath = "games/azahar-emu/states";
-    };
   };
 
   dolphinLinks = {
@@ -209,17 +194,11 @@ let
     ".local/share/dolphin-emu/Load/Riivolution" = {
       relativePath = "games/dolphin-emu/Load/Riivolution";
     };
-    ".local/share/dolphin-emu/StateSaves" = {
-      relativePath = "games/dolphin-emu/StateSaves";
-    };
   };
 
   melondsLinks = {
     ".local/share/melonDS/saves" = {
       relativePath = "games/melonDS/saves";
-    };
-    ".local/share/melonDS/states" = {
-      relativePath = "games/melonDS/states";
     };
   };
 
@@ -417,7 +396,6 @@ let
         (selectedLinkAttrs ? "${azaharLocalSdmcBase}/title")
         || (selectedLinkAttrs ? "${azaharLocalSdmcBase}/extdata")
         || (selectedLinkAttrs ? "${azaharLocalNandBase}/extdata")
-        || (selectedLinkAttrs ? ".local/share/azahar-emu/states")
       )
       [ ".local/share/azahar-emu" ]
     ++ lib.optionals
@@ -425,13 +403,11 @@ let
         (selectedLinkAttrs ? ".local/share/dolphin-emu/GC")
         || (selectedLinkAttrs ? ".local/share/dolphin-emu/Wii/title")
         || (selectedLinkAttrs ? ".local/share/dolphin-emu/Load/Riivolution")
-        || (selectedLinkAttrs ? ".local/share/dolphin-emu/StateSaves")
       )
       [ ".local/share/dolphin-emu" ]
     ++ lib.optionals
       (
         (selectedLinkAttrs ? ".local/share/melonDS/saves")
-        || (selectedLinkAttrs ? ".local/share/melonDS/states")
       )
       [ ".local/share/melonDS" ];
 
