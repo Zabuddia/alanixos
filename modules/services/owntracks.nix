@@ -61,8 +61,7 @@ let
     && mqttCfg.publicPort != null
     && hasValue mqttCfg.internalAddress
     && mqttCfg.internalPort != null
-    && hasValue mqttCfg.acme.dnsProvider
-    && mqttCfg.acme.credentialsFile != null;
+    && hasValue mqttCfg.acme.dnsProvider;
 
   mqttPasswordSourceForUser =
     userCfg:
