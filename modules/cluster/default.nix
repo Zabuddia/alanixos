@@ -1429,7 +1429,7 @@ in
             emit_prep_step 4 4 ${lib.escapeShellArg "snapshotting owntracks recorder LMDB"}
             if [[ -f "$recorder_ghash_dir/data.mdb" ]]; then
               rm -rf "$staged_recorder_ghash_dir"
-              mkdir -p "$(dirname "$staged_recorder_ghash_dir")"
+              mkdir -p "$staged_recorder_ghash_dir"
               ${pkgs.lmdb}/bin/mdb_copy "$recorder_ghash_dir" "$staged_recorder_ghash_dir"
             fi
 
