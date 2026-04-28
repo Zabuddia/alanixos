@@ -11,17 +11,6 @@ let
   collaboraCfg = cfg.collabora;
   collaboraExposeCfg = collaboraCfg.expose;
 
-  defaultAppIds = [
-    "contacts"
-    "calendar"
-    "tasks"
-    "notes"
-    "deck"
-    "forms"
-    "richdocuments"
-    "polls"
-  ];
-
   sanitizeUserKey = name: lib.replaceStrings [ "-" "." "@" "+" ] [ "_" "_" "_" "_" ] name;
 
   normalizeInternalAddress =
@@ -512,7 +501,7 @@ in
 
     appIds = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = defaultAppIds;
+      default = [ ];
       description = "Packaged Nextcloud app ids installed from cfg.package.passthru.packages.apps.";
     };
 
