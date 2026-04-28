@@ -252,6 +252,7 @@ in
       nextcloudCfg = config.alanix.nextcloud;
       nextcloudCollaboraCfg = nextcloudCfg.collabora;
       filebrowserCfg = config.alanix.filebrowser;
+      owntracksCfg = config.alanix.owntracks;
       radicaleCfg = config.alanix.radicale;
       vaultwardenCfg = config.alanix.vaultwarden;
       forgejoCfg = config.alanix.forgejo;
@@ -263,6 +264,7 @@ in
       searxngCfg = config.alanix.searxng;
       nextcloudCluster = nextcloudCfg.enable && nextcloudCfg.cluster.enable;
       filebrowserCluster = filebrowserCfg.enable && filebrowserCfg.cluster.enable;
+      owntracksCluster = owntracksCfg.enable && owntracksCfg.cluster.enable;
       radicaleCluster = radicaleCfg.enable && radicaleCfg.cluster.enable;
       vaultwardenCluster = vaultwardenCfg.enable && vaultwardenCfg.cluster.enable;
       forgejoCluster = forgejoCfg.enable && forgejoCfg.cluster.enable;
@@ -920,6 +922,49 @@ in
         else
           null;
 
+      owntracksRestoreScript =
+        if owntracksCluster then
+          let
+            mosquittoDataDir = config.services.mosquitto.dataDir;
+            stagedMosquittoDataDir = "${owntracksCfg.backupDir}${mosquittoDataDir}";
+            stagedRecorderStateDir = "${owntracksCfg.backupDir}${owntracksCfg.recorder.stateDir}";
+          in
+          pkgs.writeShellScript "alanix-owntracks-cluster-restore-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg owntracksCfg.backupDir}
+            mosquitto_data_dir=${lib.escapeShellArg mosquittoDataDir}
+            recorder_state_dir=${lib.escapeShellArg owntracksCfg.recorder.stateDir}
+            staged_mosquitto_data_dir=${lib.escapeShellArg stagedMosquittoDataDir}
+            staged_recorder_state_dir=${lib.escapeShellArg stagedRecorderStateDir}
+            trap 'rm -rf "$backup_dir"' EXIT
+
+            restore_dir() {
+              local target="$1"
+              local staged_dir="$2"
+
+              if [[ -e "$target" && ! -d "$target" ]]; then
+                rm -rf "$target"
+              fi
+              mkdir -p "$target"
+
+              if [[ -d "$staged_dir" ]]; then
+                rsync -a --delete "$staged_dir"/ "$target"/
+              else
+                rm -rf "$target"
+                mkdir -p "$target"
+              fi
+            }
+
+            restore_dir "$mosquitto_data_dir" "$staged_mosquitto_data_dir"
+            restore_dir "$recorder_state_dir" "$staged_recorder_state_dir"
+
+            chown -R mosquitto:mosquitto "$mosquitto_data_dir"
+            chown -R owntracks:owntracks "$recorder_state_dir"
+          ''
+        else
+          null;
+
       searxngRestoreScript =
         if searxngCluster then
           let
@@ -1348,6 +1393,54 @@ in
         else
           null;
 
+      owntracksBackupPrepScript =
+        if owntracksCluster then
+          let
+            mosquittoDataDir = config.services.mosquitto.dataDir;
+            stagedMosquittoDataDir = "${owntracksCfg.backupDir}${mosquittoDataDir}";
+            stagedRecorderStateDir = "${owntracksCfg.backupDir}${owntracksCfg.recorder.stateDir}";
+            recorderGhashDir = "${owntracksCfg.recorder.stateDir}/store/ghash";
+            stagedRecorderGhashDir = "${stagedRecorderStateDir}/store/ghash";
+          in
+          pkgs.writeShellScript "alanix-owntracks-cluster-backup-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg owntracksCfg.backupDir}
+            backup_group=${lib.escapeShellArg backupRepoUserGroup}
+            mosquitto_data_dir=${lib.escapeShellArg mosquittoDataDir}
+            recorder_state_dir=${lib.escapeShellArg owntracksCfg.recorder.stateDir}
+            staged_mosquitto_data_dir=${lib.escapeShellArg stagedMosquittoDataDir}
+            staged_recorder_state_dir=${lib.escapeShellArg stagedRecorderStateDir}
+            recorder_ghash_dir=${lib.escapeShellArg recorderGhashDir}
+            staged_recorder_ghash_dir=${lib.escapeShellArg stagedRecorderGhashDir}
+
+            ${backupPrepProgressHelpers}
+
+            rm -rf "$backup_dir"
+            mkdir -p "$backup_dir"
+
+            emit_prep_step 1 4 ${lib.escapeShellArg "flushing mosquitto persistence"}
+            systemctl kill -s SIGUSR1 mosquitto.service
+            sleep 2
+
+            rsync_prep_step 2 4 ${lib.escapeShellArg "staging ${mosquittoDataDir}"} "$mosquitto_data_dir" "$staged_mosquitto_data_dir"
+            rsync_prep_step 3 4 ${lib.escapeShellArg "staging ${owntracksCfg.recorder.stateDir}"} "$recorder_state_dir" "$staged_recorder_state_dir"
+
+            emit_prep_step 4 4 ${lib.escapeShellArg "snapshotting owntracks recorder LMDB"}
+            if [[ -d "$recorder_ghash_dir" ]]; then
+              rm -rf "$staged_recorder_ghash_dir"
+              mkdir -p "$(dirname "$staged_recorder_ghash_dir")"
+              ${pkgs.lmdb}/bin/mdb_copy -n "$recorder_ghash_dir" "$staged_recorder_ghash_dir"
+            fi
+
+            chown -R mosquitto:mosquitto "$staged_mosquitto_data_dir"
+            chown -R owntracks:owntracks "$staged_recorder_state_dir"
+            chgrp -R "$backup_group" "$backup_dir"
+            chmod -R u=rwX,g=rX,o= "$backup_dir"
+          ''
+        else
+          null;
+
       searxngBackupPrepScript =
         if searxngCluster then
           let
@@ -1727,6 +1820,56 @@ in
         else
           null;
 
+      owntracksViewerUsernames =
+        if owntracksCluster then
+          builtins.filter (username: owntracksCfg.users.${username}.recorderViewer) (builtins.attrNames owntracksCfg.users)
+        else
+          [ ];
+
+      owntracksViewerPasswordPath =
+        username:
+        let
+          userCfg = owntracksCfg.users.${username};
+        in
+        if userCfg.passwordFile != null then
+          toString userCfg.passwordFile
+        else if userCfg.passwordSecret != null && lib.hasAttrByPath [ "sops" "secrets" userCfg.passwordSecret "path" ] config then
+          config.sops.secrets.${userCfg.passwordSecret}.path
+        else
+          null;
+
+      owntracksWireguardAddress =
+        if owntracksCfg.recorder.expose.wireguard.address != null then
+          owntracksCfg.recorder.expose.wireguard.address
+        else
+          config.alanix.wireguard.vpnIP;
+
+      owntracksTailscaleTlsName =
+        if owntracksCfg.recorder.expose.tailscale.tlsName != null then
+          owntracksCfg.recorder.expose.tailscale.tlsName
+        else
+          config.alanix.tailscale.address;
+
+      owntracksTorTargetAddress =
+        normalizeLocalAddress (
+          if owntracksCfg.recorder.expose.tor.targetAddress != null then
+            owntracksCfg.recorder.expose.tor.targetAddress
+          else
+            owntracksCfg.recorder.listenAddress
+        );
+
+      owntracksTorTargetPort =
+        if owntracksCfg.recorder.expose.tor.tls then
+          owntracksCfg.recorder.expose.tor.publicPort
+        else
+          owntracksCfg.recorder.port;
+
+      owntracksTorSecretPath =
+        if owntracksCfg.recorder.expose.tor.secretKeyBase64Secret != null then
+          config.sops.secrets.${owntracksCfg.recorder.expose.tor.secretKeyBase64Secret}.path
+        else
+          null;
+
       searxngWireguardAddress =
         if searxngCfg.expose.wireguard.address != null then
           searxngCfg.expose.wireguard.address
@@ -1849,6 +1992,14 @@ in
           )
         )
         || (
+          owntracksCluster
+          && (
+            owntracksCfg.recorder.expose.tailscale.enable
+            || owntracksCfg.recorder.expose.wireguard.enable
+            || (owntracksCfg.recorder.expose.tor.enable && owntracksCfg.recorder.expose.tor.tls)
+          )
+        )
+        || (
           searxngCluster
           && (
             searxngCfg.expose.tailscale.enable
@@ -1869,6 +2020,7 @@ in
         || (immichCluster && immichCfg.expose.wan.enable)
         || (jellyfinCluster && jellyfinCfg.expose.wan.enable)
         || (navidromeCluster && navidromeCfg.expose.wan.enable)
+        || (owntracksCluster && owntracksCfg.recorder.expose.wan.enable)
         || (searxngCluster && searxngCfg.expose.wan.enable);
 
       anyTailscaleCaddyExposure =
@@ -1883,6 +2035,7 @@ in
         || (jellyfinCluster && jellyfinCfg.expose.tailscale.enable)
         || (navidromeCluster && navidromeCfg.expose.tailscale.enable)
         || (openwebuiCluster && openwebuiCfg.expose.tailscale.enable)
+        || (owntracksCluster && owntracksCfg.recorder.expose.tailscale.enable)
         || (searxngCluster && searxngCfg.expose.tailscale.enable);
 
       anyTorExposure =
@@ -1897,6 +2050,7 @@ in
         || (jellyfinCluster && jellyfinCfg.expose.tor.enable)
         || (navidromeCluster && navidromeCfg.expose.tor.enable)
         || (openwebuiCluster && openwebuiCfg.expose.tor.enable)
+        || (owntracksCluster && owntracksCfg.recorder.expose.tor.enable)
         || (searxngCluster && searxngCfg.expose.tor.enable);
 
       # Build a stable Tor URL from the tor exposure options.
@@ -2247,6 +2401,45 @@ in
             port = openwebuiCfg.expose.wireguard.port;
             addressFn = peerWireguardAddress;
           }
+        ))
+      ];
+
+      owntracksLinksByHost = mergeLinksByHost [
+        (lib.optionalAttrs (owntracksCluster && owntracksCfg.recorder.expose.tailscale.enable) (
+          mkPeerLinksByHost {
+            label = "OwnTracks";
+            transport = "tailscale";
+            scheme = if owntracksCfg.recorder.expose.tailscale.tls then "https" else "http";
+            port = owntracksCfg.recorder.expose.tailscale.port;
+            addressFn = peerTailscaleAddress;
+          }
+        ))
+        (lib.optionalAttrs (owntracksCluster && owntracksCfg.recorder.expose.wireguard.enable) (
+          mkPeerLinksByHost {
+            label = "OwnTracks";
+            transport = "wireguard";
+            scheme = if owntracksCfg.recorder.expose.wireguard.tls then "https" else "http";
+            port = owntracksCfg.recorder.expose.wireguard.port;
+            addressFn = peerWireguardAddress;
+          }
+        ))
+        (lib.optionalAttrs (owntracksCluster && owntracksCfg.recorder.expose.tor.enable && owntracksCfg.recorder.expose.tor.hostname != null) (
+          mkConstantLinksByHost [
+            {
+              label = "OwnTracks (tor)";
+              transport = "tor";
+              url = mkTorUrl owntracksCfg.recorder.expose.tor;
+            }
+          ]
+        ))
+        (lib.optionalAttrs (owntracksCluster && owntracksCfg.recorder.expose.wan.enable) (
+          mkConstantLinksByHost [
+            {
+              label = "OwnTracks (wan)";
+              transport = "wan";
+              url = "https://${owntracksCfg.recorder.expose.wan.domain}/";
+            }
+          ]
         ))
       ];
 
@@ -2631,6 +2824,36 @@ in
                 tls = openwebuiCfg.expose.tor.tls;
                 publicPort = openwebuiCfg.expose.tor.publicPort;
                 stateDirName = "openwebui";
+              };
+            };
+          })
+          // (lib.optionalAttrs owntracksCluster {
+            owntracks = {
+              name = "owntracks";
+              label = "OwnTracks";
+              backupInterval = owntracksCfg.cluster.backupInterval;
+              maxBackupAge = owntracksCfg.cluster.maxBackupAge;
+              activeUnits =
+                [
+                  "mosquitto.service"
+                  "ot-recorder.service"
+                ]
+                ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
+              backupPaths = [ owntracksCfg.backupDir ];
+              preBackupCommand = [ owntracksBackupPrepScript ];
+              postBackupCommand = [ "rm" "-rf" owntracksCfg.backupDir ];
+              postRestoreCommand = [ owntracksRestoreScript ];
+              restoreTarget = "/";
+              remoteTargets = mkRemoteTargets "owntracks";
+              manifestGlobs = mkManifestGlobs "owntracks";
+              localTarget = mkLocalTarget "owntracks";
+              linksByHost = owntracksLinksByHost;
+              torUrl = mkTorUrl owntracksCfg.recorder.expose.tor;
+              tor = {
+                enabled = owntracksCfg.recorder.expose.tor.enable;
+                tls = owntracksCfg.recorder.expose.tor.tls;
+                publicPort = owntracksCfg.recorder.expose.tor.publicPort;
+                stateDirName = "owntracks";
               };
             };
           })
@@ -3287,6 +3510,93 @@ in
             EOF
           ''}
 
+          ${lib.optionalString (
+            owntracksCluster
+            && (
+              owntracksCfg.recorder.expose.wan.enable
+              || owntracksCfg.recorder.expose.tailscale.enable
+              || owntracksCfg.recorder.expose.wireguard.enable
+              || (owntracksCfg.recorder.expose.tor.enable && owntracksCfg.recorder.expose.tor.tls)
+            )
+          ) ''
+            owntracks_auth_file="$runtime_dir/caddy/owntracks-basic-auth.caddy"
+            : > "$owntracks_auth_file"
+            cat >> "$owntracks_auth_file" <<'EOF'
+            basic_auth {
+            EOF
+            ${lib.concatMapStringsSep "\n" (username: ''
+              owntracks_hash="$(${config.services.caddy.package}/bin/caddy hash-password --plaintext "$(tr -d '\n' < ${lib.escapeShellArg (owntracksViewerPasswordPath username)})")"
+              printf '  %s %s\n' ${lib.escapeShellArg username} "$owntracks_hash" >> "$owntracks_auth_file"
+            '') owntracksViewerUsernames}
+            cat >> "$owntracks_auth_file" <<'EOF'
+            }
+            EOF
+          ''}
+
+          ${lib.optionalString (owntracksCluster && owntracksCfg.recorder.expose.tailscale.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if owntracksCfg.recorder.expose.tailscale.tls then "https" else "http"}://${owntracksTailscaleTlsName}:${toString owntracksCfg.recorder.expose.tailscale.port} {
+              bind $ts_ip
+              ${lib.optionalString owntracksCfg.recorder.expose.tailscale.tls "tls internal"}
+              @owntracks_pub path /pub /pub/*
+              respond @owntracks_pub 404
+              import "$owntracks_auth_file"
+              reverse_proxy ${normalizeLocalAddress owntracksCfg.recorder.listenAddress}:${toString owntracksCfg.recorder.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (owntracksCluster && owntracksCfg.recorder.expose.wireguard.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if owntracksCfg.recorder.expose.wireguard.tls then "https" else "http"}://${owntracksWireguardAddress}:${toString owntracksCfg.recorder.expose.wireguard.port} {
+              bind ${owntracksWireguardAddress}
+              ${lib.optionalString owntracksCfg.recorder.expose.wireguard.tls "tls internal"}
+              @owntracks_pub path /pub /pub/*
+              respond @owntracks_pub 404
+              import "$owntracks_auth_file"
+              reverse_proxy ${normalizeLocalAddress owntracksCfg.recorder.listenAddress}:${toString owntracksCfg.recorder.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (owntracksCluster && owntracksCfg.recorder.expose.tor.enable && owntracksCfg.recorder.expose.tor.tls) ''
+            cat >> "$caddy_file" <<EOF
+            https://${owntracksCfg.recorder.expose.tor.tlsName}:${toString owntracksCfg.recorder.expose.tor.publicPort} {
+              bind ${owntracksTorTargetAddress}
+              tls internal
+              @owntracks_pub path /pub /pub/*
+              respond @owntracks_pub 404
+              import "$owntracks_auth_file"
+              reverse_proxy ${normalizeLocalAddress owntracksCfg.recorder.listenAddress}:${toString owntracksCfg.recorder.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (owntracksCluster && owntracksCfg.recorder.expose.tor.enable) ''
+            rm -rf "$tor_state_dir/owntracks"
+            mkdir -p "$tor_state_dir/owntracks"
+            chown tor:tor "$tor_state_dir/owntracks"
+            chmod 0700 "$tor_state_dir/owntracks"
+          ''}
+
+          ${lib.optionalString (owntracksCluster && owntracksCfg.recorder.expose.tor.enable && owntracksTorSecretPath != null) ''
+            base64 --decode ${lib.escapeShellArg owntracksTorSecretPath} > "$tor_state_dir/owntracks/hs_ed25519_secret_key"
+            chown tor:tor "$tor_state_dir/owntracks/hs_ed25519_secret_key"
+            chmod 0600 "$tor_state_dir/owntracks/hs_ed25519_secret_key"
+          ''}
+
+          ${lib.optionalString (owntracksCluster && owntracksCfg.recorder.expose.tor.enable) ''
+            cat >> "$tor_file" <<EOF
+            HiddenServiceDir $tor_state_dir/owntracks
+            HiddenServiceVersion 3
+            HiddenServicePort ${toString owntracksCfg.recorder.expose.tor.publicPort} ${owntracksTorTargetAddress}:${toString owntracksTorTargetPort}
+
+            EOF
+          ''}
+
           ${lib.optionalString (searxngCluster && searxngCfg.expose.tailscale.enable) ''
             cat >> "$caddy_file" <<EOF
             ${if searxngCfg.expose.tailscale.tls then "https" else "http"}://${searxngTailscaleTlsName}:${toString searxngCfg.expose.tailscale.port} {
@@ -3432,6 +3742,18 @@ in
             EOF
           ''}
 
+          ${lib.optionalString (owntracksCluster && owntracksCfg.recorder.expose.wan.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${owntracksCfg.recorder.expose.wan.domain} {
+              @owntracks_pub path /pub /pub/*
+              respond @owntracks_pub 404
+              import "$owntracks_auth_file"
+              reverse_proxy ${normalizeLocalAddress owntracksCfg.recorder.listenAddress}:${toString owntracksCfg.recorder.port}
+            }
+
+            EOF
+          ''}
+
           ${lib.optionalString (searxngCluster && searxngCfg.expose.wan.enable) ''
             cat >> "$caddy_file" <<EOF
             ${searxngCfg.expose.wan.domain} {
@@ -3501,6 +3823,9 @@ in
             ${lib.optionalString (openwebuiCluster && openwebuiCfg.expose.tor.enable) ''
               publish_tor_hostname openwebui
             ''}
+            ${lib.optionalString (owntracksCluster && owntracksCfg.recorder.expose.tor.enable) ''
+              publish_tor_hostname owntracks
+            ''}
             ${lib.optionalString (searxngCluster && searxngCfg.expose.tor.enable) ''
               publish_tor_hostname searxng
             ''}
@@ -3519,6 +3844,7 @@ in
           rm -rf "$tor_state_dir/nextcloud"
           rm -rf "$tor_state_dir/nextcloud-collabora"
           rm -rf "$tor_state_dir/openwebui"
+          rm -rf "$tor_state_dir/owntracks"
           rm -rf "$tor_state_dir/searxng"
 
           ${lib.optionalString anyCaddyExposure ''
@@ -3714,6 +4040,20 @@ in
               message = "Open WebUI cluster mode requires alanix.openwebui.stateDir to be an absolute path.";
             }
           ]
+          ++ lib.optionals owntracksCluster [
+            {
+              assertion = lib.hasPrefix "/" owntracksCfg.recorder.stateDir;
+              message = "OwnTracks cluster mode requires alanix.owntracks.recorder.stateDir to be an absolute path.";
+            }
+            {
+              assertion = lib.hasPrefix "/" owntracksCfg.backupDir;
+              message = "OwnTracks cluster mode requires alanix.owntracks.backupDir to be an absolute path.";
+            }
+            {
+              assertion = lib.all (username: owntracksViewerPasswordPath username != null) owntracksViewerUsernames;
+              message = "OwnTracks cluster mode requires recorderViewer users to use passwordFile or passwordSecret.";
+            }
+          ]
           ++ lib.optionals searxngCluster [
             {
               assertion = lib.hasPrefix "/" searxngCfg.stateDir;
@@ -3840,6 +4180,9 @@ in
           ++ lib.optionals openwebuiCluster [
             "d ${openwebuiCfg.backupDir} 0750 open-webui ${backupRepoUserGroup} - -"
           ]
+          ++ lib.optionals owntracksCluster [
+            "d ${owntracksCfg.backupDir} 0750 root ${backupRepoUserGroup} - -"
+          ]
           ++ lib.optionals anyCaddyExposure [
             "d /run/alanix-cluster 0755 root root - -"
             "d /run/alanix-cluster/caddy 0755 root root - -"
@@ -3938,6 +4281,10 @@ in
         networking.firewall.allowedTCPPorts = [ 80 443 ];
       })
 
+      (lib.mkIf owntracksCluster {
+        networking.firewall.allowedTCPPorts = [ owntracksCfg.mqtt.publicPort ];
+      })
+
       (lib.mkIf ddnsCfg.enable {
         systemd.services.alanix-cluster-ddns = {
           description = "Alanix cluster leader DDNS (Cloudflare)";
@@ -3996,6 +4343,7 @@ in
             ++ lib.optionals jellyfinCluster [ "jellyfin.service" ]
             ++ lib.optionals navidromeCluster [ "navidrome.service" ]
             ++ lib.optionals openwebuiCluster [ "open-webui.service" ]
+            ++ lib.optionals owntracksCluster [ "ot-recorder.service" ]
             ++ lib.optionals searxngCluster [ "searx.service" ];
           wants =
             lib.optionals nextcloudCluster [ "phpfpm-nextcloud.service" ]
@@ -4012,6 +4360,7 @@ in
             ++ lib.optionals jellyfinCluster [ "jellyfin.service" ]
             ++ lib.optionals navidromeCluster [ "navidrome.service" ]
             ++ lib.optionals openwebuiCluster [ "open-webui.service" ]
+            ++ lib.optionals owntracksCluster [ "ot-recorder.service" ]
             ++ lib.optionals searxngCluster [ "searx.service" ];
           path =
             [ pkgs.coreutils pkgs.systemd ]
@@ -4127,6 +4476,18 @@ in
 
       (lib.mkIf openwebuiCluster {
         systemd.services.open-webui = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+      })
+
+      (lib.mkIf owntracksCluster {
+        systemd.services.mosquitto = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.services.ot-recorder = {
           wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
           partOf = [ "alanix-cluster-active.target" ];
         };

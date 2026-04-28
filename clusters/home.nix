@@ -97,7 +97,9 @@ in
           "invidious.fifefin.com"
           "vaultwarden.fifefin.com"
           "jellyfin.fifefin.com"
+          "mqtt.fifefin.com"
           "navidrome.fifefin.com"
+          "owntracks.fifefin.com"
           "radicale.fifefin.com"
           "searxng.fifefin.com"
         ];
@@ -297,6 +299,50 @@ in
       };
 
       users.buddia.passwordSecret = "radicale-passwords/buddia";
+    };
+
+    alanix.owntracks = {
+      enable = true;
+      backupDir = "/var/backup/owntracks";
+
+      mqtt = {
+        domain = "mqtt.fifefin.com";
+        publicPort = 8883;
+      };
+
+      recorder = {
+        listenAddress = "127.0.0.1";
+        port = 8083;
+        stateDir = "/var/lib/owntracks-recorder";
+
+        expose = {
+          wan = {
+            enable = true;
+            domain = "owntracks.fifefin.com";
+          };
+
+          tailscale = {
+            enable = true;
+            port = 18083;
+          };
+
+          wireguard = {
+            enable = true;
+            port = 8083;
+          };
+        };
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "15m";
+        maxBackupAge = "1h";
+      };
+
+      users.buddia = {
+        passwordSecret = "owntracks-passwords/buddia";
+        recorderViewer = true;
+      };
     };
 
     alanix.invidious = {
