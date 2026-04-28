@@ -127,6 +127,20 @@
     mode = "0400";
   };
 
+  sops.secrets."owntracks-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."owntracks-passwords/recorder-internal" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."searxng-app/secret-key" = {
     sopsFile = (import ../../secrets/files.nix).servicePasswords;
     owner = "root";

@@ -20,6 +20,7 @@
     ./services/llm.nix
     ./services/navidrome.nix
     ./services/nextcloud.nix
+    ./services/owntracks.nix
     ./services/openclaw.nix
     ./services/openwebui.nix
     ./services/radicale.nix
