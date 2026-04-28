@@ -390,7 +390,6 @@ in
       after =
         [
           "network-online.target"
-          "sops-nix.service"
         ]
         ++ lib.optional cfg.cluster.enable serviceTarget;
       wants = [ "network-online.target" ];
