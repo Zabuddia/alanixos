@@ -269,7 +269,7 @@ in
       port = 8088;
       root = "${config.alanix.syncthing.syncRoot}/filebrowser";
       rootUser = "buddia";
-      rootGroup = "filebrowser";
+      rootGroup = "users";
       rootMode = "2775";
       database = "/var/lib/filebrowser/filebrowser.db";
       backupDir = "/var/backup/filebrowser";
