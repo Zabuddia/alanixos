@@ -11,6 +11,7 @@ in
     ./audio.nix
     ./bluetooth.nix
     ./flatpak.nix
+    ./fingerprint.nix
   ];
 
   options.alanix.desktop = {
@@ -48,6 +49,8 @@ in
       default = [ ];
       description = "Additional Sway output directives written into /etc/sway/config.d.";
     };
+
+    fingerprint.enable = lib.mkEnableOption "fingerprint authentication for screen lock and sudo";
 
     idle = {
       lockSeconds = lib.mkOption {
