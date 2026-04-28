@@ -1430,7 +1430,7 @@ in
             if [[ -d "$recorder_ghash_dir" ]]; then
               rm -rf "$staged_recorder_ghash_dir"
               mkdir -p "$(dirname "$staged_recorder_ghash_dir")"
-              ${pkgs.lmdb}/bin/mdb_copy -n "$recorder_ghash_dir" "$staged_recorder_ghash_dir"
+              ${pkgs.lmdb}/bin/mdb_copy "$recorder_ghash_dir" "$staged_recorder_ghash_dir"
             fi
 
             chown -R mosquitto:mosquitto "$staged_mosquitto_data_dir"
