@@ -1427,7 +1427,7 @@ in
             rsync_prep_step 3 4 ${lib.escapeShellArg "staging ${owntracksCfg.recorder.stateDir}"} "$recorder_state_dir" "$staged_recorder_state_dir"
 
             emit_prep_step 4 4 ${lib.escapeShellArg "snapshotting owntracks recorder LMDB"}
-            if [[ -d "$recorder_ghash_dir" ]]; then
+            if [[ -f "$recorder_ghash_dir/data.mdb" ]]; then
               rm -rf "$staged_recorder_ghash_dir"
               mkdir -p "$(dirname "$staged_recorder_ghash_dir")"
               ${pkgs.lmdb}/bin/mdb_copy "$recorder_ghash_dir" "$staged_recorder_ghash_dir"
