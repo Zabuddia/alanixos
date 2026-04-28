@@ -267,6 +267,20 @@
     mode = "0400";
   };
 
+  sops.secrets."mail-password-hashes/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."mail-dkim/fifefin.com/mail-private-key" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."tor/navidrome/secret-key-base64" = {
     sopsFile = (import ../../secrets/files.nix).tor;
     owner = "root";

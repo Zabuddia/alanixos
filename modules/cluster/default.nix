@@ -259,6 +259,7 @@ in
       invidiousCfg = config.alanix.invidious;
       immichCfg = config.alanix.immich;
       jellyfinCfg = config.alanix.jellyfin;
+      mailCfg = config.alanix.mail;
       navidromeCfg = config.alanix.navidrome;
       openwebuiCfg = config.alanix.openwebui;
       searxngCfg = config.alanix.searxng;
@@ -271,6 +272,7 @@ in
       invidiousCluster = invidiousCfg.enable && invidiousCfg.cluster.enable;
       immichCluster = immichCfg.enable && immichCfg.cluster.enable;
       jellyfinCluster = jellyfinCfg.enable && jellyfinCfg.cluster.enable;
+      mailCluster = mailCfg.enable && mailCfg.cluster.enable && mailCfg.cluster.backupDir != null;
       navidromeCluster = navidromeCfg.enable && navidromeCfg.cluster.enable;
       openwebuiCluster = openwebuiCfg.enable && openwebuiCfg.cluster.enable;
       searxngCluster = searxngCfg.enable && searxngCfg.cluster.enable;
@@ -557,6 +559,26 @@ in
 
       navidromeClusteredPaths =
         [ navidromeCfg.dataDir ];
+
+      mailPrimaryDomain =
+        if mailCfg.domain != null then
+          mailCfg.domain
+        else if mailCfg.domains != [ ] then
+          lib.head mailCfg.domains
+        else
+          "localhost";
+      mailRedisDataDir = "/var/lib/redis-rspamd";
+      mailRspamdStateDir = "/var/lib/rspamd";
+      mailClusteredPaths = lib.unique (
+        [
+          mailCfg.mailDirectory
+          mailCfg.sieveDirectory
+          mailCfg.dkim.keyDirectory
+        ]
+        ++ lib.optional (mailCfg.cluster.includeIndexDir && mailCfg.indexDir != null) mailCfg.indexDir
+        ++ lib.optional mailCfg.cluster.includeRspamdState mailRspamdStateDir
+        ++ lib.optional (mailCfg.cluster.includeRedis && config.mailserver.redis.configureLocally) mailRedisDataDir
+      );
 
       forgejoRestoreScript =
         if forgejoCluster then
@@ -888,6 +910,58 @@ in
             '') navidromeClusteredPaths}
 
             chown -R navidrome:navidrome ${lib.escapeShellArg navidromeCfg.dataDir}
+          ''
+        else
+          null;
+
+      mailRestoreScript =
+        if mailCluster then
+          let
+            restoreDirCommands = lib.concatMapStringsSep "\n" (
+              path:
+              let
+                ownerGroup =
+                  if path == mailCfg.dkim.keyDirectory then
+                    "${config.services.rspamd.user}:${config.services.rspamd.group}"
+                  else if path == mailRspamdStateDir then
+                    "${config.services.rspamd.user}:${config.services.rspamd.group}"
+                  else if path == mailRedisDataDir then
+                    "${config.services.redis.servers.rspamd.user}:${config.services.redis.servers.rspamd.group}"
+                  else
+                    "${config.mailserver.vmailUserName}:${config.mailserver.vmailGroupName}";
+              in
+              ''
+                restore_dir ${lib.escapeShellArg path} ${lib.escapeShellArg ownerGroup}
+              ''
+            ) mailClusteredPaths;
+          in
+          pkgs.writeShellScript "alanix-mail-cluster-restore-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg mailCfg.cluster.backupDir}
+            trap 'rm -rf "$backup_dir"' EXIT
+
+            restore_dir() {
+              local target="$1"
+              local owner_group="$2"
+              local staged_dir="$backup_dir$target"
+
+              if [[ -e "$target" && ! -d "$target" ]]; then
+                rm -rf "$target"
+              fi
+              mkdir -p "$target"
+
+              if [[ -d "$staged_dir" ]]; then
+                rsync -a --delete "$staged_dir"/ "$target"/
+              else
+                rm -rf "$target"
+                mkdir -p "$target"
+              fi
+
+              chown -R "$owner_group" "$target"
+            }
+
+            ${restoreDirCommands}
           ''
         else
           null;
@@ -1317,6 +1391,51 @@ in
               sqlite3 "$db_path" ".backup '$staged_db'"
             done
             shopt -u globstar nullglob
+
+            chgrp -R "$backup_group" "$backup_dir"
+            chmod -R u=rwX,g=rX,o= "$backup_dir"
+          ''
+        else
+          null;
+
+      mailBackupPrepScript =
+        if mailCluster then
+          let
+            redisFlushStepCount =
+              if mailCfg.cluster.includeRedis && config.mailserver.redis.configureLocally then 1 else 0;
+            mailPrepStepCount = builtins.length mailClusteredPaths + redisFlushStepCount;
+            redisFlushCommand = lib.optionalString (redisFlushStepCount == 1) ''
+              emit_prep_step 1 ${toString mailPrepStepCount} ${lib.escapeShellArg "flushing rspamd redis state"}
+              if systemctl --quiet is-active redis-rspamd.service; then
+                ${config.services.redis.package}/bin/redis-cli -s ${lib.escapeShellArg config.services.redis.servers.rspamd.unixSocket} save >/dev/null
+              fi
+            '';
+            pathRsyncCommands = lib.concatStringsSep "\n" (
+              builtins.genList
+                (index:
+                  let
+                    path = builtins.elemAt mailClusteredPaths index;
+                    stepIndex = index + 1 + redisFlushStepCount;
+                  in
+                  ''
+                    rsync_prep_step ${toString stepIndex} ${toString mailPrepStepCount} ${lib.escapeShellArg "staging ${path}"} ${lib.escapeShellArg path} ${lib.escapeShellArg "${mailCfg.cluster.backupDir}${path}"}
+                  '')
+                (builtins.length mailClusteredPaths)
+            );
+          in
+          pkgs.writeShellScript "alanix-mail-cluster-backup-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg mailCfg.cluster.backupDir}
+            backup_group=${lib.escapeShellArg backupRepoUserGroup}
+
+            ${backupPrepProgressHelpers}
+
+            rm -rf "$backup_dir"
+            mkdir -p "$backup_dir"
+
+            ${redisFlushCommand}
+            ${pathRsyncCommands}
 
             chgrp -R "$backup_group" "$backup_dir"
             chmod -R u=rwX,g=rX,o= "$backup_dir"
@@ -2383,6 +2502,18 @@ in
         ))
       ];
 
+      mailLinksByHost = mergeLinksByHost [
+        (lib.optionalAttrs mailCluster (
+          mkConstantLinksByHost [
+            {
+              label = "Mail";
+              transport = "wan";
+              url = "mailto:postmaster@${mailPrimaryDomain}";
+            }
+          ]
+        ))
+      ];
+
       openwebuiLinksByHost = mergeLinksByHost [
         (lib.optionalAttrs (openwebuiCluster && openwebuiCfg.expose.tailscale.enable) (
           mkPeerLinksByHost {
@@ -2799,6 +2930,39 @@ in
                 publicPort = navidromeCfg.expose.tor.publicPort;
                 stateDirName = "navidrome";
               };
+            };
+          })
+          // (lib.optionalAttrs mailCluster {
+            mail = {
+              name = "mail";
+              label = "Mail";
+              backupInterval = mailCfg.cluster.backupInterval;
+              maxBackupAge = mailCfg.cluster.maxBackupAge;
+              activeUnits =
+                [
+                  "activate-virtual-mail-users.service"
+                  "redis-rspamd.service"
+                  "rspamd.service"
+                  "dovecot.service"
+                  "postfix.service"
+                ]
+                ++ lib.optional (mailCfg.dkim.privateKeySecrets != { }) "alanix-mail-dkim-keys.service"
+                ++ lib.optional mailCfg.localDnsResolver "kresd.service"
+                ++ lib.optional mailCfg.dmarcReporting.enable "rspamd-dmarc-reporter.timer"
+                ++ lib.optionals mailCfg.virusScanning [
+                  "clamav-daemon.socket"
+                  "clamav-daemon.service"
+                  "clamav-freshclam.timer"
+                ];
+              backupPaths = [ mailCfg.cluster.backupDir ];
+              preBackupCommand = [ mailBackupPrepScript ];
+              postBackupCommand = [ "rm" "-rf" mailCfg.cluster.backupDir ];
+              postRestoreCommand = [ mailRestoreScript ];
+              restoreTarget = "/";
+              remoteTargets = mkRemoteTargets "mail";
+              manifestGlobs = mkManifestGlobs "mail";
+              localTarget = mkLocalTarget "mail";
+              linksByHost = mailLinksByHost;
             };
           })
           // (lib.optionalAttrs openwebuiCluster {
@@ -4034,6 +4198,28 @@ in
               message = "Navidrome cluster mode requires alanix.navidrome.backupDir to be an absolute path.";
             }
           ]
+          ++ lib.optionals mailCluster [
+            {
+              assertion = lib.hasPrefix "/" mailCfg.mailDirectory;
+              message = "Mail cluster mode requires alanix.mail.mailDirectory to be an absolute path.";
+            }
+            {
+              assertion = lib.hasPrefix "/" mailCfg.sieveDirectory;
+              message = "Mail cluster mode requires alanix.mail.sieveDirectory to be an absolute path.";
+            }
+            {
+              assertion = lib.hasPrefix "/" mailCfg.dkim.keyDirectory;
+              message = "Mail cluster mode requires alanix.mail.dkim.keyDirectory to be an absolute path.";
+            }
+            {
+              assertion = mailCfg.indexDir == null || lib.hasPrefix "/" mailCfg.indexDir;
+              message = "Mail cluster mode requires alanix.mail.indexDir to be null or an absolute path.";
+            }
+            {
+              assertion = lib.hasPrefix "/" mailCfg.cluster.backupDir;
+              message = "Mail cluster mode requires alanix.mail.cluster.backupDir to be an absolute path.";
+            }
+          ]
           ++ lib.optionals openwebuiCluster [
             {
               assertion = lib.hasPrefix "/" openwebuiCfg.stateDir;
@@ -4176,6 +4362,9 @@ in
           ]
           ++ lib.optionals navidromeCluster [
             "d ${navidromeCfg.backupDir} 0750 navidrome ${backupRepoUserGroup} - -"
+          ]
+          ++ lib.optionals mailCluster [
+            "d ${mailCfg.cluster.backupDir} 0750 root ${backupRepoUserGroup} - -"
           ]
           ++ lib.optionals openwebuiCluster [
             "d ${openwebuiCfg.backupDir} 0750 open-webui ${backupRepoUserGroup} - -"
@@ -4470,6 +4659,66 @@ in
       (lib.mkIf navidromeCluster {
         systemd.services.navidrome = {
           wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+      })
+
+      (lib.mkIf mailCluster {
+        systemd.services.activate-virtual-mail-users = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.services.redis-rspamd = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.services.rspamd = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.services.dovecot = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.services.postfix = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.services.kresd = lib.mkIf mailCfg.localDnsResolver {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.timers.rspamd-dmarc-reporter = lib.mkIf mailCfg.dmarcReporting.enable {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.services.rspamd-dmarc-reporter = lib.mkIf mailCfg.dmarcReporting.enable {
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.sockets.clamav-daemon = lib.mkIf mailCfg.virusScanning {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.services.clamav-daemon = lib.mkIf mailCfg.virusScanning {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.timers.clamav-freshclam = lib.mkIf mailCfg.virusScanning {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.services.clamav-freshclam = lib.mkIf mailCfg.virusScanning {
           partOf = [ "alanix-cluster-active.target" ];
         };
       })
