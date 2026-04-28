@@ -738,6 +738,18 @@ in
         };
       };
 
+      appIds = [
+        "contacts"
+        "calendar"
+        "tasks"
+        "notes"
+        "deck"
+        "forms"
+        "richdocuments"
+        "polls"
+        "mail"
+      ];
+
       cluster = {
         enable = true;
         backupInterval = "12h";
