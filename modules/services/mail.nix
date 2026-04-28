@@ -689,8 +689,6 @@ in
         wantedBy = [ dkimKeyTarget ];
         partOf = lib.optional clusterCfg.enable dkimKeyTarget;
         before = [ "rspamd.service" ];
-        after = [ "sops-nix.service" ];
-        requires = [ "sops-nix.service" ];
         path = [ pkgs.coreutils ];
         serviceConfig = {
           Type = "oneshot";
