@@ -92,7 +92,7 @@ in
         enable = true;
         credentialsFile = config.sops.templates."cloudflare-env-cluster".path;
         ipv4Provider = "cloudflare.trace";
-        ipv6Provider = "cloudflare.trace";
+        ipv6Provider = "none";
         detectionTimeout = "15s";
         domains = [
           "dashboard.fifefin.com"
@@ -344,7 +344,9 @@ in
 
           tor = {
             enable = true;
-            publicPort = 80;
+            publicPort = 443;
+            tls = true;
+            tlsName = "ebap4jphsru2cfno3n3gjl6btx6p4ik77gmnj63vrnwd2z7uga4ccfqd.onion";
             secretKeyBase64Secret = "tor/owntracks/secret-key-base64";
             hostname = "ebap4jphsru2cfno3n3gjl6btx6p4ik77gmnj63vrnwd2z7uga4ccfqd.onion";
           };
