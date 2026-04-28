@@ -341,6 +341,13 @@ in
             enable = true;
             port = 8083;
           };
+
+          tor = {
+            enable = true;
+            publicPort = 80;
+            secretKeyBase64Secret = "tor/owntracks/secret-key-base64";
+            hostname = "ebap4jphsru2cfno3n3gjl6btx6p4ik77gmnj63vrnwd2z7uga4ccfqd.onion";
+          };
         };
       };
 
