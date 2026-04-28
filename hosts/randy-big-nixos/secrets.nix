@@ -274,4 +274,11 @@
     mode = "0400";
   };
 
+  sops.secrets."tor/owntracks/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
 }
