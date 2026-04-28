@@ -61,7 +61,11 @@ let
     ".local/share/azahar-emu/sdmc/Nintendo 3DS/${azaharSystemId}/${azaharSdCardId}";
   azaharLocalNandBase = ".local/share/azahar-emu/nand/data/${azaharSystemId}";
 
-  emulationFolders = {
+  azaharFolders = {
+    "games-roms-3ds" = {
+      label = "games/roms/3ds";
+      relativePath = "games/roms/3ds";
+    };
     "games-azahar-emu-sdmc-title" = {
       label = "${azaharSdmcRelativeBase}/title";
       relativePath = "${azaharSdmcRelativeBase}/title";
@@ -73,6 +77,21 @@ let
     "games-azahar-emu-nand-extdata" = {
       label = "${azaharNandRelativeBase}/extdata";
       relativePath = "${azaharNandRelativeBase}/extdata";
+    };
+    "games-azahar-emu-states" = {
+      label = "games/azahar-emu/states";
+      relativePath = "games/azahar-emu/states";
+    };
+  };
+
+  dolphinFolders = {
+    "games-roms-gamecube" = {
+      label = "games/roms/gamecube";
+      relativePath = "games/roms/gamecube";
+    };
+    "games-roms-wii" = {
+      label = "games/roms/wii";
+      relativePath = "games/roms/wii";
     };
     "games-dolphin-emu-gc" = {
       label = "games/dolphin-emu/GC";
@@ -86,9 +105,31 @@ let
       label = "games/dolphin-emu/Load/Riivolution";
       relativePath = "games/dolphin-emu/Load/Riivolution";
     };
+    "games-dolphin-emu-state-saves" = {
+      label = "games/dolphin-emu/StateSaves";
+      relativePath = "games/dolphin-emu/StateSaves";
+    };
+  };
+
+  melondsFolders = {
+    "games-roms-nds" = {
+      label = "games/roms/nds";
+      relativePath = "games/roms/nds";
+    };
     "games-melonds-saves" = {
       label = "games/melonDS/saves";
       relativePath = "games/melonDS/saves";
+    };
+    "games-melonds-states" = {
+      label = "games/melonDS/states";
+      relativePath = "games/melonDS/states";
+    };
+  };
+
+  ryujinxFolders = {
+    "games-roms-switch" = {
+      label = "games/roms/switch";
+      relativePath = "games/roms/switch";
     };
     "games-ryujinx" = {
       label = "games/Ryujinx";
@@ -126,8 +167,7 @@ let
   filebrowserFilesFolders = {
     "filebrowser-root" = {
       label = "filebrowser";
-      path = "/srv/filebrowser";
-      user = "buddia";
+      relativePath = "filebrowser";
       group = "filebrowser";
       mode = "2775";
       ignorePerms = true;
@@ -135,13 +175,16 @@ let
   };
 
   folderCatalog = {
-    emulation = emulationFolders;
+    emulation-azahar = azaharFolders;
+    emulation-dolphin = dolphinFolders;
+    emulation-melonds = melondsFolders;
+    emulation-ryujinx = ryujinxFolders;
     jellyfin-media = jellyfinMediaFolders;
     navidrome-media = navidromeMediaFolders;
     filebrowser-files = filebrowserFilesFolders;
   };
 
-  emulationLinks = {
+  azaharLinks = {
     "${azaharLocalSdmcBase}/title" = {
       relativePath = "${azaharSdmcRelativeBase}/title";
     };
@@ -151,6 +194,12 @@ let
     "${azaharLocalNandBase}/extdata" = {
       relativePath = "${azaharNandRelativeBase}/extdata";
     };
+    ".local/share/azahar-emu/states" = {
+      relativePath = "games/azahar-emu/states";
+    };
+  };
+
+  dolphinLinks = {
     ".local/share/dolphin-emu/GC" = {
       relativePath = "games/dolphin-emu/GC";
     };
@@ -160,17 +209,52 @@ let
     ".local/share/dolphin-emu/Load/Riivolution" = {
       relativePath = "games/dolphin-emu/Load/Riivolution";
     };
+    ".local/share/dolphin-emu/StateSaves" = {
+      relativePath = "games/dolphin-emu/StateSaves";
+    };
+  };
+
+  melondsLinks = {
     ".local/share/melonDS/saves" = {
       relativePath = "games/melonDS/saves";
     };
+    ".local/share/melonDS/states" = {
+      relativePath = "games/melonDS/states";
+    };
+  };
+
+  ryujinxLinks = {
     ".config/Ryujinx/bis/user/save" = {
       relativePath = "games/Ryujinx";
     };
   };
 
   linkCatalog = {
-    emulation = emulationLinks;
+    emulation-azahar = azaharLinks;
+    emulation-dolphin = dolphinLinks;
+    emulation-melonds = melondsLinks;
+    emulation-ryujinx = ryujinxLinks;
   };
+
+  folderSetAliases = {
+    emulation = [ "emulation-azahar" "emulation-dolphin" "emulation-melonds" "emulation-ryujinx" ];
+  };
+
+  validFolderSets = lib.unique ((builtins.attrNames folderCatalog) ++ (builtins.attrNames folderSetAliases));
+  linkableFolderSets = lib.unique ((builtins.attrNames linkCatalog) ++ (builtins.attrNames folderSetAliases));
+  folderSetType = lib.types.enum validFolderSets;
+  linkFolderSetType = lib.types.enum linkableFolderSets;
+
+  expandFolderSets =
+    folderSets:
+    lib.unique (lib.flatten (map (folderSet: folderSetAliases.${folderSet} or [ folderSet ]) folderSets));
+
+  effectiveFolderSets = expandFolderSets cfg.folderSets;
+  effectiveLinkFolderSets = expandFolderSets cfg.linkFolderSets;
+
+  activeExternalDevices = lib.filterAttrs (_: deviceCfg: hasValue deviceCfg.id) cfg.externalDevices;
+
+  externalDeviceFolderSets = deviceCfg: expandFolderSets deviceCfg.folderSets;
 
   folderSetMembers =
     folderSet:
@@ -178,9 +262,17 @@ let
       lib.filterAttrs
         (_: hostCfg:
           hostCfg.config.alanix.syncthing.enable
-          && builtins.elem folderSet hostCfg.config.alanix.syncthing.folderSets
+          && builtins.elem folderSet (expandFolderSets hostCfg.config.alanix.syncthing.folderSets)
         )
         allHosts
+    );
+
+  externalFolderSetMembers =
+    folderSet:
+    builtins.attrNames (
+      lib.filterAttrs
+        (_: deviceCfg: hasValue deviceCfg.id && builtins.elem folderSet (externalDeviceFolderSets deviceCfg))
+        cfg.externalDevices
     );
 
   folderSetAttrs =
@@ -190,6 +282,7 @@ let
         let
           members = folderSetMembers folderSet;
           remoteMembers = lib.filter (member: member != hostname && builtins.elem member cfg.peers) members;
+          externalMembers = externalFolderSetMembers folderSet;
           folderPath =
             if folderCfg ? path then
               folderCfg.path
@@ -201,7 +294,7 @@ let
           id = folderId;
           label = folderCfg.label;
           type = "sendreceive";
-          devices = remoteMembers;
+          devices = remoteMembers ++ externalMembers;
           fsWatcherEnabled = true;
         } // lib.optionalAttrs (folderCfg ? ignorePerms) {
           ignorePerms = folderCfg.ignorePerms;
@@ -209,35 +302,42 @@ let
       folderCatalog.${folderSet};
 
   selectedFolderCatalog =
-    builtins.foldl' (acc: folderSet: acc // folderCatalog.${folderSet}) { } cfg.folderSets;
+    builtins.foldl' (acc: folderSet: acc // folderCatalog.${folderSet}) { } effectiveFolderSets;
 
   selectedFolderAttrs =
-    builtins.foldl' (acc: folderSet: acc // folderSetAttrs folderSet) { } cfg.folderSets;
+    builtins.foldl' (acc: folderSet: acc // folderSetAttrs folderSet) { } effectiveFolderSets;
 
-  folderRelativePathPrefixes =
+  folderRelativePathParentPrefixes =
     relativePath:
     let
       parts = lib.splitString "/" relativePath;
+      parentCount = (builtins.length parts) - 1;
     in
       builtins.genList
         (idx: lib.concatStringsSep "/" (lib.take (idx + 1) parts))
-        (builtins.length parts);
+        parentCount;
+
+  selectedRelativeFolders =
+    lib.filter (folderCfg: folderCfg ? relativePath) (lib.attrValues selectedFolderCatalog);
 
   selectedFolderRelativePaths =
-    map (folderCfg: folderCfg.relativePath) (
-      lib.filter (folderCfg: folderCfg ? relativePath) (lib.attrValues selectedFolderCatalog)
-    );
+    map (folderCfg: folderCfg.relativePath) selectedRelativeFolders;
 
   selectedAbsoluteFolders =
     lib.filter (folderCfg: folderCfg ? path) (lib.attrValues selectedFolderCatalog);
 
   managedSyncRootRelativePaths =
-    lib.unique (lib.flatten (map folderRelativePathPrefixes selectedFolderRelativePaths));
+    lib.unique (lib.flatten (map folderRelativePathParentPrefixes selectedFolderRelativePaths));
 
   managedSyncRootTmpfiles =
     map
       (relativePath: "d ${cfg.syncRoot}/${relativePath} 0750 ${cfg.user} users - -")
       managedSyncRootRelativePaths;
+
+  managedRelativeFolderTmpfiles =
+    map
+      (folderCfg: "d ${cfg.syncRoot}/${folderCfg.relativePath} ${folderCfg.mode or "0750"} ${folderCfg.user or cfg.user} ${folderCfg.group or "users"} - -")
+      selectedRelativeFolders;
 
   managedFolderMarkerTmpfiles =
     map
@@ -261,6 +361,13 @@ let
       '')
       managedSyncRootRelativePaths;
 
+  managedRelativeFolderScript =
+    lib.concatMapStringsSep "\n"
+      (folderCfg: ''
+        install -d -m ${folderCfg.mode or "0750"} -o ${folderCfg.user or cfg.user} -g ${folderCfg.group or "users"} "${cfg.syncRoot}/${folderCfg.relativePath}"
+      '')
+      selectedRelativeFolders;
+
   managedFolderMarkerScript =
     lib.concatMapStringsSep "\n"
       (relativePath: ''
@@ -277,10 +384,10 @@ let
       selectedAbsoluteFolders;
 
   selectedLinkAttrs =
-    if cfg.linkFolderSets == [ ] then
+    if effectiveLinkFolderSets == [ ] then
       { }
     else
-      builtins.foldl' (acc: folderSet: acc // linkCatalog.${folderSet}) { } cfg.linkFolderSets;
+      builtins.foldl' (acc: folderSet: acc // linkCatalog.${folderSet}) { } effectiveLinkFolderSets;
 
   selectedLinkTargets =
     lib.unique (map (linkCfg: "${cfg.syncRoot}/${linkCfg.relativePath}") (lib.attrValues selectedLinkAttrs));
@@ -310,6 +417,7 @@ let
         (selectedLinkAttrs ? "${azaharLocalSdmcBase}/title")
         || (selectedLinkAttrs ? "${azaharLocalSdmcBase}/extdata")
         || (selectedLinkAttrs ? "${azaharLocalNandBase}/extdata")
+        || (selectedLinkAttrs ? ".local/share/azahar-emu/states")
       )
       [ ".local/share/azahar-emu" ]
     ++ lib.optionals
@@ -317,10 +425,14 @@ let
         (selectedLinkAttrs ? ".local/share/dolphin-emu/GC")
         || (selectedLinkAttrs ? ".local/share/dolphin-emu/Wii/title")
         || (selectedLinkAttrs ? ".local/share/dolphin-emu/Load/Riivolution")
+        || (selectedLinkAttrs ? ".local/share/dolphin-emu/StateSaves")
       )
       [ ".local/share/dolphin-emu" ]
     ++ lib.optionals
-      (selectedLinkAttrs ? ".local/share/melonDS/saves")
+      (
+        (selectedLinkAttrs ? ".local/share/melonDS/saves")
+        || (selectedLinkAttrs ? ".local/share/melonDS/states")
+      )
       [ ".local/share/melonDS" ];
 
   staleManagedLinkCleanupScript =
@@ -343,7 +455,7 @@ let
               message = "alanix.syncthing.folderSets includes '${folderSet}', but host '${memberHost}' is not listed in alanix.syncthing.peers.";
             })
             (folderSetMembers folderSet))
-        cfg.folderSets
+        effectiveFolderSets
     );
 in
 {
@@ -368,6 +480,32 @@ in
       description = "Explicit peer hostnames for this Syncthing node.";
     };
 
+    externalDevices = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
+        options = {
+          id = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "Syncthing device ID. Leave null to keep the device staged but inactive.";
+          };
+
+          addresses = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ "dynamic" ];
+            description = "Syncthing addresses for this non-Nix device, such as dynamic or tcp://host:22000.";
+          };
+
+          folderSets = lib.mkOption {
+            type = lib.types.listOf folderSetType;
+            default = [ ];
+            description = "Folder sets this external device participates in.";
+          };
+        };
+      }));
+      default = { };
+      description = "Non-repo-managed Syncthing devices, such as phones running Syncthing-Fork.";
+    };
+
     syncRoot = lib.mkOption {
       type = lib.types.str;
       default = "/home/buddia/Syncthing";
@@ -387,13 +525,13 @@ in
     };
 
     folderSets = lib.mkOption {
-      type = lib.types.listOf (lib.types.enum [ "emulation" "jellyfin-media" "navidrome-media" "filebrowser-files" ]);
+      type = lib.types.listOf folderSetType;
       default = [ ];
       description = "Named folder sets enabled on this host.";
     };
 
     linkFolderSets = lib.mkOption {
-      type = lib.types.listOf (lib.types.enum [ "emulation" ]);
+      type = lib.types.listOf linkFolderSetType;
       default = [ ];
       description = "Named folder sets whose synced directories should be linked into local application paths for the Syncthing user.";
     };
@@ -440,6 +578,10 @@ in
           message = "alanix.syncthing.peers must not contain duplicates.";
         }
         {
+          assertion = lib.intersectLists cfg.peers (builtins.attrNames cfg.externalDevices) == [ ];
+          message = "alanix.syncthing.peers and alanix.syncthing.externalDevices must not contain the same device name.";
+        }
+        {
           assertion = lib.unique cfg.folderSets == cfg.folderSets;
           message = "alanix.syncthing.folderSets must not contain duplicates.";
         }
@@ -448,7 +590,7 @@ in
           message = "alanix.syncthing.linkFolderSets must not contain duplicates.";
         }
         {
-          assertion = lib.all (folderSet: builtins.elem folderSet cfg.folderSets) cfg.linkFolderSets;
+          assertion = lib.all (folderSet: builtins.elem folderSet effectiveFolderSets) effectiveLinkFolderSets;
           message = "alanix.syncthing.linkFolderSets must be a subset of alanix.syncthing.folderSets.";
         }
         {
@@ -465,6 +607,12 @@ in
         }
       ]
       ++ folderMembershipAssertions
+      ++ lib.mapAttrsToList
+        (name: deviceCfg: {
+          assertion = !hasValue deviceCfg.id || deviceCfg.addresses != [ ];
+          message = "alanix.syncthing.externalDevices.${name}.addresses must not be empty when id is set.";
+        })
+        cfg.externalDevices
       ++ map
         ({ name, hostCfg }: {
           assertion = name != hostname;
@@ -519,6 +667,7 @@ in
       system.activationScripts.alanixSyncthingPrepareManagedDirs = lib.stringAfter [ "users" ] ''
         install -d -m 0750 -o ${cfg.user} -g users "${cfg.syncRoot}"
         ${managedSyncRootDirsScript}
+        ${managedRelativeFolderScript}
         ${managedFolderMarkerScript}
         ${managedAbsoluteFolderScript}
       '';
@@ -526,6 +675,7 @@ in
       systemd.tmpfiles.rules =
         [ "d ${cfg.syncRoot} 0750 ${cfg.user} users - -" ]
         ++ managedSyncRootTmpfiles
+        ++ managedRelativeFolderTmpfiles
         ++ managedFolderMarkerTmpfiles
         ++ managedAbsoluteFolderTmpfiles
         ++ managedAbsoluteFolderMarkerTmpfiles;
@@ -544,25 +694,34 @@ in
         overrideFolders = true;
 
         settings = {
-          devices = builtins.listToAttrs (
-            map
-              ({ name, hostCfg }:
-                let
-                  peerAddress = transportConfig.peerAddress hostCfg;
-                  peerPort = hostCfg.config.alanix.syncthing.listenPort;
-                in
-                if !hasValue peerAddress then
-                  throw "alanix.syncthing.peers.${name} is missing a usable ${cfg.transport} address."
-                else if peerPort == null then
-                  throw "alanix.syncthing.peers.${name} is missing alanix.syncthing.listenPort."
-                else
-                  lib.nameValuePair name {
-                    inherit name;
-                    id = hostCfg.config.alanix.syncthing.deviceId;
-                    addresses = [ "tcp://${peerAddress}:${toString peerPort}" ];
-                  })
-              peerHosts
-          );
+          devices =
+            (builtins.listToAttrs (
+              map
+                ({ name, hostCfg }:
+                  let
+                    peerAddress = transportConfig.peerAddress hostCfg;
+                    peerPort = hostCfg.config.alanix.syncthing.listenPort;
+                  in
+                  if !hasValue peerAddress then
+                    throw "alanix.syncthing.peers.${name} is missing a usable ${cfg.transport} address."
+                  else if peerPort == null then
+                    throw "alanix.syncthing.peers.${name} is missing alanix.syncthing.listenPort."
+                  else
+                    lib.nameValuePair name {
+                      inherit name;
+                      id = hostCfg.config.alanix.syncthing.deviceId;
+                      addresses = [ "tcp://${peerAddress}:${toString peerPort}" ];
+                    })
+                peerHosts
+            ))
+            // (lib.mapAttrs'
+              (name: deviceCfg:
+                lib.nameValuePair name {
+                  inherit name;
+                  id = deviceCfg.id;
+                  addresses = deviceCfg.addresses;
+                })
+              activeExternalDevices);
 
           folders = selectedFolderAttrs;
 
