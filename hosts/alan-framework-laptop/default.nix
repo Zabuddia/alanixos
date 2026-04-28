@@ -233,8 +233,30 @@
         "alan-framework"
         "randy-big-nixos"
       ];
-      folderSets = [ "emulation" "navidrome-media" ];
-      linkFolderSets = [ "emulation" ];
+      folderSets = [
+        "emulation-azahar"
+        "emulation-dolphin"
+        "emulation-melonds"
+        "emulation-ryujinx"
+        "navidrome-media"
+        "filebrowser-files"
+      ];
+      linkFolderSets = [
+        "emulation-azahar"
+        "emulation-dolphin"
+        "emulation-melonds"
+        "emulation-ryujinx"
+      ];
+      externalDevices.pixel-fold = {
+        id = "BT23SPJ-ICTEBQ7-GJTDRQT-LCUQ773-U63QFZR-472O3YA-2KRJ4KY-AMPZ7AF";
+        addresses = [ "tcp://pixel-fold:22000" ];
+        folderSets = [
+          "filebrowser-files"
+          "emulation-azahar"
+          "emulation-dolphin"
+          "emulation-melonds"
+        ];
+      };
     };
 
     alanix.remote-desktop = {

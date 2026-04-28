@@ -158,8 +158,18 @@
         "alan-framework-laptop"
         "randy-big-nixos"
       ];
-      folderSets = [ "emulation" ];
-      linkFolderSets = [ "emulation" ];
+      folderSets = [
+        "emulation-azahar"
+        "emulation-dolphin"
+        "emulation-melonds"
+        "emulation-ryujinx"
+      ];
+      linkFolderSets = [
+        "emulation-azahar"
+        "emulation-dolphin"
+        "emulation-melonds"
+        "emulation-ryujinx"
+      ];
     };
 
     alanix.tvheadend = {

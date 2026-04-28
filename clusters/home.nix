@@ -154,12 +154,24 @@ in
     };
 
     alanix.users.accounts.buddia.extraGroups = [ "filebrowser" ];
+    users.users.filebrowser.extraGroups = [ "users" ];
 
     alanix.syncthing = {
       enable = true;
       transport = "tailscale";
       listenPort = 22000;
+      syncRoot = "/srv/syncthing";
       folderSets = [ "jellyfin-media" "navidrome-media" "filebrowser-files" ];
+      externalDevices.pixel-fold = {
+        id = "BT23SPJ-ICTEBQ7-GJTDRQT-LCUQ773-U63QFZR-472O3YA-2KRJ4KY-AMPZ7AF";
+        addresses = [ "tcp://pixel-fold:22000" ];
+        folderSets = [
+          "filebrowser-files"
+          "emulation-azahar"
+          "emulation-dolphin"
+          "emulation-melonds"
+        ];
+      };
     };
 
     alanix.vaultwarden = {
@@ -255,7 +267,7 @@ in
       enable = true;
       listenAddress = "127.0.0.1";
       port = 8088;
-      root = "/srv/filebrowser";
+      root = "${config.alanix.syncthing.syncRoot}/filebrowser";
       rootUser = "buddia";
       rootGroup = "filebrowser";
       rootMode = "2775";
