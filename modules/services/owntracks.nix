@@ -38,14 +38,6 @@ let
     else
       "";
 
-  acmeEnvironmentFile =
-    if lib.hasAttrByPath [ "sops" "templates" "cloudflare-env-cluster" "path" ] config then
-      config.sops.templates."cloudflare-env-cluster".path
-    else if lib.hasAttrByPath [ "sops" "templates" "cloudflare-env" "path" ] config then
-      config.sops.templates."cloudflare-env".path
-    else
-      null;
-
   mqttAcmeDirectory =
     if hasValue mqttCfg.domain then
       config.security.acme.certs.${mqttCfg.domain}.directory
@@ -68,7 +60,9 @@ let
     && hasValue mqttCfg.domain
     && mqttCfg.publicPort != null
     && hasValue mqttCfg.internalAddress
-    && mqttCfg.internalPort != null;
+    && mqttCfg.internalPort != null
+    && hasValue mqttCfg.acme.dnsProvider
+    && mqttCfg.acme.credentialsFile != null;
 
   mqttPasswordSourceForUser =
     userCfg:
@@ -154,6 +148,20 @@ in
       internalPort = lib.mkOption {
         type = lib.types.port;
         default = 1883;
+      };
+
+      acme = {
+        dnsProvider = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "DNS provider for the ACME DNS-01 challenge (e.g. \"cloudflare\").";
+        };
+
+        credentialsFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.path;
+          default = null;
+          description = "Path to an environment file with credentials for the ACME DNS provider.";
+        };
       };
     };
 
@@ -250,8 +258,12 @@ in
             message = "alanix.owntracks requires the `${recorderInternalPasswordSecret}` sops secret to be declared.";
           }
           {
-            assertion = acmeEnvironmentFile != null;
-            message = "alanix.owntracks requires either sops.templates.\"cloudflare-env-cluster\" or sops.templates.\"cloudflare-env\" for the MQTT ACME DNS challenge.";
+            assertion = hasValue mqttCfg.acme.dnsProvider;
+            message = "alanix.owntracks.mqtt.acme.dnsProvider must be set when alanix.owntracks.enable = true.";
+          }
+          {
+            assertion = mqttCfg.acme.credentialsFile != null;
+            message = "alanix.owntracks.mqtt.acme.credentialsFile must be set when alanix.owntracks.enable = true.";
           }
           {
             assertion = !clusterRecorderExposureEnabled || viewerUsernames != [ ];
@@ -280,12 +292,11 @@ in
         };
 
       security.acme.acceptTerms = lib.mkDefault true;
-      security.acme.certs = lib.mkIf (baseConfigReady && acmeEnvironmentFile != null) {
+      security.acme.certs = lib.mkIf baseConfigReady {
         ${mqttCfg.domain} = {
           domain = mqttCfg.domain;
-          email = "fife.alan@protonmail.com";
-          dnsProvider = "cloudflare";
-          environmentFile = acmeEnvironmentFile;
+          dnsProvider = mqttCfg.acme.dnsProvider;
+          environmentFile = mqttCfg.acme.credentialsFile;
           group = "mosquitto";
           reloadServices = [ "mosquitto.service" ];
         };

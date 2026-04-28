@@ -10,8 +10,15 @@ let
 in
 {
   config = lib.mkIf isMember {
+    security.acme.defaults.email = "fife.alan@protonmail.com";
+
     sops.templates."cloudflare-env-cluster" = {
       content = "CLOUDFLARE_API_TOKEN=${config.sops.placeholder."cloudflare/api-token"}";
+      owner = "root";
+    };
+
+    sops.templates."cloudflare-acme-cluster" = {
+      content = "CLOUDFLARE_DNS_API_TOKEN=${config.sops.placeholder."cloudflare/api-token"}";
       owner = "root";
     };
 
@@ -308,6 +315,10 @@ in
       mqtt = {
         domain = "mqtt.fifefin.com";
         publicPort = 8883;
+        acme = {
+          dnsProvider = "cloudflare";
+          credentialsFile = config.sops.templates."cloudflare-acme-cluster".path;
+        };
       };
 
       recorder = {
