@@ -144,8 +144,6 @@
       { ssid = "Cinnamon Tree"; pskSecret = "wifi-passwords/cinnamon-tree"; }
     ];
 
-    users.groups.jellyfin = {};
-
     alanix.syncthing = {
       enable = true;
       transport = "tailscale";

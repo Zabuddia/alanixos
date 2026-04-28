@@ -547,6 +547,7 @@ in
       listenAddress = "127.0.0.1";
       port = 8096;
       backupDir = "/var/backup/jellyfin";
+      extraGroups = [ "users" ];
 
       users.buddia = {
         admin = true;
@@ -608,19 +609,19 @@ in
 
       mediaFolders = {
         movies = {
-          path = "/srv/media/movies";
+          path = "${config.alanix.syncthing.syncRoot}/media/movies";
           create = true;
           user = "buddia";
-          group = "jellyfin";
-          mode = "0775";
+          group = "users";
+          mode = "2775";
         };
 
         shows = {
-          path = "/srv/media/shows";
+          path = "${config.alanix.syncthing.syncRoot}/media/shows";
           create = true;
           user = "buddia";
-          group = "jellyfin";
-          mode = "0775";
+          group = "users";
+          mode = "2775";
         };
 
         recordings = {
@@ -644,17 +645,18 @@ in
       listenAddress = "127.0.0.1";
       port = 4533;
       backupDir = "/var/backup/navidrome";
+      extraGroups = [ "users" ];
       users.buddia = {
         admin = true;
         passwordSecret = "navidrome-passwords/buddia";
       };
 
       mediaFolders.music = {
-        path = "/srv/media/music";
+        path = "${config.alanix.syncthing.syncRoot}/media/music";
         create = true;
         user = "buddia";
-        group = "navidrome";
-        mode = "0775";
+        group = "users";
+        mode = "2775";
       };
 
       expose = {

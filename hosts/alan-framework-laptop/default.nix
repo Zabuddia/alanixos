@@ -220,8 +220,6 @@
       { ssid = "Cinnamon Tree"; pskSecret = "wifi-passwords/cinnamon-tree"; }
     ];
 
-    users.groups.navidrome = {};
-
     alanix.syncthing = {
       enable = true;
       transport = "tailscale";
