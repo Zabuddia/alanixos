@@ -30,6 +30,7 @@
     ./services/openwebui.nix
     ./services/radicale.nix
     ./services/remote-desktop.nix
+    ./services/roundcube.nix
     ./services/searxng.nix
     ./services/sunshine.nix
     ./services/syncthing.nix
