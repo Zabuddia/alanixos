@@ -151,6 +151,7 @@
       loginKeyring.enable = true;
       bluetooth.enable = true;
       fingerprint.enable = true;
+      printing.enable = true;
       createHeadlessOutput = false;
       swayOutputRules = [
         "output eDP-1 scale 1"

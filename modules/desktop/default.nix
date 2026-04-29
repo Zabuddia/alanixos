@@ -12,6 +12,7 @@ in
     ./bluetooth.nix
     ./flatpak.nix
     ./fingerprint.nix
+    ./printing.nix
   ];
 
   options.alanix.desktop = {
@@ -51,6 +52,8 @@ in
     };
 
     fingerprint.enable = lib.mkEnableOption "fingerprint authentication for screen lock and sudo";
+
+    printing.enable = lib.mkEnableOption "printing support for desktop hosts";
 
     idle = {
       lockSeconds = lib.mkOption {
