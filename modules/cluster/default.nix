@@ -262,6 +262,7 @@ in
       mailCfg = config.alanix.mail;
       navidromeCfg = config.alanix.navidrome;
       openwebuiCfg = config.alanix.openwebui;
+      roundcubeCfg = config.alanix.roundcube;
       searxngCfg = config.alanix.searxng;
       nextcloudCluster = nextcloudCfg.enable && nextcloudCfg.cluster.enable;
       filebrowserCluster = filebrowserCfg.enable && filebrowserCfg.cluster.enable;
@@ -275,7 +276,9 @@ in
       mailCluster = mailCfg.enable && mailCfg.cluster.enable && mailCfg.cluster.backupDir != null;
       navidromeCluster = navidromeCfg.enable && navidromeCfg.cluster.enable;
       openwebuiCluster = openwebuiCfg.enable && openwebuiCfg.cluster.enable;
+      roundcubeCluster = roundcubeCfg.enable && roundcubeCfg.cluster.enable && roundcubeCfg.backupDir != null;
       searxngCluster = searxngCfg.enable && searxngCfg.cluster.enable;
+      postgresqlCluster = invidiousCluster || immichCluster || nextcloudCluster || roundcubeCluster;
       dashboardCfg = cfg.dashboard;
       ddnsCfg = cfg.ddns;
       dashboardEndpoint = {
@@ -516,6 +519,63 @@ in
         else
           null;
 
+      roundcubeRestoreScript =
+        if roundcubeCluster then
+          let
+            stagedStateDir = "${roundcubeCfg.backupDir}${roundcubeStateDir}";
+            stagedDatabaseDump = "${roundcubeCfg.backupDir}/database/roundcube.pgcustom";
+          in
+          pkgs.writeShellScript "alanix-roundcube-cluster-restore-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg roundcubeCfg.backupDir}
+            state_dir=${lib.escapeShellArg roundcubeStateDir}
+            staged_state_dir=${lib.escapeShellArg stagedStateDir}
+            staged_dump=${lib.escapeShellArg stagedDatabaseDump}
+            pg_user=${lib.escapeShellArg roundcubeCfg.database.username}
+            pg_database=${lib.escapeShellArg roundcubeCfg.database.dbname}
+            restore_dump=""
+            cleanup() {
+              if [[ -n "$restore_dump" && -e "$restore_dump" ]]; then
+                rm -f "$restore_dump"
+              fi
+              rm -rf "$backup_dir"
+            }
+            trap cleanup EXIT
+
+            if [[ -e "$state_dir" && ! -d "$state_dir" ]]; then
+              rm -rf "$state_dir"
+            fi
+            mkdir -p "$state_dir"
+
+            if [[ -d "$staged_state_dir" ]]; then
+              rsync -a --delete "$staged_state_dir"/ "$state_dir"/
+            else
+              rm -rf "$state_dir"
+              mkdir -p "$state_dir"
+            fi
+
+            chown -R roundcube:roundcube "$state_dir"
+
+            if [[ -f "$staged_dump" ]]; then
+              restore_dump="$(mktemp /var/tmp/alanix-roundcube-restore-XXXXXX.pgcustom)"
+              install -m 0600 -o postgres -g postgres "$staged_dump" "$restore_dump"
+
+              runuser -u postgres -- dropdb --if-exists "$pg_database"
+              runuser -u postgres -- createdb --owner="$pg_user" "$pg_database"
+              runuser -u postgres -- pg_restore \
+                --clean \
+                --if-exists \
+                --no-owner \
+                --no-privileges \
+                --exit-on-error \
+                --dbname="$pg_database" \
+                "$restore_dump"
+            fi
+          ''
+        else
+          null;
+
       backupRepoUserGroup =
         if lib.hasAttrByPath [ "users" "users" cfg.backup.repoUser ] config then
           config.users.users.${cfg.backup.repoUser}.group
@@ -559,6 +619,8 @@ in
 
       navidromeClusteredPaths =
         [ navidromeCfg.dataDir ];
+
+      roundcubeStateDir = "/var/lib/roundcube";
 
       mailPrimaryDomain =
         if mailCfg.domain != null then
@@ -1312,6 +1374,42 @@ in
         else
           null;
 
+      roundcubeBackupPrepScript =
+        if roundcubeCluster then
+          let
+            stagedStateDir = "${roundcubeCfg.backupDir}${roundcubeStateDir}";
+            stagedDatabaseDump = "${roundcubeCfg.backupDir}/database/roundcube.pgcustom";
+          in
+          pkgs.writeShellScript "alanix-roundcube-cluster-backup-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg roundcubeCfg.backupDir}
+            backup_group=${lib.escapeShellArg backupRepoUserGroup}
+            state_dir=${lib.escapeShellArg roundcubeStateDir}
+            staged_state_dir=${lib.escapeShellArg stagedStateDir}
+            staged_dump=${lib.escapeShellArg stagedDatabaseDump}
+            pg_database=${lib.escapeShellArg roundcubeCfg.database.dbname}
+
+            ${backupPrepProgressHelpers}
+
+            rm -rf "$backup_dir"
+            mkdir -p "$staged_state_dir" "$(dirname "$staged_dump")"
+            chown -R roundcube:roundcube "$backup_dir"
+
+            rsync_prep_step 1 2 ${lib.escapeShellArg "staging ${roundcubeStateDir}"} "$state_dir" "$staged_state_dir"
+
+            emit_prep_step 2 2 ${lib.escapeShellArg "dumping roundcube database"}
+            runuser -u postgres -- pg_dump \
+              --format=custom \
+              "$pg_database" > "$staged_dump"
+
+            chown -R roundcube:roundcube "$backup_dir"
+            chgrp -R "$backup_group" "$backup_dir"
+            chmod -R u=rwX,g=rX,o= "$backup_dir"
+          ''
+        else
+          null;
+
       jellyfinBackupPrepScript =
         if jellyfinCluster then
           let
@@ -1939,6 +2037,38 @@ in
         else
           null;
 
+      roundcubeWireguardAddress =
+        if roundcubeCfg.expose.wireguard.address != null then
+          roundcubeCfg.expose.wireguard.address
+        else
+          config.alanix.wireguard.vpnIP;
+
+      roundcubeTailscaleTlsName =
+        if roundcubeCfg.expose.tailscale.tlsName != null then
+          roundcubeCfg.expose.tailscale.tlsName
+        else
+          config.alanix.tailscale.address;
+
+      roundcubeTorTargetAddress =
+        normalizeLocalAddress (
+          if roundcubeCfg.expose.tor.targetAddress != null then
+            roundcubeCfg.expose.tor.targetAddress
+          else
+            roundcubeCfg.listenAddress
+        );
+
+      roundcubeTorTargetPort =
+        if roundcubeCfg.expose.tor.tls then
+          roundcubeCfg.expose.tor.publicPort
+        else
+          roundcubeCfg.port;
+
+      roundcubeTorSecretPath =
+        if roundcubeCfg.expose.tor.secretKeyBase64Secret != null then
+          config.sops.secrets.${roundcubeCfg.expose.tor.secretKeyBase64Secret}.path
+        else
+          null;
+
       owntracksViewerUsernames =
         if owntracksCluster then
           builtins.filter (username: owntracksCfg.users.${username}.recorderViewer) (builtins.attrNames owntracksCfg.users)
@@ -2111,6 +2241,14 @@ in
           )
         )
         || (
+          roundcubeCluster
+          && (
+            roundcubeCfg.expose.tailscale.enable
+            || roundcubeCfg.expose.wireguard.enable
+            || (roundcubeCfg.expose.tor.enable && roundcubeCfg.expose.tor.tls)
+          )
+        )
+        || (
           owntracksCluster
           && (
             owntracksCfg.recorder.expose.tailscale.enable
@@ -2139,6 +2277,7 @@ in
         || (immichCluster && immichCfg.expose.wan.enable)
         || (jellyfinCluster && jellyfinCfg.expose.wan.enable)
         || (navidromeCluster && navidromeCfg.expose.wan.enable)
+        || (roundcubeCluster && roundcubeCfg.expose.wan.enable)
         || (owntracksCluster && owntracksCfg.recorder.expose.wan.enable)
         || (searxngCluster && searxngCfg.expose.wan.enable);
 
@@ -2154,6 +2293,7 @@ in
         || (jellyfinCluster && jellyfinCfg.expose.tailscale.enable)
         || (navidromeCluster && navidromeCfg.expose.tailscale.enable)
         || (openwebuiCluster && openwebuiCfg.expose.tailscale.enable)
+        || (roundcubeCluster && roundcubeCfg.expose.tailscale.enable)
         || (owntracksCluster && owntracksCfg.recorder.expose.tailscale.enable)
         || (searxngCluster && searxngCfg.expose.tailscale.enable);
 
@@ -2169,6 +2309,7 @@ in
         || (jellyfinCluster && jellyfinCfg.expose.tor.enable)
         || (navidromeCluster && navidromeCfg.expose.tor.enable)
         || (openwebuiCluster && openwebuiCfg.expose.tor.enable)
+        || (roundcubeCluster && roundcubeCfg.expose.tor.enable)
         || (owntracksCluster && owntracksCfg.recorder.expose.tor.enable)
         || (searxngCluster && searxngCfg.expose.tor.enable);
 
@@ -2532,6 +2673,45 @@ in
             port = openwebuiCfg.expose.wireguard.port;
             addressFn = peerWireguardAddress;
           }
+        ))
+      ];
+
+      roundcubeLinksByHost = mergeLinksByHost [
+        (lib.optionalAttrs (roundcubeCluster && roundcubeCfg.expose.tailscale.enable) (
+          mkPeerLinksByHost {
+            label = "Roundcube";
+            transport = "tailscale";
+            scheme = if roundcubeCfg.expose.tailscale.tls then "https" else "http";
+            port = roundcubeCfg.expose.tailscale.port;
+            addressFn = peerTailscaleAddress;
+          }
+        ))
+        (lib.optionalAttrs (roundcubeCluster && roundcubeCfg.expose.wireguard.enable) (
+          mkPeerLinksByHost {
+            label = "Roundcube";
+            transport = "wireguard";
+            scheme = if roundcubeCfg.expose.wireguard.tls then "https" else "http";
+            port = roundcubeCfg.expose.wireguard.port;
+            addressFn = peerWireguardAddress;
+          }
+        ))
+        (lib.optionalAttrs (roundcubeCluster && roundcubeCfg.expose.tor.enable && roundcubeCfg.expose.tor.hostname != null) (
+          mkConstantLinksByHost [
+            {
+              label = "Roundcube (tor)";
+              transport = "tor";
+              url = mkTorUrl roundcubeCfg.expose.tor;
+            }
+          ]
+        ))
+        (lib.optionalAttrs (roundcubeCluster && roundcubeCfg.expose.wan.enable) (
+          mkConstantLinksByHost [
+            {
+              label = "Roundcube (wan)";
+              transport = "wan";
+              url = "https://${roundcubeCfg.expose.wan.domain}/";
+            }
+          ]
         ))
       ];
 
@@ -2988,6 +3168,33 @@ in
                 tls = openwebuiCfg.expose.tor.tls;
                 publicPort = openwebuiCfg.expose.tor.publicPort;
                 stateDirName = "openwebui";
+              };
+            };
+          })
+          // (lib.optionalAttrs roundcubeCluster {
+            roundcube = {
+              name = "roundcube";
+              label = "Roundcube";
+              backupInterval = roundcubeCfg.cluster.backupInterval;
+              maxBackupAge = roundcubeCfg.cluster.maxBackupAge;
+              activeUnits =
+                [ "phpfpm-roundcube.service" ]
+                ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
+              backupPaths = [ roundcubeCfg.backupDir ];
+              preBackupCommand = [ roundcubeBackupPrepScript ];
+              postBackupCommand = [ "rm" "-rf" roundcubeCfg.backupDir ];
+              postRestoreCommand = [ roundcubeRestoreScript ];
+              restoreTarget = "/";
+              remoteTargets = mkRemoteTargets "roundcube";
+              manifestGlobs = mkManifestGlobs "roundcube";
+              localTarget = mkLocalTarget "roundcube";
+              linksByHost = roundcubeLinksByHost;
+              torUrl = mkTorUrl roundcubeCfg.expose.tor;
+              tor = {
+                enabled = roundcubeCfg.expose.tor.enable;
+                tls = roundcubeCfg.expose.tor.tls;
+                publicPort = roundcubeCfg.expose.tor.publicPort;
+                stateDirName = "roundcube";
               };
             };
           })
@@ -3674,6 +3881,61 @@ in
             EOF
           ''}
 
+          ${lib.optionalString (roundcubeCluster && roundcubeCfg.expose.tailscale.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if roundcubeCfg.expose.tailscale.tls then "https" else "http"}://${roundcubeTailscaleTlsName}:${toString roundcubeCfg.expose.tailscale.port} {
+              bind $ts_ip
+              ${lib.optionalString roundcubeCfg.expose.tailscale.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress roundcubeCfg.listenAddress}:${toString roundcubeCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (roundcubeCluster && roundcubeCfg.expose.wireguard.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if roundcubeCfg.expose.wireguard.tls then "https" else "http"}://${roundcubeWireguardAddress}:${toString roundcubeCfg.expose.wireguard.port} {
+              bind ${roundcubeWireguardAddress}
+              ${lib.optionalString roundcubeCfg.expose.wireguard.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress roundcubeCfg.listenAddress}:${toString roundcubeCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (roundcubeCluster && roundcubeCfg.expose.tor.enable && roundcubeCfg.expose.tor.tls) ''
+            cat >> "$caddy_file" <<EOF
+            https://${roundcubeCfg.expose.tor.tlsName}:${toString roundcubeCfg.expose.tor.publicPort} {
+              bind ${roundcubeTorTargetAddress}
+              tls internal
+              reverse_proxy ${normalizeLocalAddress roundcubeCfg.listenAddress}:${toString roundcubeCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (roundcubeCluster && roundcubeCfg.expose.tor.enable) ''
+            rm -rf "$tor_state_dir/roundcube"
+            mkdir -p "$tor_state_dir/roundcube"
+            chown tor:tor "$tor_state_dir/roundcube"
+            chmod 0700 "$tor_state_dir/roundcube"
+          ''}
+
+          ${lib.optionalString (roundcubeCluster && roundcubeCfg.expose.tor.enable && roundcubeTorSecretPath != null) ''
+            base64 --decode ${lib.escapeShellArg roundcubeTorSecretPath} > "$tor_state_dir/roundcube/hs_ed25519_secret_key"
+            chown tor:tor "$tor_state_dir/roundcube/hs_ed25519_secret_key"
+            chmod 0600 "$tor_state_dir/roundcube/hs_ed25519_secret_key"
+          ''}
+
+          ${lib.optionalString (roundcubeCluster && roundcubeCfg.expose.tor.enable) ''
+            cat >> "$tor_file" <<EOF
+            HiddenServiceDir $tor_state_dir/roundcube
+            HiddenServiceVersion 3
+            HiddenServicePort ${toString roundcubeCfg.expose.tor.publicPort} ${roundcubeTorTargetAddress}:${toString roundcubeTorTargetPort}
+
+            EOF
+          ''}
+
           ${lib.optionalString (
             owntracksCluster
             && (
@@ -3888,6 +4150,15 @@ in
             EOF
           ''}
 
+          ${lib.optionalString (roundcubeCluster && roundcubeCfg.expose.wan.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${roundcubeCfg.expose.wan.domain} {
+              reverse_proxy ${normalizeLocalAddress roundcubeCfg.listenAddress}:${toString roundcubeCfg.port}
+            }
+
+            EOF
+          ''}
+
           ${lib.optionalString (nextcloudCluster && nextcloudCfg.expose.wan.enable) ''
             cat >> "$caddy_file" <<EOF
             ${nextcloudCfg.expose.wan.domain} {
@@ -3987,6 +4258,9 @@ in
             ${lib.optionalString (openwebuiCluster && openwebuiCfg.expose.tor.enable) ''
               publish_tor_hostname openwebui
             ''}
+            ${lib.optionalString (roundcubeCluster && roundcubeCfg.expose.tor.enable) ''
+              publish_tor_hostname roundcube
+            ''}
             ${lib.optionalString (owntracksCluster && owntracksCfg.recorder.expose.tor.enable) ''
               publish_tor_hostname owntracks
             ''}
@@ -4008,6 +4282,7 @@ in
           rm -rf "$tor_state_dir/nextcloud"
           rm -rf "$tor_state_dir/nextcloud-collabora"
           rm -rf "$tor_state_dir/openwebui"
+          rm -rf "$tor_state_dir/roundcube"
           rm -rf "$tor_state_dir/owntracks"
           rm -rf "$tor_state_dir/searxng"
 
@@ -4220,6 +4495,20 @@ in
               message = "Mail cluster mode requires alanix.mail.cluster.backupDir to be an absolute path.";
             }
           ]
+          ++ lib.optionals roundcubeCluster [
+            {
+              assertion = lib.hasPrefix "/" roundcubeCfg.backupDir;
+              message = "Roundcube cluster mode requires alanix.roundcube.backupDir to be an absolute path.";
+            }
+            {
+              assertion = roundcubeCfg.database.host == "localhost";
+              message = "Roundcube cluster mode currently requires a locally managed PostgreSQL database.";
+            }
+            {
+              assertion = roundcubeCfg.database.username == roundcubeCfg.database.dbname;
+              message = "Roundcube cluster mode requires alanix.roundcube.database.username to match alanix.roundcube.database.dbname.";
+            }
+          ]
           ++ lib.optionals openwebuiCluster [
             {
               assertion = lib.hasPrefix "/" openwebuiCfg.stateDir;
@@ -4277,12 +4566,12 @@ in
           after =
             [ "network-online.target" "sops-nix.service" ]
             ++ lib.optional (cfg.transport == "tailscale") "tailscaled.service"
-            ++ lib.optionals (invidiousCluster || immichCluster || nextcloudCluster) [ "postgresql.service" ]
+            ++ lib.optionals postgresqlCluster [ "postgresql.service" ]
             ++ lib.optional isVoter "etcd.service";
           wants =
             [ "network-online.target" "sops-nix.service" ]
             ++ lib.optional (cfg.transport == "tailscale") "tailscaled.service"
-            ++ lib.optionals (invidiousCluster || immichCluster || nextcloudCluster) [ "postgresql.service" ]
+            ++ lib.optionals postgresqlCluster [ "postgresql.service" ]
             ++ lib.optional isVoter "etcd.service";
           path = with pkgs; [
             coreutils
@@ -4295,7 +4584,7 @@ in
             sqlite
             systemd
             util-linux
-          ] ++ lib.optionals (invidiousCluster || immichCluster || nextcloudCluster) [ config.services.postgresql.package ];
+          ] ++ lib.optionals postgresqlCluster [ config.services.postgresql.package ];
           serviceConfig = {
             Type = "simple";
             Restart = "always";
@@ -4368,6 +4657,9 @@ in
           ]
           ++ lib.optionals openwebuiCluster [
             "d ${openwebuiCfg.backupDir} 0750 open-webui ${backupRepoUserGroup} - -"
+          ]
+          ++ lib.optionals roundcubeCluster [
+            "d ${roundcubeCfg.backupDir} 0750 roundcube ${backupRepoUserGroup} - -"
           ]
           ++ lib.optionals owntracksCluster [
             "d ${owntracksCfg.backupDir} 0750 root ${backupRepoUserGroup} - -"
@@ -4532,6 +4824,10 @@ in
             ++ lib.optionals jellyfinCluster [ "jellyfin.service" ]
             ++ lib.optionals navidromeCluster [ "navidrome.service" ]
             ++ lib.optionals openwebuiCluster [ "open-webui.service" ]
+            ++ lib.optionals roundcubeCluster [
+              "nginx.service"
+              "phpfpm-roundcube.service"
+            ]
             ++ lib.optionals owntracksCluster [ "ot-recorder.service" ]
             ++ lib.optionals searxngCluster [ "searx.service" ];
           wants =
@@ -4549,6 +4845,10 @@ in
             ++ lib.optionals jellyfinCluster [ "jellyfin.service" ]
             ++ lib.optionals navidromeCluster [ "navidrome.service" ]
             ++ lib.optionals openwebuiCluster [ "open-webui.service" ]
+            ++ lib.optionals roundcubeCluster [
+              "nginx.service"
+              "phpfpm-roundcube.service"
+            ]
             ++ lib.optionals owntracksCluster [ "ot-recorder.service" ]
             ++ lib.optionals searxngCluster [ "searx.service" ];
           path =
@@ -4725,6 +5025,18 @@ in
 
       (lib.mkIf openwebuiCluster {
         systemd.services.open-webui = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+      })
+
+      (lib.mkIf roundcubeCluster {
+        systemd.services.roundcube-setup = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+
+        systemd.services.phpfpm-roundcube = {
           wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
           partOf = [ "alanix-cluster-active.target" ];
         };

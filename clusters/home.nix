@@ -115,6 +115,7 @@ in
           "owntracks.fifefin.com"
           "radicale.fifefin.com"
           "searxng.fifefin.com"
+          "roundcube.fifefin.com"
         ];
       };
     };
@@ -387,6 +388,51 @@ in
       cluster = {
         enable = true;
         backupDir = "/var/backup/mail";
+        backupInterval = "15m";
+        maxBackupAge = "1h";
+      };
+    };
+
+    alanix.roundcube = {
+      enable = true;
+      hostName = "roundcube.fifefin.com";
+      listenAddress = "127.0.0.1";
+      port = 8090;
+      productName = "Alanix RoundCube";
+      backupDir = "/var/backup/roundcube";
+
+      mail = {
+        domain = "fifefin.com";
+        imapHost = "ssl://mail.fifefin.com:993";
+        smtpHost = "ssl://mail.fifefin.com:465";
+      };
+
+      expose = {
+        wan = {
+          enable = true;
+          domain = "roundcube.fifefin.com";
+        };
+
+        tor = {
+          enable = true;
+          publicPort = 80;
+          secretKeyBase64Secret = "tor/roundcube/secret-key-base64";
+          hostname = "ch6ybzasm6hhz34k67vajez5qiin5cqsxbyxvfsnndiddspifxncyayd.onion";
+        };
+
+        tailscale = {
+          enable = true;
+          port = 18090;
+        };
+
+        wireguard = {
+          enable = true;
+          port = 8090;
+        };
+      };
+
+      cluster = {
+        enable = true;
         backupInterval = "15m";
         maxBackupAge = "1h";
       };
