@@ -485,8 +485,8 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "15m";
-        maxBackupAge = "1h";
+        backupInterval = "1h";
+        maxBackupAge = "2h";
       };
 
       users.buddia = {
