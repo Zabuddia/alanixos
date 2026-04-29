@@ -268,6 +268,13 @@
     mode = "0400";
   };
 
+  sops.secrets."tor/roundcube/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."tor/tvheadend/secret-key-base64" = {
     sopsFile = (import ../../secrets/files.nix).tor;
     owner = "root";
