@@ -53,6 +53,14 @@ let
     else
       null;
 
+  staggeredVersioning = maxAgeDays: {
+    type = "staggered";
+    params = {
+      cleanInterval = "3600";
+      maxAge = toString (maxAgeDays * 24 * 3600);
+    };
+  };
+
   azaharSystemId = "00000000000000000000000000000000";
   azaharSdCardId = "00000000000000000000000000000000";
   azaharSdmcRelativeBase = "games/azahar-emu/sdmc/Nintendo 3DS/${azaharSystemId}/${azaharSdCardId}";
@@ -69,14 +77,17 @@ let
     "games-azahar-emu-sdmc-title" = {
       label = "${azaharSdmcRelativeBase}/title";
       relativePath = "${azaharSdmcRelativeBase}/title";
+      versioning = staggeredVersioning 90;
     };
     "games-azahar-emu-sdmc-extdata" = {
       label = "${azaharSdmcRelativeBase}/extdata";
       relativePath = "${azaharSdmcRelativeBase}/extdata";
+      versioning = staggeredVersioning 90;
     };
     "games-azahar-emu-nand-extdata" = {
       label = "${azaharNandRelativeBase}/extdata";
       relativePath = "${azaharNandRelativeBase}/extdata";
+      versioning = staggeredVersioning 90;
     };
   };
 
@@ -92,10 +103,12 @@ let
     "games-dolphin-emu-gc" = {
       label = "games/dolphin-emu/GC";
       relativePath = "games/dolphin-emu/GC";
+      versioning = staggeredVersioning 90;
     };
     "games-dolphin-emu-wii-title" = {
       label = "games/dolphin-emu/Wii/title";
       relativePath = "games/dolphin-emu/Wii/title";
+      versioning = staggeredVersioning 90;
     };
     "games-dolphin-emu-load-riivolution" = {
       label = "games/dolphin-emu/Load/Riivolution";
@@ -111,6 +124,7 @@ let
     "games-melonds-saves" = {
       label = "games/melonDS/saves";
       relativePath = "games/melonDS/saves";
+      versioning = staggeredVersioning 90;
     };
   };
 
@@ -122,6 +136,7 @@ let
     "games-ryujinx" = {
       label = "games/Ryujinx";
       relativePath = "games/Ryujinx";
+      versioning = staggeredVersioning 90;
     };
   };
 
@@ -159,6 +174,7 @@ let
       group = "users";
       mode = "2775";
       ignorePerms = true;
+      versioning = staggeredVersioning 180;
     };
   };
 
@@ -277,6 +293,8 @@ let
           fsWatcherEnabled = true;
         } // lib.optionalAttrs (folderCfg ? ignorePerms) {
           ignorePerms = folderCfg.ignorePerms;
+        } // lib.optionalAttrs (folderCfg ? versioning) {
+          versioning = folderCfg.versioning;
         }))
       folderCatalog.${folderSet};
 
