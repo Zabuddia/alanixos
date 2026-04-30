@@ -2822,15 +2822,50 @@ in
         else
           null;
 
+      dashboardModeProbeUrlsByHost =
+        lib.listToAttrs (
+          map
+            (peer: {
+              name = peer;
+              value =
+                lib.optionals (dashboardCfg.expose.tailscale.enable && peerTailscaleAddress peer != null && dashboardCfg.expose.tailscale.port != null) [
+                  (mkUrl {
+                    scheme = "http";
+                    host = peerTailscaleAddress peer;
+                    port = dashboardCfg.expose.tailscale.port;
+                    path = "/api/mode";
+                  })
+                ]
+                ++ lib.optionals (dashboardCfg.expose.wireguard.enable && peerWireguardAddress peer != null && dashboardCfg.expose.wireguard.port != null) [
+                  (mkUrl {
+                    scheme = "http";
+                    host = peerWireguardAddress peer;
+                    port = dashboardCfg.expose.wireguard.port;
+                    path = "/api/mode";
+                  })
+                ];
+            })
+            cfg.members
+        );
+
       controllerConfig = {
         cluster = {
           name = cfg.name;
           transport = cfg.transport;
           leaderKey = "/alanix/clusters/${cfg.name}/leader";
+          runtimeModeKey = "/alanix/clusters/${cfg.name}/runtime-mode";
+          runtimeModeAckPrefix = "/alanix/clusters/${cfg.name}/runtime-mode-acks";
+          runtimeModeFile = "/var/lib/alanix-cluster/runtime-mode.json";
           hostname = hostname;
+          members = cfg.members;
+          voters = cfg.voters;
           priority = cfg.priority;
           bootstrapHost = lib.head cfg.priority;
           activeTarget = "alanix-cluster-active.target";
+          modeProbeUrls = dashboardModeProbeUrlsByHost;
+          modeProbeTimeoutSeconds = 2;
+          modeAckTimeout = "2m";
+          modeAckPollInterval = "2s";
           etcd = {
             leaseTtl = cfg.etcd.leaseTtl;
             renewEvery = cfg.etcd.renewEvery;
@@ -4627,6 +4662,7 @@ in
           [
             "d ${cfg.backup.repoBaseDir} 0700 ${cfg.backup.repoUser} users - -"
             "Z ${cfg.backup.repoBaseDir} - ${cfg.backup.repoUser} users - -"
+            "d /var/lib/alanix-cluster 0755 root root - -"
           ]
           ++ lib.optionals nextcloudCluster [
             "d ${nextcloudCfg.backupDir} 0750 nextcloud ${backupRepoUserGroup} - -"
@@ -4672,7 +4708,6 @@ in
           ++ lib.optionals anyTorExposure [
             "d /var/lib/tor/alanix-cluster 0750 root tor - -"
             "f /var/lib/tor/alanix-cluster/cluster.conf 0640 root tor - -"
-            "d /var/lib/alanix-cluster 0755 root root - -"
             "d /var/lib/alanix-cluster/tor-hostnames 0755 root root - -"
           ];
       }

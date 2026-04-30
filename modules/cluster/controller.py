@@ -18,6 +18,8 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -290,6 +292,15 @@ class EtcdUnavailable(RuntimeError):
 
 
 class Controller:
+    HA_MODE = "ha"
+    STANDALONE_MODES = {
+        "planned-standalone",
+        "emergency-standalone",
+        "resume-pending",
+        "resume-seeding",
+    }
+    RUNTIME_MODES = STANDALONE_MODES | {HA_MODE}
+
     def __init__(self, config_path: str) -> None:
         with open(config_path, "r", encoding="utf-8") as handle:
             self.config = json.load(handle)
@@ -298,7 +309,18 @@ class Controller:
         self.services = self.config["services"]
         self.hostname = self.cluster["hostname"]
         self.leader_key = self.cluster["leaderKey"]
+        self.runtime_mode_key = self.cluster.get("runtimeModeKey", f"{self.leader_key.rsplit('/', 1)[0]}/runtime-mode")
+        self.runtime_mode_ack_prefix = self.cluster.get(
+            "runtimeModeAckPrefix",
+            f"{self.leader_key.rsplit('/', 1)[0]}/runtime-mode-acks",
+        ).rstrip("/")
         self.target = self.cluster["activeTarget"]
+        self.members = self.cluster.get("members") or self.cluster.get("priority", [])
+        self.voters = self.cluster.get("voters") or self.members
+        self.peer_mode_probe_urls = self.cluster.get("modeProbeUrls", {})
+        self.peer_mode_probe_timeout = float(self.cluster.get("modeProbeTimeoutSeconds", 2.0))
+        self.mode_ack_timeout = float(parse_duration_seconds(self.cluster.get("modeAckTimeout", "2m")))
+        self.mode_ack_poll_interval = float(parse_duration_seconds(self.cluster.get("modeAckPollInterval", "2s")))
         self.repo_user = self.cluster["backup"]["repoUser"]
         repo_account = pwd.getpwnam(self.repo_user)
         self.repo_uid = repo_account.pw_uid
@@ -317,6 +339,10 @@ class Controller:
         self.lease_ttl = int(parse_duration_seconds(self.cluster["etcd"]["leaseTtl"]))
         self.acquisition_step = parse_duration_seconds(self.cluster["etcd"]["acquisitionStep"])
         self.cluster_data_dir = Path(self.cluster["backup"]["repoBaseDir"]) / self.cluster["name"]
+        self.runtime_mode_file = Path(
+            self.cluster.get("runtimeModeFile")
+            or "/var/lib/alanix-cluster/runtime-mode.json"
+        )
         self.runtime_dir = Path(os.environ.get("ALANIX_CLUSTER_RUNTIME_DIR", "/run/alanix-cluster"))
         self.admin_queue_dir = self.runtime_dir / "admin-queue"
         self.admin_inflight_dir = self.runtime_dir / "admin-inflight"
@@ -345,6 +371,10 @@ class Controller:
         self.running_backups = {}
         self.backup_generation = 0
         self.backup_generation_lock = threading.Lock()
+        self.resume_seed_generation = None
+        self.last_runtime_mode_warning_at = 0.0
+        self.last_peer_guard_warning_at = 0.0
+        self.last_mode_ack_warning_at = 0.0
         self.admin_executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=1,
             thread_name_prefix="alanix-admin",
@@ -511,6 +541,224 @@ class Controller:
             "mod_revision": int(kv["mod_revision"]),
         }
 
+    def normalize_runtime_mode(self, payload, *, source="unknown"):
+        if not isinstance(payload, dict):
+            payload = {}
+        mode = payload.get("mode") or self.HA_MODE
+        if mode not in self.RUNTIME_MODES:
+            mode = self.HA_MODE
+        normalized = dict(payload)
+        normalized["mode"] = mode
+        normalized["source"] = source
+        if mode != self.HA_MODE:
+            normalized.setdefault("standaloneHost", payload.get("keeper") or self.hostname)
+            normalized.setdefault("generation", str(int(time.time())))
+        return normalized
+
+    def local_ha_mode(self):
+        return {
+            "mode": self.HA_MODE,
+            "source": "default",
+        }
+
+    def read_local_runtime_mode(self):
+        if not self.runtime_mode_file.exists():
+            return self.local_ha_mode()
+        try:
+            payload = json.loads(self.runtime_mode_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            self.log_every(
+                "last_runtime_mode_warning_at",
+                30.0,
+                f"cannot read local runtime mode marker; treating node as passive: {summarize_error(str(exc))}",
+            )
+            return {
+                "mode": "emergency-standalone",
+                "source": "local-error",
+                "standaloneHost": "unknown",
+                "generation": "unknown",
+                "reason": "corrupt local runtime mode marker",
+            }
+        return self.normalize_runtime_mode(payload, source="local")
+
+    def write_local_runtime_mode(self, payload):
+        mode_state = self.normalize_runtime_mode(payload, source="local")
+        if mode_state["mode"] == self.HA_MODE:
+            self.runtime_mode_file.unlink(missing_ok=True)
+            return mode_state
+        stored = dict(mode_state)
+        stored.pop("source", None)
+        stored.setdefault("updatedAt", iso_timestamp())
+        atomic_write_json(self.runtime_mode_file, stored, mode=0o644)
+        return self.normalize_runtime_mode(stored, source="local")
+
+    def clear_local_runtime_mode(self):
+        self.runtime_mode_file.unlink(missing_ok=True)
+
+    def get_etcd_runtime_mode(self):
+        proc = self.etcdctl(["get", self.runtime_mode_key], check=False)
+        if proc.returncode != 0:
+            detail = summarize_error(proc.stderr or proc.stdout or "no etcdctl output")
+            raise EtcdUnavailable(f"runtime mode query failed ({proc.returncode}): {detail}")
+        try:
+            payload = json.loads(proc.stdout or "{}")
+        except json.JSONDecodeError as exc:
+            raise EtcdUnavailable(f"runtime mode query returned invalid json: {summarize_error(str(exc))}") from exc
+        kvs = payload.get("kvs", [])
+        if not kvs:
+            return self.local_ha_mode()
+        raw_value = decode_etcd_string(kvs[0]["value"])
+        try:
+            mode_payload = json.loads(raw_value)
+        except json.JSONDecodeError as exc:
+            raise EtcdUnavailable(f"runtime mode value is invalid json: {summarize_error(str(exc))}") from exc
+        return self.normalize_runtime_mode(mode_payload, source="etcd")
+
+    def put_etcd_runtime_mode(self, payload):
+        stored = dict(self.normalize_runtime_mode(payload, source="etcd"))
+        stored.pop("source", None)
+        stored.setdefault("updatedAt", iso_timestamp())
+        self.etcdctl(["put", self.runtime_mode_key, json.dumps(stored, sort_keys=True)])
+        return self.normalize_runtime_mode(stored, source="etcd")
+
+    def delete_etcd_runtime_mode(self):
+        self.etcdctl(["del", self.runtime_mode_key], check=False)
+
+    def mode_ack_key(self, generation, host=None):
+        ack_host = host or self.hostname
+        return f"{self.runtime_mode_ack_prefix}/{generation}/{ack_host}"
+
+    def ack_runtime_mode(self, mode_state):
+        generation = mode_state.get("generation")
+        if generation is None:
+            return
+        ack = {
+            "host": self.hostname,
+            "mode": mode_state.get("mode"),
+            "generation": generation,
+            "standaloneHost": mode_state.get("standaloneHost"),
+            "acknowledgedAt": iso_timestamp(),
+        }
+        proc = self.etcdctl(
+            ["put", self.mode_ack_key(generation), json.dumps(ack, sort_keys=True)],
+            check=False,
+        )
+        if proc.returncode != 0:
+            self.log_every(
+                "last_mode_ack_warning_at",
+                30.0,
+                f"failed to ack runtime mode {mode_state.get('mode')}: {summarize_error(proc.stderr or proc.stdout)}",
+            )
+
+    def acked_runtime_mode_hosts(self, generation):
+        proc = self.etcdctl(["get", f"{self.runtime_mode_ack_prefix}/{generation}/", "--prefix"], check=False)
+        if proc.returncode != 0:
+            raise EtcdUnavailable(f"runtime mode ack query failed: {summarize_error(proc.stderr or proc.stdout)}")
+        try:
+            payload = json.loads(proc.stdout or "{}")
+        except json.JSONDecodeError as exc:
+            raise EtcdUnavailable(f"runtime mode ack query returned invalid json: {summarize_error(str(exc))}") from exc
+        hosts = set()
+        for kv in payload.get("kvs", []):
+            key = decode_etcd_string(kv.get("key", ""))
+            if key:
+                hosts.add(key.rsplit("/", 1)[-1])
+        return hosts
+
+    def wait_for_runtime_mode_acks(self, mode_state, *, required_hosts=None, timeout=None):
+        generation = mode_state.get("generation")
+        if generation is None:
+            return
+        required = set(required_hosts or self.voters)
+        deadline = time.monotonic() + (self.mode_ack_timeout if timeout is None else timeout)
+        while True:
+            self.ack_runtime_mode(mode_state)
+            hosts = self.acked_runtime_mode_hosts(generation)
+            missing = sorted(required - hosts)
+            if not missing:
+                return
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    f"timed out waiting for runtime mode acknowledgements from: {', '.join(missing)}"
+                )
+            self.set_admin_operation_state(
+                {
+                    "action": mode_state.get("mode"),
+                    "service": "",
+                    "requestedBy": mode_state.get("requestedBy"),
+                    "submittedAt": mode_state.get("requestedAt"),
+                    "startedAt": mode_state.get("updatedAt") or iso_timestamp(),
+                    "status": "waiting",
+                    "message": f"waiting for acknowledgements: {', '.join(missing)}",
+                }
+            )
+            time.sleep(self.mode_ack_poll_interval)
+
+    def peer_mode_probe(self):
+        results = {}
+        for peer, urls in sorted(self.peer_mode_probe_urls.items()):
+            if peer == self.hostname:
+                continue
+            peer_results = []
+            for url in urls:
+                try:
+                    with urllib.request.urlopen(url, timeout=self.peer_mode_probe_timeout) as response:
+                        payload = json.loads(response.read().decode("utf-8"))
+                    mode_state = self.normalize_runtime_mode(payload.get("modeState") or payload, source=f"peer:{peer}")
+                    peer_results.append({"url": url, "ok": True, "modeState": mode_state})
+                    break
+                except (OSError, urllib.error.URLError, json.JSONDecodeError, TimeoutError) as exc:
+                    peer_results.append({"url": url, "ok": False, "error": summarize_error(str(exc), limit=160)})
+            results[peer] = peer_results
+        return results
+
+    def peer_guard_mode(self):
+        probes = self.peer_mode_probe()
+        failed = []
+        for peer, attempts in probes.items():
+            ok_attempt = next((item for item in attempts if item.get("ok")), None)
+            if ok_attempt is None:
+                failed.append(peer)
+                continue
+            mode_state = ok_attempt["modeState"]
+            if mode_state.get("mode") != self.HA_MODE:
+                return mode_state, probes
+        if failed:
+            return {
+                "mode": "peer-unknown",
+                "source": "peer-guard",
+                "failedPeers": failed,
+            }, probes
+        return self.local_ha_mode(), probes
+
+    def effective_runtime_mode(self):
+        try:
+            mode_state = self.get_etcd_runtime_mode()
+        except EtcdUnavailable:
+            mode_state = self.read_local_runtime_mode()
+            if mode_state.get("mode") == self.HA_MODE:
+                peer_mode, _ = self.peer_guard_mode()
+                if peer_mode.get("mode") != self.HA_MODE:
+                    if peer_mode.get("mode") == "peer-unknown":
+                        return peer_mode
+                    marker = dict(peer_mode)
+                    marker["reason"] = "learned from peer dashboard mode probe"
+                    return self.write_local_runtime_mode(marker)
+            return mode_state
+
+        if mode_state.get("mode") == self.HA_MODE:
+            local_mode = self.read_local_runtime_mode()
+            if mode_state.get("source") == "default" and local_mode.get("mode") != self.HA_MODE:
+                return local_mode
+            self.clear_local_runtime_mode()
+            if mode_state.get("generation") is not None:
+                self.ack_runtime_mode(mode_state)
+            return mode_state
+
+        self.write_local_runtime_mode(mode_state)
+        self.ack_runtime_mode(mode_state)
+        return mode_state
+
     def grant_lease(self):
         payload = json.loads(self.etcdctl(["lease", "grant", str(self.lease_ttl)]).stdout)
         return parse_lease_id(payload["ID"])
@@ -652,6 +900,51 @@ class Controller:
         self.leader_revision = None
         self.last_leader_absent_at = None
 
+    def release_leadership_keep_workloads(self, reason):
+        if self.lease_id is not None:
+            log(f"releasing cluster lease but keeping workloads active: {reason}")
+            self.advance_backup_generation()
+        self.stop_keepalive()
+        if self.lease_id is not None:
+            self.revoke_lease(self.lease_id)
+        self.lease_id = None
+        self.leader_revision = None
+        self.last_leader_absent_at = None
+
+    def apply_runtime_mode(self, mode_state):
+        mode = mode_state.get("mode") or self.HA_MODE
+        if mode == self.HA_MODE:
+            return False
+
+        if mode == "peer-unknown":
+            self.log_every(
+                "last_peer_guard_warning_at",
+                30.0,
+                "runtime mode peer guard is holding this node passive because peer dashboard mode could not be confirmed",
+            )
+            if self.any_managed_unit_active():
+                self.stop_target()
+            self.stop_keepalive()
+            self.lease_id = None
+            self.leader_revision = None
+            return True
+
+        standalone_host = mode_state.get("standaloneHost")
+        if standalone_host == self.hostname:
+            self.write_local_runtime_mode(mode_state)
+            self.release_leadership_keep_workloads(f"runtime mode {mode}")
+            if not self.target_is_active():
+                self.start_target()
+        else:
+            self.write_local_runtime_mode(mode_state)
+            if self.lease_id is not None or self.any_managed_unit_active():
+                self.demote(f"runtime mode {mode} belongs to {standalone_host}")
+            else:
+                self.stop_keepalive()
+                self.lease_id = None
+                self.leader_revision = None
+        return True
+
     def advance_backup_generation(self):
         with self.backup_generation_lock:
             self.backup_generation += 1
@@ -659,7 +952,9 @@ class Controller:
 
     def backup_generation_is_current(self, generation):
         with self.backup_generation_lock:
-            return generation == self.backup_generation and self.lease_id is not None
+            return generation == self.backup_generation and (
+                self.lease_id is not None or generation == self.resume_seed_generation
+            )
 
     def ensure_backup_generation_current(self, generation, service_name):
         if not self.backup_generation_is_current(generation):
@@ -685,12 +980,14 @@ class Controller:
             return None
 
     def write_runtime_state(self, *, force=False):
+        local_mode = self.read_local_runtime_mode()
         with self.runtime_state_lock:
             payload = {
                 "hostname": self.hostname,
                 "leaseId": self.lease_id,
                 "leaderRevision": self.leader_revision,
                 "isLeader": self.lease_id is not None,
+                "runtimeMode": local_mode,
                 "backupSlots": {
                     "used": len(self.running_backups),
                     "max": self.max_concurrent_backups,
@@ -1715,10 +2012,149 @@ class Controller:
         })
         return result
 
+    def new_runtime_mode_payload(self, mode, *, requested_by=None, standalone_host=None):
+        return {
+            "mode": mode,
+            "generation": str(int(time.time() * 1000)),
+            "standaloneHost": standalone_host or self.hostname,
+            "requestedBy": requested_by,
+            "requestedAt": iso_timestamp(),
+            "updatedAt": iso_timestamp(),
+        }
+
+    def require_no_backups_running(self):
+        if self.running_backups:
+            running = ", ".join(sorted(self.running_backups))
+            raise RuntimeError(f"cannot change runtime mode while backup(s) are running: {running}")
+
+    def enter_planned_standalone(self, *, requested_by=None):
+        self.require_no_backups_running()
+        if self.lease_id is None:
+            raise RuntimeError("planned standalone may only be entered from the current leader")
+        payload = self.new_runtime_mode_payload("planned-standalone", requested_by=requested_by)
+        log(f"entering planned standalone on {self.hostname}")
+        self.write_local_runtime_mode(payload)
+        mode_state = self.put_etcd_runtime_mode(payload)
+        self.ack_runtime_mode(mode_state)
+        self.wait_for_runtime_mode_acks(mode_state, required_hosts=self.voters)
+        self.release_leadership_keep_workloads("planned standalone acknowledged by all voters")
+        self.record_operation_history(
+            {
+                "action": "enter-planned-standalone",
+                "status": "completed",
+                "requestedBy": requested_by,
+                "message": f"planned standalone active on {self.hostname}",
+                "details": mode_state,
+            }
+        )
+        return mode_state
+
+    def enter_emergency_standalone(self, request, *, requested_by=None):
+        self.require_no_backups_running()
+        if request.get("confirmation") != "peers-fenced":
+            raise RuntimeError("emergency standalone requires confirmation that the other voters are powered off or isolated")
+        payload = self.new_runtime_mode_payload("emergency-standalone", requested_by=requested_by)
+        payload["fencingConfirmation"] = "human-confirmed"
+        payload["reason"] = "local emergency override"
+        log(f"entering emergency standalone on {self.hostname}")
+        mode_state = self.write_local_runtime_mode(payload)
+        self.release_leadership_keep_workloads("emergency standalone local override")
+        if not self.target_is_active():
+            self.start_target()
+        self.record_operation_history(
+            {
+                "action": "enter-emergency-standalone",
+                "status": "completed",
+                "requestedBy": requested_by,
+                "message": f"emergency standalone active on {self.hostname}",
+                "details": mode_state,
+            }
+        )
+        return mode_state
+
+    def seed_resume_backups(self, *, requested_by=None):
+        generation = self.advance_backup_generation()
+        self.resume_seed_generation = generation
+        try:
+            results = {}
+            for service_name, service in self.services.items():
+                if service.get("recoveryMode") == "declarative":
+                    continue
+                result = self.backup_service(
+                    service_name,
+                    generation,
+                    origin="resume-seeding",
+                    requested_by=requested_by,
+                )
+                results[service_name] = result
+                failed_targets = result.get("failedTargets") or []
+                if failed_targets:
+                    summary = "; ".join(f"{item['host']}: {item['error']}" for item in failed_targets)
+                    raise RuntimeError(f"{service_name}: resume backup did not reach every target: {summary}")
+            return results
+        finally:
+            self.resume_seed_generation = None
+
+    def resume_ha(self, *, requested_by=None):
+        self.require_no_backups_running()
+        mode_state = self.effective_runtime_mode()
+        mode = mode_state.get("mode")
+        if mode == self.HA_MODE:
+            raise RuntimeError("cluster is already in normal HA mode")
+        standalone_host = mode_state.get("standaloneHost")
+        if standalone_host != self.hostname:
+            raise RuntimeError(f"resume HA must be started from standalone host {standalone_host}")
+
+        pending_payload = self.new_runtime_mode_payload(
+            "resume-pending",
+            requested_by=requested_by,
+            standalone_host=self.hostname,
+        )
+        self.write_local_runtime_mode(pending_payload)
+
+        seeding_payload = dict(pending_payload)
+        seeding_payload["mode"] = "resume-seeding"
+        seeding_payload["updatedAt"] = iso_timestamp()
+        log(f"starting HA resume seeding from {self.hostname}")
+        seeding_state = self.put_etcd_runtime_mode(seeding_payload)
+        self.ack_runtime_mode(seeding_state)
+        self.wait_for_runtime_mode_acks(seeding_state, required_hosts=self.voters)
+        results = self.seed_resume_backups(requested_by=requested_by)
+
+        ha_payload = self.new_runtime_mode_payload(
+            self.HA_MODE,
+            requested_by=requested_by,
+            standalone_host=self.hostname,
+        )
+        ha_state = self.put_etcd_runtime_mode(ha_payload)
+        self.clear_local_runtime_mode()
+        self.ack_runtime_mode(ha_state)
+        self.wait_for_runtime_mode_acks(ha_state, required_hosts=self.voters)
+        self.delete_etcd_runtime_mode()
+        self.record_operation_history(
+            {
+                "action": "resume-ha",
+                "status": "completed",
+                "requestedBy": requested_by,
+                "message": "normal HA resumed after fresh backup seeding",
+                "details": {"services": results},
+            }
+        )
+        return {"mode": self.HA_MODE, "seededServices": sorted(results)}
+
     def execute_admin_request(self, request):
         action = request["action"]
         service_name = request.get("service")
         requested_by = request.get("requestedBy")
+
+        if action == "enter-planned-standalone":
+            return self.enter_planned_standalone(requested_by=requested_by)
+
+        if action == "enter-emergency-standalone":
+            return self.enter_emergency_standalone(request, requested_by=requested_by)
+
+        if action == "resume-ha":
+            return self.resume_ha(requested_by=requested_by)
 
         if action == "backup-now":
             return self.backup_service(service_name, self.backup_generation, origin="manual", requested_by=requested_by)
@@ -1942,10 +2378,18 @@ class Controller:
         service_name = request.get("service")
         requested_by = request.get("requestedBy")
         submitted_at = request.get("submittedAt") or iso_timestamp()
+        mode_actions = {"enter-planned-standalone", "enter-emergency-standalone", "resume-ha"}
+        service_actions = {"backup-now", "verify-manifest", "restore-manifest", "pin-manifest", "unpin-manifest", "delete-manifest"}
 
-        if action in {"backup-now", "verify-manifest", "restore-manifest", "pin-manifest", "unpin-manifest", "delete-manifest"}:
+        if action in service_actions:
             if not service_name or service_name not in self.services:
                 raise RuntimeError(f"unknown service for {action}: {service_name!r}")
+            mode_state = self.effective_runtime_mode()
+            if mode_state.get("mode") != self.HA_MODE:
+                raise RuntimeError(f"{action} is disabled while cluster runtime mode is {mode_state.get('mode')}")
+
+        if action in mode_actions:
+            self.require_no_backups_running()
 
         if action == "backup-now" and self.lease_id is None:
             raise RuntimeError("manual backups may only run on the current leader")
@@ -1974,7 +2418,7 @@ class Controller:
 
         state = {
             "action": action,
-            "service": service_name,
+            "service": service_name or "",
             "requestedBy": requested_by,
             "submittedAt": submitted_at,
             "startedAt": iso_timestamp(),
@@ -2142,6 +2586,19 @@ class Controller:
             log("stopping active target because no cluster lease is present")
             self.stop_target()
 
+        peer_mode, _ = self.peer_guard_mode()
+        if peer_mode.get("mode") != self.HA_MODE:
+            if peer_mode.get("mode") == "peer-unknown":
+                self.log_every(
+                    "last_peer_guard_warning_at",
+                    30.0,
+                    "not acquiring leadership because peer dashboard mode could not be confirmed",
+                )
+                return
+            log(f"not acquiring leadership because peer reports runtime mode {peer_mode.get('mode')}")
+            self.write_local_runtime_mode(peer_mode)
+            return
+
         now = time.monotonic()
         if self.last_leader_absent_at is None:
             self.last_leader_absent_at = now
@@ -2172,7 +2629,10 @@ class Controller:
             try:
                 self.collect_finished_backups()
                 self.process_admin_requests()
-                if self.lease_id is None:
+                mode_state = self.effective_runtime_mode()
+                if self.apply_runtime_mode(mode_state):
+                    pass
+                elif self.lease_id is None:
                     self.tick_passive()
                 else:
                     self.tick_active()
