@@ -208,6 +208,10 @@ class Dashboard:
         self.runtime_dir = Path(os.environ.get("ALANIX_CLUSTER_RUNTIME_DIR", "/run/alanix-cluster"))
         self.admin_queue_dir = self.runtime_dir / "admin-queue"
         self.runtime_state_file = self.runtime_dir / "controller-state.json"
+        self.runtime_mode_file = Path(
+            self.cluster.get("runtimeModeFile")
+            or "/var/lib/alanix-cluster/runtime-mode.json"
+        )
         self.cluster_data_dir = Path(self.cluster["backup"]["repoBaseDir"]) / self.cluster["name"]
         self.admin = self.dashboard.get("admin", {})
         admin_toggle = self.admin.get("enable")
@@ -404,6 +408,36 @@ class Dashboard:
             return json.loads(self.runtime_state_file.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             return {}
+
+    def local_runtime_mode(self) -> dict:
+        if not self.runtime_mode_file.exists():
+            return {
+                "mode": "ha",
+                "source": "default",
+                "host": self.hostname,
+            }
+        try:
+            payload = json.loads(self.runtime_mode_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return {
+                "mode": "emergency-standalone",
+                "source": "local-error",
+                "host": self.hostname,
+                "reason": summarize_error(str(exc)),
+            }
+        payload = dict(payload)
+        payload.setdefault("mode", "ha")
+        payload["source"] = "local"
+        payload["host"] = self.hostname
+        return payload
+
+    def mode_probe_payload(self) -> dict:
+        controller_state = self.controller_runtime_state()
+        return {
+            "hostname": self.hostname,
+            "modeState": controller_state.get("runtimeMode") or self.local_runtime_mode(),
+            "generatedAt": iso_timestamp(),
+        }
 
     def queued_admin_requests(self) -> list[dict]:
         requests = []
@@ -770,6 +804,7 @@ class Dashboard:
         any_active = self.any_workload_active(unit_statuses)
         target_active = unit_statuses.get(self.target, {}).get("ActiveState") == "active"
         controller_state = self.controller_runtime_state()
+        runtime_mode = controller_state.get("runtimeMode") or self.local_runtime_mode()
         queued_admin_requests = self.queued_admin_requests()
 
         if leader.get("error"):
@@ -784,6 +819,17 @@ class Dashboard:
         else:
             role = {"label": "waiting-for-leader" if not any_active else "lease-missing-active", "kind": "warn"}
 
+        if runtime_mode.get("mode") != "ha":
+            if runtime_mode.get("standaloneHost") == self.hostname and any_active:
+                role = {
+                    "label": "standalone-host",
+                    "kind": "bad" if runtime_mode.get("mode") == "emergency-standalone" else "warn",
+                }
+            elif runtime_mode.get("standaloneHost") == self.hostname:
+                role = {"label": "standalone-starting", "kind": "warn"}
+            else:
+                role = {"label": "standalone-passive", "kind": "info"}
+
         probe_budget = [self.snapshot_size_probes_per_collect]
         services = {
             service_name: self.manifest_state(service_name, service, probe_budget=probe_budget)
@@ -793,7 +839,9 @@ class Dashboard:
         for service_name, service_state in services.items():
             service_state["currentOperation"] = service_operations.get(service_name)
         leader_host = leader.get("host") if leader.get("present") else None
-        is_leader = role["label"] in {"leader", "leader-recovering"}
+        if runtime_mode.get("mode") != "ha" and runtime_mode.get("standaloneHost"):
+            leader_host = runtime_mode.get("standaloneHost")
+        is_leader = role["label"] in {"leader", "leader-recovering", "standalone-host", "standalone-starting"}
         for service_name, service_state in services.items():
             links_by_host = self.services[service_name].get("linksByHost", {})
             tor_link = service_state.pop("torLink", None)
@@ -832,6 +880,7 @@ class Dashboard:
             "units": unit_statuses,
             "services": services,
             "controllerState": controller_state,
+            "runtimeMode": runtime_mode,
             "adminQueue": queued_admin_requests,
             "adminConfig": {
                 "enabled": self.admin_enabled,
@@ -847,6 +896,10 @@ class Dashboard:
         services = state["services"]
         dashboard_links = state.get("dashboardLinks", [])
         controller_state = state.get("controllerState") or {}
+        runtime_mode = state.get("runtimeMode") or {"mode": "ha"}
+        runtime_mode_name = runtime_mode.get("mode") or "ha"
+        standalone_host = runtime_mode.get("standaloneHost") or ""
+        mode_blocks_service_admin = runtime_mode_name != "ha"
         admin_queue = state.get("adminQueue") or []
         admin_enabled = bool(state.get("adminConfig", {}).get("enabled"))
         is_admin = session is not None and admin_enabled
@@ -863,6 +916,9 @@ class Dashboard:
                 f"<a class='chip chip-link{extra}' href='{html.escape(link['url'])}' "
                 f"target='_blank' rel='noreferrer'>{html.escape(link.get('transport', 'link'))}</a>"
             )
+
+        def hidden(name: str, value: str) -> str:
+            return f"<input type='hidden' name='{html.escape(name)}' value='{html.escape(value)}'/>"
 
         running_backups = controller_state.get("runningBackups") or []
         backup_slots = controller_state.get("backupSlots") or {}
@@ -1011,6 +1067,70 @@ class Dashboard:
         else:
             backup_slots_banner = "<section id='backup-slots-banner'></section>"
 
+        # ── runtime mode banner ───────────────────────────────────────────────
+        mode_kind = "good" if runtime_mode_name == "ha" else "warn" if runtime_mode_name != "emergency-standalone" else "bad"
+        mode_bits = [b(runtime_mode_name, mode_kind)]
+        if standalone_host:
+            mode_bits.append(f"<span class='muted small'>standalone host: {html.escape(standalone_host)}</span>")
+        if runtime_mode.get("source"):
+            mode_bits.append(f"<span class='muted small'>source: {html.escape(str(runtime_mode.get('source')))}</span>")
+
+        planned_disabled = ""
+        emergency_disabled = ""
+        resume_disabled = ""
+        if runtime_mode_name != "ha":
+            planned_disabled = f"Cluster is already in runtime mode {runtime_mode_name}."
+            emergency_disabled = f"Cluster is already in runtime mode {runtime_mode_name}."
+        elif role["label"] not in {"leader", "leader-recovering"}:
+            planned_disabled = "Planned standalone must be started from the current leader."
+        if backup_slot_used > 0:
+            msg = f"Wait for {backup_slot_used} running backup(s) to finish."
+            planned_disabled = planned_disabled or msg
+            emergency_disabled = emergency_disabled or msg
+            resume_disabled = resume_disabled or msg
+        if runtime_mode_name == "ha":
+            resume_disabled = "Cluster is already in normal HA mode."
+        elif standalone_host and standalone_host != self.hostname:
+            resume_disabled = f"Resume HA from standalone host {standalone_host}."
+
+        mode_controls = ""
+        if is_admin:
+            emergency_extra = hidden("confirmation", "peers-fenced")
+            mode_controls = (
+                "<div class='mode-actions'>"
+                + admin_btn(
+                    "enter-planned-standalone",
+                    "",
+                    label="Enter Planned Standalone",
+                    disabled_reason=planned_disabled,
+                )
+                + admin_btn(
+                    "enter-emergency-standalone",
+                    "",
+                    extra=emergency_extra,
+                    label="Emergency Standalone",
+                    css="button button-sm button-danger",
+                    confirm_msg=(
+                        "Only continue if the other cluster voters are powered off or intentionally isolated. "
+                        "This node will become the standalone source of truth."
+                    ),
+                    disabled_reason=emergency_disabled,
+                )
+                + admin_btn(
+                    "resume-ha",
+                    "",
+                    label="Resume HA",
+                    disabled_reason=resume_disabled,
+                )
+                + "</div>"
+            )
+        mode_banner = (
+            "<section id='mode-banner' class='panel section mode-panel'>"
+            "<div class='sh'><h2>Runtime Mode</h2></div>"
+            f"<div class='mode-row'><div class='mode-bits'>{''.join(mode_bits)}</div>{mode_controls}</div>"
+            "</section>"
+        )
+
         # ── service cards ─────────────────────────────────────────────────────
         cards: list[str] = []
         for svc_name, svc in services.items():
@@ -1026,7 +1146,9 @@ class Dashboard:
             backup_btn = ""
             if is_admin and not is_decl:
                 backup_disabled_reason = ""
-                if cur_op:
+                if mode_blocks_service_admin:
+                    backup_disabled_reason = f"Backups are disabled while runtime mode is {runtime_mode_name}."
+                elif cur_op:
                     cur_action = (cur_op.get("action") or "operation").replace("-", " ")
                     if cur_op.get("action") == "backup":
                         backup_disabled_reason = "A backup for this service is already running."
@@ -1068,7 +1190,22 @@ class Dashboard:
                     note = m.get("note") or m.get("pinNote") or ""
                     note_html = f"<span class='bkp-note muted'>{html.escape(note)}</span>" if note else ""
                     size_human = m.get("sizeHuman") or ""
-                    restore_btn = admin_btn("restore-manifest", svc_name, manifest=m["path"], label="Restore", css="button button-sm button-danger") if is_admin else ""
+                    restore_btn = (
+                        admin_btn(
+                            "restore-manifest",
+                            svc_name,
+                            manifest=m["path"],
+                            label="Restore",
+                            css="button button-sm button-danger",
+                            disabled_reason=(
+                                f"Restore is disabled while runtime mode is {runtime_mode_name}."
+                                if mode_blocks_service_admin
+                                else ""
+                            ),
+                        )
+                        if is_admin
+                        else ""
+                    )
                     if is_admin and pinned:
                         delete_btn = (
                             "<button type='button' class='button button-sm button-delete' "
@@ -1082,6 +1219,11 @@ class Dashboard:
                             label="Delete",
                             css="button button-sm button-delete",
                             confirm_msg="Delete this backup snapshot and its stored data? This cannot be undone.",
+                            disabled_reason=(
+                                f"Backup deletion is disabled while runtime mode is {runtime_mode_name}."
+                                if mode_blocks_service_admin
+                                else ""
+                            ),
                         )
                     else:
                         delete_btn = ""
@@ -1225,6 +1367,9 @@ class Dashboard:
     .login-form {{ display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }}
     .admin-label {{ font-size: 0.8rem; color: var(--muted); font-weight: 600; }}
     .auth-err {{ color: var(--bad); font-size: 0.82rem; }}
+    .mode-row {{ display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }}
+    .mode-bits {{ display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }}
+    .mode-actions {{ display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }}
     input[type="password"], input[type="text"] {{
       border: 1px solid var(--border); background: var(--panel);
       border-radius: 0.5rem; padding: 0.3rem 0.6rem;
@@ -1394,6 +1539,7 @@ class Dashboard:
   </header>
   <main>
     {admin_bar}
+    {mode_banner}
     {ops_banner}
     {backup_slots_banner}
     {services_html}
@@ -1407,7 +1553,7 @@ class Dashboard:
       var pendingHtml = null;
       var reconnectTimer = null;
       var sectionIds = [
-        'admin-bar', 'ops-banner', 'backup-slots-banner', 'services-section',
+        'admin-bar', 'mode-banner', 'ops-banner', 'backup-slots-banner', 'services-section',
         'cluster-panel', 'units-panel', 'events-panel'
       ];
 
@@ -1637,6 +1783,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         session = self.current_session()
+        if path == "/api/mode":
+            payload = json.dumps(self.dashboard.mode_probe_payload(), indent=2).encode("utf-8")
+            self.respond_bytes(200, payload, "application/json; charset=utf-8")
+            return
+
         if path == "/api/status":
             state = self.dashboard.collect()
             payload = json.dumps(state, indent=2).encode("utf-8")
@@ -1708,6 +1859,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "service": form.get("service"),
                 "manifestPath": form.get("manifestPath"),
                 "note": form.get("note"),
+                "confirmation": form.get("confirmation"),
                 "requestedBy": session["username"],
             }
             self.dashboard.queue_admin_request(request)
