@@ -132,7 +132,10 @@
           };
         };
 
-        desktop.enable = true;
+        desktop = {
+          enable = true;
+          profile = "sway/default";
+        };
         azahar.enable = true;
         chromium.enable = true;
         dolphin.enable = true;
@@ -148,18 +151,21 @@
 
     alanix.desktop = {
       enable = true;
-      loginKeyring.enable = true;
+      profile = "sway";
       bluetooth.enable = true;
       fingerprint.enable = true;
       printing.enable = true;
-      createHeadlessOutput = false;
-      swayOutputRules = [
-        "output eDP-1 scale 1"
-      ];
-      idle = {
-        lockSeconds = 300;
-        displayOffSeconds = 330;
-        suspendSeconds = null;
+      profiles.sway = {
+        loginKeyring.enable = true;
+        createHeadlessOutput = false;
+        outputRules = [
+          "output eDP-1 scale 1"
+        ];
+        idle = {
+          lockSeconds = 300;
+          displayOffSeconds = 330;
+          suspendSeconds = null;
+        };
       };
       flatpak.packages = [
         "app.openbubbles.OpenBubbles"

@@ -93,7 +93,10 @@
 
         sh.enable = true;
 
-        desktop.enable = true;
+        desktop = {
+          enable = true;
+          profile = "sway/default";
+        };
         azahar.enable = true;
         chromium.enable = true;
         dolphin.enable = true;
@@ -104,18 +107,21 @@
 
     alanix.desktop = {
       enable = true;
-      autoLogin = {
-        enable = true;
-        user = "buddia";
-      };
-      createHeadlessOutput = true;
-      swayOutputRules = [
-        "output HEADLESS-1 resolution 1920x1080"
-      ];
-      idle = {
-        lockSeconds = null;
-        displayOffSeconds = null;
-        suspendSeconds = null;
+      profile = "sway";
+      profiles.sway = {
+        autoLogin = {
+          enable = true;
+          user = "buddia";
+        };
+        createHeadlessOutput = true;
+        outputRules = [
+          "output HEADLESS-1 resolution 1920x1080"
+        ];
+        idle = {
+          lockSeconds = null;
+          displayOffSeconds = null;
+          suspendSeconds = null;
+        };
       };
     };
 
