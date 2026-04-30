@@ -133,7 +133,10 @@
           };
         };
 
-        desktop.enable = true;
+        desktop = {
+          enable = true;
+          profile = "sway/default";
+        };
         azahar.enable = true;
         chromium.enable = true;
         dolphin.enable = true;
@@ -148,12 +151,15 @@
 
     alanix.desktop = {
       enable = true;
-      createHeadlessOutput = false;
-      swayOutputRules = [ ];
-      idle = {
-        lockSeconds = 300;
-        displayOffSeconds = 330;
-        suspendSeconds = null;
+      profile = "sway";
+      profiles.sway = {
+        createHeadlessOutput = false;
+        outputRules = [ ];
+        idle = {
+          lockSeconds = 300;
+          displayOffSeconds = 330;
+          suspendSeconds = null;
+        };
       };
     };
 
