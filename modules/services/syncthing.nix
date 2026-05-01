@@ -164,6 +164,7 @@ let
       user = "buddia";
       group = "users";
       mode = "2775";
+      ignorePerms = true;
     };
   };
 
