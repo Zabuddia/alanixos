@@ -167,16 +167,50 @@ let
     };
   };
 
-  filebrowserFilesFolders = {
-    "filebrowser-root" = {
-      label = "filebrowser";
-      relativePath = "filebrowser";
-      group = "users";
-      mode = "2775";
-      ignorePerms = true;
-      versioning = staggeredVersioning 180;
-    };
-  };
+  filebrowserUserDeclarations =
+    lib.flatten (
+      lib.mapAttrsToList
+        (hostName: hostCfg:
+          lib.mapAttrsToList
+            (userName: userCfg: {
+              inherit hostName userName userCfg;
+            })
+            (lib.attrByPath [ "config" "alanix" "filebrowser" "users" ] { } hostCfg)
+        )
+        allHosts
+    );
+
+  filebrowserSyncedUserDeclarations =
+    lib.filter (decl: hasValue decl.userCfg.scope && decl.userCfg.scope != ".") filebrowserUserDeclarations;
+
+  filebrowserUserFolderSetName = userName: "filebrowser-${userName}-files";
+
+  filebrowserUserFolderId =
+    scope:
+    "filebrowser-${lib.replaceStrings [ "/" " " ] [ "-" "-" ] scope}";
+
+  filebrowserUserFolderSets =
+    builtins.listToAttrs (
+      map
+        (decl:
+          let
+            scope = decl.userCfg.scope;
+          in
+          lib.nameValuePair (filebrowserUserFolderSetName decl.userName) {
+            ${filebrowserUserFolderId scope} = {
+              label = "filebrowser/${scope}";
+              relativePath = "filebrowser/${scope}";
+              parentMode = "2775";
+              group = "users";
+              mode = "2775";
+              ignorePerms = true;
+              versioning = staggeredVersioning 180;
+            };
+          })
+        filebrowserSyncedUserDeclarations
+    );
+
+  filebrowserFolderSetNames = builtins.attrNames filebrowserUserFolderSets;
 
   folderCatalog = {
     emulation-azahar = azaharFolders;
@@ -185,8 +219,7 @@ let
     emulation-ryujinx = ryujinxFolders;
     jellyfin-media = jellyfinMediaFolders;
     navidrome-media = navidromeMediaFolders;
-    filebrowser-files = filebrowserFilesFolders;
-  };
+  } // filebrowserUserFolderSets;
 
   azaharLinks = {
     "${azaharLocalSdmcBase}/title" = {
@@ -233,19 +266,27 @@ let
 
   folderSetAliases = {
     emulation = [ "emulation-azahar" "emulation-dolphin" "emulation-melonds" "emulation-ryujinx" ];
+    filebrowser-files = filebrowserFolderSetNames;
+  };
+
+  linkFolderSetAliases = {
+    emulation = [ "emulation-azahar" "emulation-dolphin" "emulation-melonds" "emulation-ryujinx" ];
   };
 
   validFolderSets = lib.unique ((builtins.attrNames folderCatalog) ++ (builtins.attrNames folderSetAliases));
-  linkableFolderSets = lib.unique ((builtins.attrNames linkCatalog) ++ (builtins.attrNames folderSetAliases));
+  linkableFolderSets = lib.unique ((builtins.attrNames linkCatalog) ++ (builtins.attrNames linkFolderSetAliases));
   folderSetType = lib.types.enum validFolderSets;
   linkFolderSetType = lib.types.enum linkableFolderSets;
 
-  expandFolderSets =
-    folderSets:
-    lib.unique (lib.flatten (map (folderSet: folderSetAliases.${folderSet} or [ folderSet ]) folderSets));
+  expandFolderSetsWithAliases =
+    aliases: folderSets:
+    lib.unique (lib.flatten (map (folderSet: aliases.${folderSet} or [ folderSet ]) folderSets));
+
+  expandFolderSets = expandFolderSetsWithAliases folderSetAliases;
+  expandLinkFolderSets = expandFolderSetsWithAliases linkFolderSetAliases;
 
   effectiveFolderSets = expandFolderSets cfg.folderSets;
-  effectiveLinkFolderSets = expandFolderSets cfg.linkFolderSets;
+  effectiveLinkFolderSets = expandLinkFolderSets cfg.linkFolderSets;
 
   activeExternalDevices = lib.filterAttrs (_: deviceCfg: hasValue deviceCfg.id) cfg.externalDevices;
 
@@ -323,13 +364,30 @@ let
   selectedAbsoluteFolders =
     lib.filter (folderCfg: folderCfg ? path) (lib.attrValues selectedFolderCatalog);
 
-  managedSyncRootRelativePaths =
-    lib.unique (lib.flatten (map folderRelativePathParentPrefixes selectedFolderRelativePaths));
+  folderRelativePathParentEntries =
+    folderCfg:
+    map
+      (relativePath: {
+        inherit relativePath;
+        user = folderCfg.parentUser or cfg.user;
+        group = folderCfg.parentGroup or "users";
+        mode = folderCfg.parentMode or "0750";
+      })
+      (folderRelativePathParentPrefixes folderCfg.relativePath);
+
+  managedSyncRootRelativeDirs =
+    lib.attrValues (
+      builtins.listToAttrs (
+        map
+          (dirCfg: lib.nameValuePair dirCfg.relativePath dirCfg)
+          (lib.flatten (map folderRelativePathParentEntries selectedRelativeFolders))
+      )
+    );
 
   managedSyncRootTmpfiles =
     map
-      (relativePath: "d ${cfg.syncRoot}/${relativePath} 0750 ${cfg.user} users - -")
-      managedSyncRootRelativePaths;
+      (dirCfg: "d ${cfg.syncRoot}/${dirCfg.relativePath} ${dirCfg.mode} ${dirCfg.user} ${dirCfg.group} - -")
+      managedSyncRootRelativeDirs;
 
   managedRelativeFolderTmpfiles =
     map
@@ -353,10 +411,10 @@ let
 
   managedSyncRootDirsScript =
     lib.concatMapStringsSep "\n"
-      (relativePath: ''
-        install -d -m 0750 -o ${cfg.user} -g users "${cfg.syncRoot}/${relativePath}"
+      (dirCfg: ''
+        install -d -m ${dirCfg.mode} -o ${dirCfg.user} -g ${dirCfg.group} "${cfg.syncRoot}/${dirCfg.relativePath}"
       '')
-      managedSyncRootRelativePaths;
+      managedSyncRootRelativeDirs;
 
   managedRelativeFolderScript =
     lib.concatMapStringsSep "\n"

@@ -244,7 +244,7 @@
         "emulation-melonds"
         "emulation-ryujinx"
         "navidrome-media"
-        "filebrowser-files"
+        "filebrowser-buddia-files"
       ];
       linkFolderSets = [
         "emulation-azahar"
@@ -256,7 +256,7 @@
         id = "BT23SPJ-ICTEBQ7-GJTDRQT-LCUQ773-U63QFZR-472O3YA-2KRJ4KY-AMPZ7AF";
         addresses = [ "tcp://pixel-fold:22000" ];
         folderSets = [
-          "filebrowser-files"
+          "filebrowser-buddia-files"
           "emulation-azahar"
           "emulation-dolphin"
           "emulation-melonds"
