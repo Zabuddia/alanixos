@@ -75,6 +75,7 @@
             xournalpp
             libreoffice
             lrcget
+            kid3
             remmina
             tor-browser
             hyprpicker
