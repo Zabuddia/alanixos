@@ -74,6 +74,15 @@ in
       description = "How often Navidrome scans the music folder for changes.";
     };
 
+    purgeMissing = lib.mkOption {
+      type = lib.types.enum [ "never" "always" "full" ];
+      default = "never";
+      description = ''
+        When Navidrome should purge missing files from the database.
+        Use "always" after every scan, "full" only after full scans, or "never" to preserve missing-file metadata.
+      '';
+    };
+
     dataDir = lib.mkOption {
       type = lib.types.str;
       default = "/var/lib/navidrome";
@@ -239,6 +248,7 @@ in
           DataFolder = cfg.dataDir;
           MusicFolder = cfg.mediaFolders.music.path;
           ScanInterval = cfg.scanInterval;
+          Scanner.PurgeMissing = cfg.purgeMissing;
           LogLevel = "info";
           EnableInsightsCollector = false;
         };
