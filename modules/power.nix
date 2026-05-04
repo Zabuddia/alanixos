@@ -1,4 +1,4 @@
-{ lib, config, ... }:
+{ lib, config, pkgs, ... }:
 
 let
   cfg = config.alanix.power;
@@ -97,6 +97,12 @@ in
         description = "Manual hibernate resume offset for swapfile-backed hibernation.";
       };
 
+      resumeSwapFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Swapfile path used to refresh the kernel hibernate resume location at boot.";
+      };
+
       suspendThenHibernateDelay = lib.mkOption {
         type = lib.types.str;
         default = "30min";
@@ -153,6 +159,55 @@ in
         HibernateDelaySec=${cfg.hibernate.suspendThenHibernateDelay}
         HibernateOnACPower=${if cfg.hibernate.hibernateOnACPower then "yes" else "no"}
       '';
+    })
+
+    (lib.mkIf (cfg.hibernate.enable && cfg.hibernate.resumeSwapFile != null) {
+      systemd.services.alanix-hibernate-resume-swapfile = {
+        description = "Refresh hibernate resume location for ${cfg.hibernate.resumeSwapFile}";
+        after = [ "swap.target" ];
+        before = [ "systemd-logind.service" ];
+        wantedBy = [ "multi-user.target" ];
+        path = [
+          pkgs.e2fsprogs
+          pkgs.gawk
+          pkgs.util-linux
+        ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        script = ''
+          set -euo pipefail
+
+          swap_file=${lib.escapeShellArg cfg.hibernate.resumeSwapFile}
+
+          if ! swapon --noheadings --show=NAME | grep -Fxq "$swap_file"; then
+            echo "$swap_file is not active swap; cannot configure hibernate resume" >&2
+            exit 1
+          fi
+
+          backing_device="$(findmnt --noheadings --output SOURCE --target "$swap_file")"
+          if [ -z "$backing_device" ]; then
+            echo "Could not find backing device for $swap_file" >&2
+            exit 1
+          fi
+
+          major_minor="$(lsblk --noheadings --output MAJ:MIN "$backing_device" | head -n1 | tr -d '[:space:]')"
+          if [ -z "$major_minor" ]; then
+            echo "Could not find major:minor for $backing_device" >&2
+            exit 1
+          fi
+
+          resume_offset="$(filefrag -v "$swap_file" | awk '$1 == "0:" { gsub(/\.\./, "", $4); print $4; exit }')"
+          if [ -z "$resume_offset" ]; then
+            echo "Could not find resume offset for $swap_file" >&2
+            exit 1
+          fi
+
+          printf '%s' "$resume_offset" > /sys/power/resume_offset
+          printf '%s' "$major_minor" > /sys/power/resume
+        '';
+      };
     })
   ]);
 }

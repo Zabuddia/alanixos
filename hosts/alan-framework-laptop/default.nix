@@ -187,6 +187,7 @@
       };
       hibernate = {
         enable = true;
+        resumeSwapFile = "/swapfile";
         suspendThenHibernateDelay = "30min";
         hibernateOnACPower = false;
       };
