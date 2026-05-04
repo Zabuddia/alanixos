@@ -48,7 +48,7 @@
       swapDevices = [
         {
           device = "/swapfile";
-          size = 8192;
+          size = 20480;
         }
       ];
     };
@@ -179,6 +179,17 @@
       enableUpower = true;
       enableThermald = true;
       enablePowertop = true;
+      lidSwitch = {
+        enable = true;
+        action = "suspend-then-hibernate";
+        externalPowerAction = "suspend-then-hibernate";
+        dockedAction = "ignore";
+      };
+      hibernate = {
+        enable = true;
+        suspendThenHibernateDelay = "30min";
+        hibernateOnACPower = false;
+      };
     };
 
     alanix.ssh = {
