@@ -116,6 +116,7 @@ in
           "radicale.fifefin.com"
           "searxng.fifefin.com"
           "roundcube.fifefin.com"
+          "openwebui.fifefin.com"
         ];
       };
     };
@@ -871,6 +872,56 @@ in
 
       cluster = {
         enable = true;
+      };
+    };
+
+    alanix.openwebui = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 8000;
+      rootUrl = "https://openwebui.fifefin.com";
+      disableRegistration = true;
+      backupDir = "/var/backup/openwebui";
+
+      openai = {
+        baseUrls = [ "http://alan-framework:4000/v1" ];
+        apiKeys = [ "none" ];
+      };
+
+      webSearch = {
+        enable = true;
+        engine = "searxng";
+        searxngQueryUrl = "http://127.0.0.1:8888/search?q=<query>&format=json";
+      };
+
+      users.buddia = {
+        admin = true;
+        email = "fife.alan@protonmail.com";
+        name = "Alan Fife";
+        passwordSecret = "openwebui-passwords/buddia";
+      };
+
+      expose = {
+        wan = {
+          enable = true;
+          domain = "openwebui.fifefin.com";
+        };
+
+        tailscale = {
+          enable = true;
+          port = 18000;
+        };
+
+        wireguard = {
+          enable = true;
+          port = 8000;
+        };
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "1h";
+        maxBackupAge = "6h";
       };
     };
   };
