@@ -2674,6 +2674,24 @@ in
             addressFn = peerWireguardAddress;
           }
         ))
+        (lib.optionalAttrs (openwebuiCluster && openwebuiCfg.expose.tor.enable && openwebuiCfg.expose.tor.hostname != null) (
+          mkConstantLinksByHost [
+            {
+              label = "Open WebUI (tor)";
+              transport = "tor";
+              url = mkTorUrl openwebuiCfg.expose.tor;
+            }
+          ]
+        ))
+        (lib.optionalAttrs (openwebuiCluster && openwebuiCfg.expose.wan.enable) (
+          mkConstantLinksByHost [
+            {
+              label = "Open WebUI (wan)";
+              transport = "wan";
+              url = "https://${openwebuiCfg.expose.wan.domain}/";
+            }
+          ]
+        ))
       ];
 
       roundcubeLinksByHost = mergeLinksByHost [
