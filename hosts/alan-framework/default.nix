@@ -30,6 +30,7 @@
         lsof
         nak
         nodejs
+        ripgrep
         python3
         restic
         sops
@@ -215,6 +216,37 @@
           listenHost = "0.0.0.0";
           port = 8080;
           alias = null;
+          ctxSize = 32768;
+          batchSize = 4096;
+          ubatchSize = 1024;
+          parallel = 1;
+          gpuLayers = "all";
+          flashAttention = "on";
+          threads = null;
+          threadsBatch = null;
+          mmap = true;
+          mlock = false;
+          input = [ "text" ];
+          imageMinTokens = null;
+          imageMaxTokens = null;
+          model = {
+            name = "gemma-4-31b-it";
+            path = null;
+            url = null;
+            hfRepo = "ggml-org/gemma-4-31B-it-GGUF";
+            hfFile = "gemma-4-31B-it-Q4_K_M.gguf";
+            mmprojPath = null;
+            mmprojUrl = null;
+          };
+          extraArgs = [ ];
+        };
+
+        webui-chat = {
+          enable = true;
+          host = "127.0.0.1";
+          listenHost = "0.0.0.0";
+          port = 8083;
+          alias = "qwen3.5-35b-a3b";
           ctxSize = 32768;
           batchSize = 4096;
           ubatchSize = 1024;

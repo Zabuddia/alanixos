@@ -27,6 +27,7 @@
         git
         htop
         jq
+        ripgrep
         python3
         restic
         sops

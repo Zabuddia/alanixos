@@ -30,6 +30,7 @@
         lsof
         nak
         nodejs
+        ripgrep
         python3
         restic
         sops

@@ -30,6 +30,7 @@
         htop
         iotop
         jq
+        ripgrep
         python3
         restic
         sops
