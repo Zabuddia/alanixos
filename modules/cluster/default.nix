@@ -2277,6 +2277,7 @@ in
         || (immichCluster && immichCfg.expose.wan.enable)
         || (jellyfinCluster && jellyfinCfg.expose.wan.enable)
         || (navidromeCluster && navidromeCfg.expose.wan.enable)
+        || (openwebuiCluster && openwebuiCfg.expose.wan.enable)
         || (roundcubeCluster && roundcubeCfg.expose.wan.enable)
         || (owntracksCluster && owntracksCfg.recorder.expose.wan.enable)
         || (searxngCluster && searxngCfg.expose.wan.enable);
@@ -4198,6 +4199,15 @@ in
             cat >> "$caddy_file" <<EOF
             ${navidromeCfg.expose.wan.domain} {
               reverse_proxy ${normalizeLocalAddress navidromeCfg.listenAddress}:${toString navidromeCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (openwebuiCluster && openwebuiCfg.expose.wan.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${openwebuiCfg.expose.wan.domain} {
+              reverse_proxy ${normalizeLocalAddress openwebuiCfg.listenAddress}:${toString openwebuiCfg.port}
             }
 
             EOF
