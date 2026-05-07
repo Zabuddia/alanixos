@@ -204,6 +204,28 @@
       enable = true;
       backend = "vulkan";
       stateDir = "/var/lib/llm";
+      dashboard = {
+        enable = true;
+        listenAddress = "127.0.0.1";
+        port = 9843;
+        recentLogLines = 40;
+        expose = {
+          tailscale = {
+            enable = true;
+            port = 19843;
+          };
+          wireguard = {
+            enable = true;
+            port = 9843;
+          };
+          tor = {
+            enable = true;
+            publicPort = 80;
+            secretKeyBase64Secret = "tor/llm-dashboard/alan-framework/secret-key-base64";
+            hostname = "vx4hkzxkj6s2wslxahmnm5evo5hv3xc75sdgittbnulx4g2upkhvegad.onion";
+          };
+        };
+      };
       litellm = {
         enable = true;
         host = "0.0.0.0";
