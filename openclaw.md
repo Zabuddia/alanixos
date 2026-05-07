@@ -180,6 +180,7 @@ curl -fsS http://127.0.0.1:4000/v1/models | jq .
 What you want to see:
 
 - default model: `local-litellm/qwen3.5-35b-a3b`
+- background/subagent model: `local-litellm/gemma-4-31b-it`
 - image model: `local-litellm/qwen3-vl-30b-a3b-instruct`
 - configured embeddings model: `local-litellm/qwen3-embedding-4b`
 - browser default profile: `openclaw`
@@ -336,6 +337,11 @@ If you still see `SYSTEM_RUN_DENIED: approval required`, that means the node hos
 
 ## 4. Notes
 
+- Local LLM roles on `alan-framework`:
+  - foreground chat / IDE model: `qwen3.5-35b-a3b` on port `8083`
+  - background / subagent model: `gemma-4-31b-it` on port `8080`
+  - vision model: `qwen3-vl-30b-a3b-instruct` on port `8081`
+  - embeddings model: `qwen3-embedding-4b` on port `8082`
 - `imageModel` works with the LiteLLM vision model.
 - `tools.media` pre-digest media-understanding still does not work with `local-litellm` in the current OpenClaw version.
 - If you see media-understanding errors, that is separate from normal image-model routing.
