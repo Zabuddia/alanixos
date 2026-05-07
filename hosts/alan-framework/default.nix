@@ -261,7 +261,7 @@
             mmprojPath = null;
             mmprojUrl = null;
           };
-          extraArgs = [ ];
+          extraArgs = [ "--swa-full" ];
         };
 
         # Primary foreground text model for OpenClaw main chat and IDE clients.
@@ -293,7 +293,11 @@
             mmprojPath = null;
             mmprojUrl = null;
           };
-          extraArgs = [ "--swa-full" ];
+          # Keep Qwen thinking enabled, but stop runaway thought loops from
+          # monopolizing the only chat slot in Open WebUI.
+          extraArgs = [
+            "--swa-full"
+          ];
         };
 
         # Small fast text model for lightweight background checks and quick triage.
