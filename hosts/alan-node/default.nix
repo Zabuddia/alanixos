@@ -38,7 +38,12 @@
         p7zip
         wget
       ];
-      swapDevices = [ ];
+      swapDevices = [
+        {
+          device = "/swapfile";
+          size = 8192;
+        }
+      ];
     };
 
     alanix.users = {
