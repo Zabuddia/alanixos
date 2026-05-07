@@ -788,6 +788,18 @@ in
           };
         };
       };
+
+      systemd.services.syncthing-init = {
+        # Syncthing's config reconciler talks to the local GUI API. During
+        # `nixos-rebuild switch`, a hard `Requisite=` can briefly fail if
+        # systemd queues this unit just before syncthing is started again.
+        # A soft dependency preserves ordering without making the whole switch
+        # fail on that transient race.
+        wants = [ "syncthing.service" ];
+        after = [ "syncthing.service" ];
+        partOf = [ "syncthing.service" ];
+        requisite = lib.mkForce [ ];
+      };
     })
 
     (lib.mkIf (cfg.linkFolderSets != [ ] && userHomeReady) {
