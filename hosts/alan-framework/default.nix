@@ -232,12 +232,13 @@
         port = 4000;
       };
       instances = {
-        chat = {
+        # Secondary/background text model for OpenClaw subagents and quiet ops work.
+        ops = {
           enable = true;
           host = "127.0.0.1";
           listenHost = "0.0.0.0";
           port = 8080;
-          alias = null;
+          alias = "gemma-4-31b-it";
           ctxSize = 32768;
           batchSize = 4096;
           ubatchSize = 1024;
@@ -263,7 +264,8 @@
           extraArgs = [ ];
         };
 
-        webui-chat = {
+        # Primary foreground text model for OpenClaw main chat and IDE clients.
+        chat = {
           enable = true;
           host = "127.0.0.1";
           listenHost = "0.0.0.0";
@@ -294,12 +296,45 @@
           extraArgs = [ "--swa-full" ];
         };
 
+        # Small fast text model for lightweight background checks and quick triage.
+        fast = {
+          enable = true;
+          host = "127.0.0.1";
+          listenHost = "0.0.0.0";
+          port = 8084;
+          alias = "qwen3-8b";
+          ctxSize = 40960;
+          batchSize = 4096;
+          ubatchSize = 1024;
+          parallel = 1;
+          gpuLayers = "all";
+          flashAttention = "on";
+          threads = null;
+          threadsBatch = null;
+          mmap = true;
+          mlock = false;
+          input = [ "text" ];
+          imageMinTokens = null;
+          imageMaxTokens = null;
+          model = {
+            name = "qwen3-8b";
+            path = null;
+            url = null;
+            hfRepo = "Qwen/Qwen3-8B-GGUF";
+            hfFile = "Qwen3-8B-Q4_K_M.gguf";
+            mmprojPath = null;
+            mmprojUrl = null;
+          };
+          extraArgs = [ ];
+        };
+
+        # Vision model used for image understanding.
         vision = {
           enable = true;
           host = "127.0.0.1";
           listenHost = "0.0.0.0";
           port = 8081;
-          alias = null;
+          alias = "qwen3-vl-30b-a3b-instruct";
           ctxSize = 32768;
           batchSize = 2048;
           ubatchSize = 512;
@@ -328,12 +363,13 @@
           extraArgs = [ ];
         };
 
+        # Embeddings model used for OpenClaw memory search.
         embeddings = {
           enable = true;
           host = "127.0.0.1";
           listenHost = "0.0.0.0";
           port = 8082;
-          alias = null;
+          alias = "qwen3-embedding-4b";
           ctxSize = 8192;
           batchSize = 2048;
           ubatchSize = 512;
