@@ -296,6 +296,38 @@
           extraArgs = [ "--swa-full" ];
         };
 
+        # Small fast text model for lightweight background checks and quick triage.
+        fast = {
+          enable = true;
+          host = "127.0.0.1";
+          listenHost = "0.0.0.0";
+          port = 8084;
+          alias = "qwen3-8b";
+          ctxSize = 40960;
+          batchSize = 4096;
+          ubatchSize = 1024;
+          parallel = 1;
+          gpuLayers = "all";
+          flashAttention = "on";
+          threads = null;
+          threadsBatch = null;
+          mmap = true;
+          mlock = false;
+          input = [ "text" ];
+          imageMinTokens = null;
+          imageMaxTokens = null;
+          model = {
+            name = "qwen3-8b";
+            path = null;
+            url = null;
+            hfRepo = "Qwen/Qwen3-8B-GGUF";
+            hfFile = "Qwen3-8B-Q4_K_M.gguf";
+            mmprojPath = null;
+            mmprojUrl = null;
+          };
+          extraArgs = [ ];
+        };
+
         # Vision model used for image understanding.
         vision = {
           enable = true;
