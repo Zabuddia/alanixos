@@ -138,8 +138,14 @@ in
                 # Start when the tailscale interface appears, not at boot.
                 # This avoids a 90s hang when tailscale isn't up yet, and
                 # auto-starts the socket whenever tailscale connects (even
-                # if it wasn't available at boot).
-                wantedBy = lib.mkForce [ deviceUnit ];
+                # if it wasn't available at boot). Also hook into
+                # multi-user.target so rebuilds on already-connected nodes
+                # bring the socket up immediately.
+                wantedBy = lib.mkForce [
+                  deviceUnit
+                  "multi-user.target"
+                ];
+                wants = [ "alanix-tailscale-ready.service" ];
                 after = [ "alanix-tailscale-ready.service" deviceUnit ];
                 bindsTo = [ deviceUnit ];
               };

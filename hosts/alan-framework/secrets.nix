@@ -54,6 +54,13 @@
         path = "/etc/ssh/ssh_host_ed25519_key";
       };
 
+      "tor/llm-dashboard/alan-framework/secret-key-base64" = {
+        sopsFile = (import ../../secrets/files.nix).tor;
+        owner = "root";
+        group = "root";
+        mode = "0400";
+      };
+
       "syncthing-certs/alan-framework" = {
         sopsFile = (import ../../secrets/files.nix).syncthing;
         owner = "root";
