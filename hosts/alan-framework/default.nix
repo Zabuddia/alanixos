@@ -39,7 +39,14 @@
         p7zip
         wget
       ];
-      swapDevices = [ ];
+      swapDevices = [
+        # This host keeps several large local models warm; swap gives the box
+        # some breathing room during cache churn and prevents brief OOM outages.
+        {
+          device = "/swapfile";
+          size = 32768;
+        }
+      ];
     };
 
     alanix.users = {
@@ -232,38 +239,6 @@
         port = 4000;
       };
       instances = {
-        # Secondary/background text model for OpenClaw subagents and quiet ops work.
-        ops = {
-          enable = true;
-          host = "127.0.0.1";
-          listenHost = "0.0.0.0";
-          port = 8080;
-          alias = "gemma-4-31b-it";
-          ctxSize = 32768;
-          batchSize = 4096;
-          ubatchSize = 1024;
-          parallel = 1;
-          gpuLayers = "all";
-          flashAttention = "on";
-          threads = null;
-          threadsBatch = null;
-          mmap = true;
-          mlock = false;
-          input = [ "text" ];
-          imageMinTokens = null;
-          imageMaxTokens = null;
-          model = {
-            name = "gemma-4-31b-it";
-            path = null;
-            url = null;
-            hfRepo = "ggml-org/gemma-4-31B-it-GGUF";
-            hfFile = "gemma-4-31B-it-Q4_K_M.gguf";
-            mmprojPath = null;
-            mmprojUrl = null;
-          };
-          extraArgs = [ "--swa-full" ];
-        };
-
         # Primary foreground text model for OpenClaw main chat and IDE clients.
         chat = {
           enable = true;
@@ -293,14 +268,16 @@
             mmprojPath = null;
             mmprojUrl = null;
           };
-          # Keep Qwen thinking enabled, but stop runaway thought loops from
-          # monopolizing the only chat slot in Open WebUI.
+          # OpenClaw and Open WebUI expect plain assistant content here; when
+          # Qwen thinks out loud it can stall chats and return empty content.
           extraArgs = [
             "--swa-full"
+            "--reasoning"
+            "off"
           ];
         };
 
-        # Small fast text model for lightweight background checks and quick triage.
+        # Small fast text model for OpenClaw subagents, ops, and quick triage.
         fast = {
           enable = true;
           host = "127.0.0.1";
@@ -329,7 +306,10 @@
             mmprojPath = null;
             mmprojUrl = null;
           };
-          extraArgs = [ ];
+          extraArgs = [
+            "--reasoning"
+            "off"
+          ];
         };
 
         # Vision model used for image understanding.
