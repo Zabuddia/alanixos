@@ -43,6 +43,7 @@
         imagemagick
         unzip
         p7zip
+        usbutils
       ];
       swapDevices = [
         {

@@ -38,6 +38,7 @@
         unzip
         p7zip
         wget
+        usbutils
       ];
       swapDevices = [
         # This host keeps several large local models warm; swap gives the box

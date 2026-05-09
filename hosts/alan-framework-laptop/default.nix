@@ -45,6 +45,7 @@
         p7zip
         unar
         gparted
+        usbutils
       ];
       swapDevices = [
         {
