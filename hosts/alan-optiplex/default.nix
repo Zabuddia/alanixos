@@ -35,6 +35,7 @@
         unzip
         p7zip
         wget
+        usbutils
       ];
       swapDevices = [ ];
     };
