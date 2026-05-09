@@ -36,13 +36,15 @@ let
         if station.audioRate != null then
           station.audioRate
         else if station.mode == "wbfm" then
-          32000
+          44100
         else
           24000;
 
       audioLowPass =
         if station.audioLowPass != null then
           station.audioLowPass
+        else if station.mode == "wbfm" then
+          15000
         else
           null;
 
