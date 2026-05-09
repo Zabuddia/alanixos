@@ -243,6 +243,7 @@
         # Primary foreground text model for OpenClaw main chat and IDE clients.
         chat = {
           enable = true;
+          runtime = "llama";
           host = "127.0.0.1";
           listenHost = "0.0.0.0";
           port = 8083;
@@ -280,6 +281,7 @@
         # Small fast text model for OpenClaw subagents, ops, and quick triage.
         fast = {
           enable = true;
+          runtime = "llama";
           host = "127.0.0.1";
           listenHost = "0.0.0.0";
           port = 8084;
@@ -315,6 +317,7 @@
         # Vision model used for image understanding.
         vision = {
           enable = true;
+          runtime = "llama";
           host = "127.0.0.1";
           listenHost = "0.0.0.0";
           port = 8081;
@@ -350,6 +353,7 @@
         # Embeddings model used for OpenClaw memory search.
         embeddings = {
           enable = true;
+          runtime = "llama";
           host = "127.0.0.1";
           listenHost = "0.0.0.0";
           port = 8082;
@@ -377,6 +381,36 @@
             mmprojUrl = null;
           };
           extraArgs = [ "--embeddings" ];
+        };
+
+        # Speech-to-text model exposed through LiteLLM's transcription endpoint.
+        transcribe = {
+          enable = true;
+          runtime = "whisper";
+          host = "127.0.0.1";
+          listenHost = "0.0.0.0";
+          port = 8085;
+          alias = "whisper-small";
+          threads = null;
+          input = [ "audio" ];
+          language = "auto";
+          translate = false;
+          processors = 1;
+          convertAudio = true;
+          requestPath = "/v1/audio/transcriptions";
+          inferencePath = "";
+          gpu = true;
+          model = {
+            name = "small";
+            path = null;
+            url = null;
+            hfRepo = null;
+            hfFile = null;
+            mmprojPath = null;
+            mmprojUrl = null;
+            downloadName = "small";
+          };
+          extraArgs = [ ];
         };
       };
     };
