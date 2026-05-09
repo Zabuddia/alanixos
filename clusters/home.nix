@@ -695,6 +695,11 @@ in
         passwordSecret = "navidrome-passwords/buddia";
       };
 
+      internetRadioStations.alanix_sdr = {
+        name = "Alanix SDR Radio";
+        streamUrl = "http://alan-big-nixos:18075/live.mp3";
+      };
+
       mediaFolders.music = {
         path = "${config.alanix.syncthing.syncRoot}/media/music";
         create = true;
