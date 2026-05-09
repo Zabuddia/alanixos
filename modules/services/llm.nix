@@ -256,6 +256,9 @@ let
               api_base = "http://${instance.host}:${toString instance.port}/v1";
               api_key = "local-${mkModelAlias instance}";
             };
+            model_info = {
+              max_input_tokens = instance.ctxSize;
+            };
           })
           enabledInstances;
     };
