@@ -591,14 +591,14 @@ in
 
             subsonic_ok() {
               is_success_status "$RESPONSE_STATUS" \
-                && [ "$(printf '%s' "$RESPONSE_BODY" | jq -r '.status // empty')" = "ok" ]
+                && [ "$(printf '%s' "$RESPONSE_BODY" | jq -r '.["subsonic-response"].status // empty')" = "ok" ]
             }
 
             warn_subsonic_failure() {
               local action="$1"
               local message
 
-              message="$(printf '%s' "$RESPONSE_BODY" | jq -r '.error.message // empty' 2>/dev/null || true)"
+              message="$(printf '%s' "$RESPONSE_BODY" | jq -r '.["subsonic-response"].error.message // empty' 2>/dev/null || true)"
               echo "Warning: Failed to $action (HTTP $RESPONSE_STATUS). ''${message}" >&2
               if [ -n "$RESPONSE_BODY" ]; then
                 printf '%s\n' "$RESPONSE_BODY" >&2
@@ -632,7 +632,7 @@ in
                   | jq -c \
                     --arg name "$radio_name" \
                     --arg streamUrl "$stream_url" \
-                    '.internetRadioStations.internetRadioStation // [] | map(select(.name == $name or .streamUrl == $streamUrl)) | .[0] // empty'
+                    '.["subsonic-response"].internetRadioStations.internetRadioStation // [] | map(select(.name == $name or .streamUrl == $streamUrl)) | .[0] // empty'
               )"
 
               if [ -z "$existing" ]; then
