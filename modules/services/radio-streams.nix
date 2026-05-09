@@ -36,25 +36,15 @@ let
         if station.audioRate != null then
           station.audioRate
         else if station.mode == "wbfm" then
-          44100
+          32000
         else
           24000;
 
       audioLowPass =
         if station.audioLowPass != null then
           station.audioLowPass
-        else if station.mode == "wbfm" then
-          15000
         else
           null;
-
-      applyDeemphasis =
-        if station.deemphasis != null then station.deemphasis
-        else station.mode == "wbfm";
-
-      deemphasisHz = if applyDeemphasis then 2122 else null;
-
-      pilotNotchHz = if station.mode == "wbfm" then 19000 else null;
 
       rtlMode =
         if station.mode == "nfm" then
@@ -91,7 +81,7 @@ let
     in
     station
     // {
-      inherit audioRate audioLowPass deemphasisHz pilotNotchHz tunerCommand;
+      inherit audioRate audioLowPass tunerCommand;
       stationId = id;
     };
 
@@ -123,12 +113,6 @@ let
           station_description=${lib.escapeShellArg station.description}
           station_genre=${lib.escapeShellArg station.genre}
           station_audio_rate=${lib.escapeShellArg (toString station.audioRate)}
-          station_pilot_notch_liq=${lib.escapeShellArg (
-            if station.pilotNotchHz == null then "" else "radio = filter.iir.eq.notch(frequency=${toString station.pilotNotchHz}., q=30., radio)"
-          )}
-          station_deemphasis_liq=${lib.escapeShellArg (
-            if station.deemphasisHz == null then "" else "radio = filter.iir.butterworth.low(frequency=${toString station.deemphasisHz}., order=1, radio)"
-          )}
           station_audio_low_pass_liq=${lib.escapeShellArg (
             if station.audioLowPass == null then "" else "radio = filter.iir.butterworth.low(frequency=${toString station.audioLowPass}., order=6, radio)"
           )}
@@ -552,16 +536,6 @@ in
             default = [ ];
             description = "Extra arguments appended to rtl_fm.";
           };
-
-          deemphasis = lib.mkOption {
-            type = lib.types.nullOr lib.types.bool;
-            default = null;
-            description = ''
-              Apply 75µs FM de-emphasis (first-order low-pass at 2122 Hz) in
-              Liquidsoap. Defaults to true for wbfm since rtl_fm does not apply
-              de-emphasis in wbfm mode. Set to false to disable explicitly.
-            '';
-          };
         };
       }));
       default = { };
@@ -699,8 +673,6 @@ in
         ])
 
         radio = stereo(radio)
-        $station_pilot_notch_liq
-        $station_deemphasis_liq
         $station_audio_low_pass_liq
         radio = mksafe(radio)
 
