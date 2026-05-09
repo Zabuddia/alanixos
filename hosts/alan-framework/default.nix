@@ -246,7 +246,7 @@
           host = "127.0.0.1";
           listenHost = "0.0.0.0";
           port = 8083;
-          alias = "qwen3.5-35b-a3b";
+          alias = "qwen3.6-35b-a3b";
           ctxSize = 32768;
           batchSize = 4096;
           ubatchSize = 1024;
@@ -261,11 +261,11 @@
           imageMinTokens = null;
           imageMaxTokens = null;
           model = {
-            name = "qwen3.5-35b-a3b";
+            name = "qwen3.6-35b-a3b";
             path = null;
             url = null;
-            hfRepo = "unsloth/Qwen3.5-35B-A3B-GGUF";
-            hfFile = "Qwen3.5-35B-A3B-UD-Q5_K_XL.gguf";
+            hfRepo = "unsloth/Qwen3.6-35B-A3B-GGUF";
+            hfFile = "Qwen3.6-35B-A3B-UD-Q5_K_XL.gguf";
             mmprojPath = null;
             mmprojUrl = null;
           };
