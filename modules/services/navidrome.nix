@@ -28,6 +28,10 @@ let
   sanitizedUsersForRestart =
     lib.mapAttrs (_: userCfg: { inherit (userCfg) admin passwordSecret; }) cfg.users;
 
+  radioReconcileEnabled = cfg.internetRadioStations != { };
+  sanitizedRadiosForRestart =
+    lib.mapAttrs (_: radioCfg: { inherit (radioCfg) name streamUrl homePageUrl; }) cfg.internetRadioStations;
+
   adminPassfilePath =
     if bootstrapAdminName != null
     then config.sops.secrets.${adminUsers.${bootstrapAdminName}.passwordSecret}.path
@@ -121,6 +125,35 @@ in
         Declarative Navidrome users. Passwords are read from sops secrets and
         enforced on every service restart via Navidrome's native HTTP API.
         The first declared admin user is used to bootstrap the initial admin account.
+      '';
+    };
+
+    internetRadioStations = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
+        options = {
+          name = lib.mkOption {
+            type = lib.types.str;
+            default = name;
+            description = "Display name for this Navidrome internet radio station.";
+          };
+
+          streamUrl = lib.mkOption {
+            type = lib.types.str;
+            description = "Playable stream URL.";
+          };
+
+          homePageUrl = lib.mkOption {
+            type = lib.types.str;
+            default = "";
+            description = "Optional homepage URL shown for the station.";
+          };
+        };
+      }));
+      default = { };
+      description = ''
+        Declarative Navidrome internet radio stations. Declared stations are
+        created or updated through Navidrome's Subsonic API; manually-created
+        stations are left alone.
       '';
     };
 
@@ -475,10 +508,193 @@ in
           restartTriggers = [ (builtins.toJSON sanitizedUsersForRestart) ];
         };
 
+      systemd.services.navidrome-reconcile-internet-radios =
+        lib.mkIf (radioReconcileEnabled && baseConfigReady) {
+          description = "Reconcile Navidrome internet radio stations";
+          after = [ "navidrome.service" "navidrome-reconcile-users.service" "sops-nix.service" ];
+          wants = [ "navidrome.service" "navidrome-reconcile-users.service" "sops-nix.service" ];
+          partOf = [ "navidrome.service" ];
+          wantedBy = [ "navidrome.service" ];
+
+          serviceConfig = {
+            Type = "oneshot";
+            User = "root";
+            Group = "root";
+            UMask = "0077";
+          };
+
+          path = [ pkgs.coreutils pkgs.curl pkgs.jq ];
+
+          script = ''
+            set -euo pipefail
+
+            BASE_URL=${lib.escapeShellArg "http://${cfg.listenAddress}:${toString cfg.port}"}
+            ADMIN_USER=${lib.escapeShellArg (if bootstrapAdminName == null then "" else bootstrapAdminName)}
+            ADMIN_PASSFILE=${lib.escapeShellArg adminPassfilePath}
+
+            RESPONSE_STATUS=""
+            RESPONSE_BODY=""
+
+            wait_for_server() {
+              local attempts=120
+              while [ "$attempts" -gt 0 ]; do
+                if curl -sf "$BASE_URL/app/" >/dev/null 2>&1; then
+                  return 0
+                fi
+                sleep 1
+                attempts=$((attempts - 1))
+              done
+              echo "Timed out waiting for Navidrome to become ready." >&2
+              return 1
+            }
+
+            subsonic_call() {
+              local endpoint="$1"
+              shift
+              local body_file
+              local curl_args
+
+              body_file="$(mktemp)"
+              curl_args=(
+                -sS
+                -o
+                "$body_file"
+                -w
+                "%{http_code}"
+                -G
+                "$BASE_URL/rest/$endpoint.view"
+                --data-urlencode
+                "u=$ADMIN_USER"
+                --data-urlencode
+                "p=$ADMIN_PASSWORD"
+                --data-urlencode
+                "v=1.16.1"
+                --data-urlencode
+                "c=alanix-navidrome"
+                --data-urlencode
+                "f=json"
+              )
+
+              while [ "$#" -gt 0 ]; do
+                curl_args+=(--data-urlencode "$1")
+                shift
+              done
+
+              RESPONSE_STATUS="$(curl "''${curl_args[@]}" || true)"
+              RESPONSE_BODY="$(cat "$body_file")"
+              rm -f "$body_file"
+            }
+
+            is_success_status() {
+              [ "$1" = "200" ] || [ "$1" = "201" ]
+            }
+
+            subsonic_ok() {
+              is_success_status "$RESPONSE_STATUS" \
+                && [ "$(printf '%s' "$RESPONSE_BODY" | jq -r '.status // empty')" = "ok" ]
+            }
+
+            warn_subsonic_failure() {
+              local action="$1"
+              local message
+
+              message="$(printf '%s' "$RESPONSE_BODY" | jq -r '.error.message // empty' 2>/dev/null || true)"
+              echo "Warning: Failed to $action (HTTP $RESPONSE_STATUS). ''${message}" >&2
+              if [ -n "$RESPONSE_BODY" ]; then
+                printf '%s\n' "$RESPONSE_BODY" >&2
+              fi
+            }
+
+            get_radios() {
+              subsonic_call getInternetRadioStations
+              if ! subsonic_ok; then
+                warn_subsonic_failure "list Navidrome internet radio stations"
+                return 1
+              fi
+
+              printf '%s' "$RESPONSE_BODY"
+            }
+
+            ensure_radio() {
+              local radio_key="$1"
+              local radio_name="$2"
+              local stream_url="$3"
+              local homepage_url="$4"
+              local radios_response existing radio_id current_name current_stream current_home
+
+              radios_response="$(get_radios || true)"
+              if [ -z "$radios_response" ]; then
+                return 0
+              fi
+
+              existing="$(
+                printf '%s' "$radios_response" \
+                  | jq -c \
+                    --arg name "$radio_name" \
+                    --arg streamUrl "$stream_url" \
+                    '.internetRadioStations.internetRadioStation // [] | map(select(.name == $name or .streamUrl == $streamUrl)) | .[0] // empty'
+              )"
+
+              if [ -z "$existing" ]; then
+                echo "Creating Navidrome internet radio station: $radio_name"
+                subsonic_call createInternetRadioStation \
+                  "name=$radio_name" \
+                  "streamUrl=$stream_url" \
+                  "homepageUrl=$homepage_url"
+                if ! subsonic_ok; then
+                  warn_subsonic_failure "create Navidrome internet radio station '$radio_key'"
+                fi
+                return 0
+              fi
+
+              radio_id="$(printf '%s' "$existing" | jq -r '.id')"
+              current_name="$(printf '%s' "$existing" | jq -r '.name // ""')"
+              current_stream="$(printf '%s' "$existing" | jq -r '.streamUrl // ""')"
+              current_home="$(printf '%s' "$existing" | jq -r '.homePageUrl // ""')"
+
+              if [ "$current_name" = "$radio_name" ] \
+                && [ "$current_stream" = "$stream_url" ] \
+                && [ "$current_home" = "$homepage_url" ]; then
+                echo "Navidrome internet radio station already current: $radio_name"
+                return 0
+              fi
+
+              echo "Updating Navidrome internet radio station: $radio_name"
+              subsonic_call updateInternetRadioStation \
+                "id=$radio_id" \
+                "name=$radio_name" \
+                "streamUrl=$stream_url" \
+                "homepageUrl=$homepage_url"
+              if ! subsonic_ok; then
+                warn_subsonic_failure "update Navidrome internet radio station '$radio_key'"
+              fi
+            }
+
+            wait_for_server
+
+            ADMIN_PASSWORD="$(tr -d '\r\n' < "$ADMIN_PASSFILE")"
+
+            ${lib.concatStringsSep "\n"
+              (lib.mapAttrsToList
+                (radioKey: radioCfg:
+                  ''ensure_radio ${lib.escapeShellArg radioKey} ${lib.escapeShellArg radioCfg.name} ${lib.escapeShellArg radioCfg.streamUrl} ${lib.escapeShellArg radioCfg.homePageUrl}'')
+                cfg.internetRadioStations)}
+
+            echo "Navidrome internet radio reconciliation complete."
+          '';
+
+          restartTriggers = [ (builtins.toJSON sanitizedRadiosForRestart) ];
+        };
+
       system.activationScripts.alanixNavidromeReconcile =
-        lib.mkIf (reconcileEnabled && baseConfigReady) ''
+        lib.mkIf (baseConfigReady && (reconcileEnabled || radioReconcileEnabled)) ''
           if ${pkgs.systemd}/bin/systemctl --quiet is-active navidrome.service; then
-            ${pkgs.systemd}/bin/systemctl start navidrome-reconcile-users.service || true
+            ${lib.optionalString reconcileEnabled ''
+              ${pkgs.systemd}/bin/systemctl start navidrome-reconcile-users.service || true
+            ''}
+            ${lib.optionalString radioReconcileEnabled ''
+              ${pkgs.systemd}/bin/systemctl start navidrome-reconcile-internet-radios.service || true
+            ''}
           fi
         '';
 

@@ -18,6 +18,7 @@
     ./network/tor.nix
     ./services/filebrowser.nix
     ./services/forgejo.nix
+    ./services/icecast.nix
     ./services/immich.nix
     ./services/invidious.nix
     ./services/jellyfin.nix
@@ -27,7 +28,9 @@
     ./services/nextcloud.nix
     ./services/owntracks.nix
     ./services/openclaw.nix
+    ./services/openwebrx.nix
     ./services/openwebui.nix
+    ./services/radio-streams.nix
     ./services/radicale.nix
     ./services/remote-desktop.nix
     ./services/roundcube.nix
