@@ -688,7 +688,7 @@ in
 
       system.activationScripts.alanixNavidromeReconcile =
         lib.mkIf (baseConfigReady && (reconcileEnabled || radioReconcileEnabled)) {
-          deps = [ "setupEtc" ];
+          deps = [ "etc" ];
           text = ''
             if ${pkgs.systemd}/bin/systemctl --quiet is-active navidrome.service; then
               ${pkgs.systemd}/bin/systemctl daemon-reload
