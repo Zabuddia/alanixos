@@ -247,7 +247,7 @@
           listenHost = "0.0.0.0";
           port = 8083;
           alias = "qwen3.6-35b-a3b";
-          ctxSize = 32768;
+          ctxSize = 131072;
           batchSize = 4096;
           ubatchSize = 1024;
           parallel = 1;
