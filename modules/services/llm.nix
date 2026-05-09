@@ -6,13 +6,19 @@ let
   serviceExposure = import ../../lib/mkServiceExposure.nix { inherit lib pkgs; };
   yamlFormat = pkgs.formats.yaml { };
 
-  package =
+  llamaPackage =
     if cfg.backend == "cpu" then
       pkgs-unstable.llama-cpp
     else if cfg.backend == "rocm" then
       pkgs-unstable.llama-cpp-rocm
     else
       pkgs-unstable.llama-cpp-vulkan;
+
+  whisperPackage =
+    if cfg.backend == "vulkan" then
+      pkgs.whisper-cpp-vulkan
+    else
+      pkgs.whisper-cpp;
 
   normalizeLocalAddress =
     address:
@@ -81,76 +87,97 @@ let
       default = null;
       description = "${descriptionPrefix} optional multimodal projector GGUF URL passed via --mmproj-url.";
     };
+
+    downloadName = lib.mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "${descriptionPrefix} whisper.cpp built-in model name to auto-download.";
+    };
   };
 
   mkInstanceSubmodule = types.submodule ({ name, ... }: {
     options = {
-      enable = lib.mkEnableOption "llama.cpp instance ${name}";
+      enable = lib.mkEnableOption "model service instance ${name}";
 
-    host = lib.mkOption {
-      type = types.str;
-    };
+      runtime = lib.mkOption {
+        type = types.enum [ "llama" "whisper" ];
+        description = "Local model runtime backing this instance.";
+      };
 
-    listenHost = lib.mkOption {
-      type = types.str;
-      description = "Address/interface llama-server binds to.";
-    };
+      host = lib.mkOption {
+        type = types.str;
+      };
 
-    port = lib.mkOption {
-      type = types.port;
-    };
+      listenHost = lib.mkOption {
+        type = types.str;
+        description = "Address/interface the runtime server binds to.";
+      };
+
+      port = lib.mkOption {
+        type = types.port;
+      };
 
       alias = lib.mkOption {
         type = types.nullOr types.str;
         default = null;
-        description = "Model alias exposed by llama-server's OpenAI-compatible API.";
+        description = "Model alias exposed by the runtime's OpenAI-compatible API.";
       };
 
       ctxSize = lib.mkOption {
-        type = types.int;
+        type = types.nullOr types.int;
+        default = null;
       };
 
       batchSize = lib.mkOption {
-        type = types.int;
+        type = types.nullOr types.int;
+        default = null;
       };
 
       ubatchSize = lib.mkOption {
-        type = types.int;
+        type = types.nullOr types.int;
+        default = null;
       };
 
       parallel = lib.mkOption {
-        type = types.int;
+        type = types.nullOr types.int;
+        default = null;
       };
 
       gpuLayers = lib.mkOption {
-        type = types.oneOf [
-          types.int
-          (types.enum [ "auto" "all" ])
-        ];
+        type = types.nullOr (
+          types.oneOf [
+            types.int
+            (types.enum [ "auto" "all" ])
+          ]
+        );
+        default = null;
       };
 
       flashAttention = lib.mkOption {
-        type = types.enum [ "on" "off" "auto" ];
+        type = types.nullOr (types.enum [ "on" "off" "auto" ]);
+        default = null;
       };
 
       threads = lib.mkOption {
         type = types.nullOr types.int;
         default = null;
-        description = "Generation threads. Null means use all available threads via nproc.";
+        description = "Worker threads. Null means use all available threads via nproc.";
       };
 
       threadsBatch = lib.mkOption {
         type = types.nullOr types.int;
         default = null;
-        description = "Prompt/batch threads. Null means match threads.";
+        description = "Prompt/batch threads for llama.cpp. Null means match threads.";
       };
 
       mmap = lib.mkOption {
-        type = types.bool;
+        type = types.nullOr types.bool;
+        default = null;
       };
 
       mlock = lib.mkOption {
-        type = types.bool;
+        type = types.nullOr types.bool;
+        default = null;
       };
 
       input = lib.mkOption {
@@ -168,6 +195,48 @@ let
         default = null;
       };
 
+      language = lib.mkOption {
+        type = types.str;
+        default = "auto";
+        description = "whisper.cpp spoken language. Use auto for detection.";
+      };
+
+      translate = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether whisper.cpp should translate speech to English.";
+      };
+
+      processors = lib.mkOption {
+        type = types.int;
+        default = 1;
+        description = "whisper.cpp processor count.";
+      };
+
+      convertAudio = lib.mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether whisper.cpp should invoke ffmpeg to transcode uploads to WAV.";
+      };
+
+      requestPath = lib.mkOption {
+        type = types.str;
+        default = "/v1/audio/transcriptions";
+        description = "HTTP request path exposed by whisper-server.";
+      };
+
+      inferencePath = lib.mkOption {
+        type = types.str;
+        default = "";
+        description = "Optional whisper-server inference path.";
+      };
+
+      gpu = lib.mkOption {
+        type = types.bool;
+        default = cfg.backend == "vulkan";
+        description = "Whether whisper.cpp should try to use GPU acceleration.";
+      };
+
       model = mkModelOptions "Instance ${name}";
 
       extraArgs = lib.mkOption {
@@ -180,10 +249,23 @@ let
   enabledInstances = lib.filterAttrs (_: instance: instance.enable) cfg.instances;
   enabledPorts = lib.mapAttrsToList (_: instance: instance.port) enabledInstances;
 
+  isLlamaInstance = instance: instance.runtime == "llama";
+  isWhisperInstance = instance: instance.runtime == "whisper";
+
+  hasLlamaInstance = lib.any isLlamaInstance (lib.attrValues enabledInstances);
+  hasWhisperInstance = lib.any isWhisperInstance (lib.attrValues enabledInstances);
+
   mkModelAlias = instance:
     if instance.alias != null then instance.alias else instance.model.name;
 
-  mkModelArgs = instance:
+  mkWhisperModelPath =
+    instance:
+    if instance.model.path != null then
+      instance.model.path
+    else
+      "${cfg.stateDir}/models/whisper/ggml-${instance.model.downloadName}.bin";
+
+  mkLlamaModelArgs = instance:
     if instance.model.path != null then
       [ "--model" instance.model.path ]
     else if instance.model.url != null then
@@ -192,7 +274,7 @@ let
       [ "--hf-repo" instance.model.hfRepo ]
       ++ (lib.optionals (instance.model.hfFile != null) [ "--hf-file" instance.model.hfFile ]);
 
-  mkStaticArgs = instance:
+  mkLlamaStaticArgs = instance:
     [
       "--host"
       instance.listenHost
@@ -215,28 +297,92 @@ let
     ]
     ++ (lib.optionals instance.mlock [ "--mlock" ])
     ++ (lib.optionals (!instance.mmap) [ "--no-mmap" ])
-    ++ (mkModelArgs instance)
+    ++ (mkLlamaModelArgs instance)
     ++ (lib.optionals (instance.model.mmprojPath != null) [ "--mmproj" instance.model.mmprojPath ])
     ++ (lib.optionals (instance.model.mmprojUrl != null) [ "--mmproj-url" instance.model.mmprojUrl ])
     ++ (lib.optionals (instance.imageMinTokens != null) [ "--image-min-tokens" (toString instance.imageMinTokens) ])
     ++ (lib.optionals (instance.imageMaxTokens != null) [ "--image-max-tokens" (toString instance.imageMaxTokens) ])
     ++ instance.extraArgs;
 
+  mkWhisperStaticArgs = instance:
+    [
+      "--host"
+      instance.listenHost
+      "--port"
+      (toString instance.port)
+      "--model"
+      (mkWhisperModelPath instance)
+      "--language"
+      instance.language
+      "--processors"
+      (toString instance.processors)
+      "--request-path"
+      instance.requestPath
+      "--inference-path"
+      instance.inferencePath
+    ]
+    ++ (lib.optionals instance.translate [ "--translate" ])
+    ++ (lib.optionals instance.convertAudio [ "--convert" ])
+    ++ (lib.optionals (!instance.gpu) [ "--no-gpu" ])
+    ++ instance.extraArgs;
+
   mkStartScript = instanceName: instance:
-    pkgs.writeShellScript "alanix-llama-server-${instanceName}" ''
-      set -euo pipefail
+    if isLlamaInstance instance then
+      pkgs.writeShellScript "alanix-llama-server-${instanceName}" ''
+        set -euo pipefail
 
-      threads=${if instance.threads == null then "$(${pkgs.coreutils}/bin/nproc)" else toString instance.threads}
-      threads_batch=${if instance.threadsBatch == null then "$threads" else toString instance.threadsBatch}
+        threads=${if instance.threads == null then "$(${pkgs.coreutils}/bin/nproc)" else toString instance.threads}
+        threads_batch=${if instance.threadsBatch == null then "$threads" else toString instance.threadsBatch}
 
-      exec ${lib.getExe' package "llama-server"} \
-        --threads "$threads" \
-        --threads-batch "$threads_batch" \
-        ${lib.escapeShellArgs (mkStaticArgs instance)}
-    '';
+        exec ${lib.getExe' llamaPackage "llama-server"} \
+          --threads "$threads" \
+          --threads-batch "$threads_batch" \
+          ${lib.escapeShellArgs (mkLlamaStaticArgs instance)}
+      ''
+    else
+      pkgs.writeShellScript "alanix-whisper-server-${instanceName}" ''
+        set -euo pipefail
 
-  mkServiceName = instanceName:
-    if instanceName == "default" then "llama-server" else "llama-server-${instanceName}";
+        threads=${if instance.threads == null then "$(${pkgs.coreutils}/bin/nproc)" else toString instance.threads}
+        model_dir=${lib.escapeShellArg "${cfg.stateDir}/models/whisper"}
+        model_path=${lib.escapeShellArg (mkWhisperModelPath instance)}
+
+        ${lib.optionalString (instance.model.path == null) ''
+          mkdir -p "$model_dir"
+          if [ ! -f "$model_path" ]; then
+            cd "$model_dir"
+            ${lib.getExe' whisperPackage "whisper-cpp-download-ggml-model"} ${lib.escapeShellArg instance.model.downloadName}
+          fi
+        ''}
+
+        exec ${lib.getExe' whisperPackage "whisper-server"} \
+          --threads "$threads" \
+          ${lib.escapeShellArgs (mkWhisperStaticArgs instance)}
+      '';
+
+  mkServiceName = instanceName: instance:
+    let
+      baseName = if isLlamaInstance instance then "llama-server" else "whisper-server";
+    in
+    if instanceName == "default" then baseName else "${baseName}-${instanceName}";
+
+  instanceApiBasePath = instance:
+    if isLlamaInstance instance || lib.hasPrefix "/v1/" instance.requestPath then
+      "/v1"
+    else
+      "";
+
+  instanceEndpointPath = instance:
+    if isLlamaInstance instance then
+      "/v1"
+    else
+      instance.requestPath + instance.inferencePath;
+
+  instanceHealthPath = instance:
+    if isLlamaInstance instance then
+      "/v1/models"
+    else
+      instance.requestPath + instance.inferencePath;
 
   dashboardCfg = cfg.dashboard;
   dashboardEndpoint = {
@@ -249,17 +395,20 @@ let
     yamlFormat.generate "alanix-litellm-config.yaml" {
       model_list =
         lib.mapAttrsToList
-          (_: instance: {
-            model_name = mkModelAlias instance;
-            litellm_params = {
-              model = "openai/${mkModelAlias instance}";
-              api_base = "http://${instance.host}:${toString instance.port}/v1";
-              api_key = "local-${mkModelAlias instance}";
-            };
-            model_info = {
-              max_input_tokens = instance.ctxSize;
-            };
-          })
+          (_: instance:
+            {
+              model_name = mkModelAlias instance;
+              litellm_params = {
+                model = "openai/${mkModelAlias instance}";
+                api_base = "http://${instance.host}:${toString instance.port}${instanceApiBasePath instance}";
+                api_key = "local-${mkModelAlias instance}";
+              };
+            }
+            // lib.optionalAttrs (isLlamaInstance instance) {
+              model_info = {
+                max_input_tokens = instance.ctxSize;
+              };
+            })
           enabledInstances;
     };
 
@@ -346,51 +495,66 @@ let
 
   dashboardServices =
     lib.mapAttrsToList
-      (instanceName: instance: {
-        kind = "instance";
-        name = instanceName;
-        displayName = instanceName;
-        serviceName = mkServiceName instanceName;
-        bindHost = instance.listenHost;
-        host = instance.host;
-        healthHost = normalizeLocalAddress instance.host;
-        port = instance.port;
-        endpointUrl = mkUrl {
-          scheme = "http";
-          host = normalizeLocalAddress instance.host;
+      (instanceName: instance:
+        {
+          kind = "instance";
+          runtime = instance.runtime;
+          name = instanceName;
+          displayName = instanceName;
+          serviceName = mkServiceName instanceName instance;
+          bindHost = instance.listenHost;
+          host = instance.host;
+          healthHost = normalizeLocalAddress instance.host;
           port = instance.port;
-          path = "/v1";
-        };
-        healthUrl = mkUrl {
-          scheme = "http";
-          host = normalizeLocalAddress instance.host;
-          port = instance.port;
-          path = "/v1/models";
-        };
-        alias = mkModelAlias instance;
-        modelName = instance.model.name;
-        model = {
-          path = instance.model.path;
-          url = instance.model.url;
-          hfRepo = instance.model.hfRepo;
-          hfFile = instance.model.hfFile;
-          mmprojPath = instance.model.mmprojPath;
-          mmprojUrl = instance.model.mmprojUrl;
-        };
-        input = instance.input;
-        ctxSize = instance.ctxSize;
-        batchSize = instance.batchSize;
-        ubatchSize = instance.ubatchSize;
-        parallel = instance.parallel;
-        gpuLayers = toString instance.gpuLayers;
-        flashAttention = instance.flashAttention;
-        threads = instance.threads;
-        threadsBatch = instance.threadsBatch;
-        mmap = instance.mmap;
-        mlock = instance.mlock;
-        extraArgs = instance.extraArgs;
-        litellmIncluded = cfg.litellm.enable;
-      })
+          endpointUrl = mkUrl {
+            scheme = "http";
+            host = normalizeLocalAddress instance.host;
+            port = instance.port;
+            path = instanceEndpointPath instance;
+          };
+          healthUrl = mkUrl {
+            scheme = "http";
+            host = normalizeLocalAddress instance.host;
+            port = instance.port;
+            path = instanceHealthPath instance;
+          };
+          healthCheckMode = if isLlamaInstance instance then "openai-models" else "http-options";
+          alias = mkModelAlias instance;
+          modelName = instance.model.name;
+          model = {
+            path = instance.model.path;
+            url = instance.model.url;
+            hfRepo = instance.model.hfRepo;
+            hfFile = instance.model.hfFile;
+            mmprojPath = instance.model.mmprojPath;
+            mmprojUrl = instance.model.mmprojUrl;
+            downloadName = instance.model.downloadName;
+          };
+          input = instance.input;
+          threads = instance.threads;
+          extraArgs = instance.extraArgs;
+          litellmIncluded = cfg.litellm.enable;
+        }
+        // lib.optionalAttrs (isLlamaInstance instance) {
+          ctxSize = instance.ctxSize;
+          batchSize = instance.batchSize;
+          ubatchSize = instance.ubatchSize;
+          parallel = instance.parallel;
+          gpuLayers = toString instance.gpuLayers;
+          flashAttention = instance.flashAttention;
+          threadsBatch = instance.threadsBatch;
+          mmap = instance.mmap;
+          mlock = instance.mlock;
+        }
+        // lib.optionalAttrs (isWhisperInstance instance) {
+          language = instance.language;
+          translate = instance.translate;
+          processors = instance.processors;
+          convertAudio = instance.convertAudio;
+          requestPath = instance.requestPath;
+          inferencePath = instance.inferencePath;
+          gpu = instance.gpu;
+        })
       enabledInstances
     ++ lib.optionals cfg.litellm.enable [
       {
@@ -414,6 +578,7 @@ let
           port = cfg.litellm.port;
           path = "/v1/models";
         };
+        healthCheckMode = "openai-models";
         modelAliases = lib.mapAttrsToList (_: instance: mkModelAlias instance) enabledInstances;
       }
     ];
@@ -436,12 +601,19 @@ let
     );
 
   dashboardDependencies =
-    lib.mapAttrsToList (instanceName: _: "${mkServiceName instanceName}.service") enabledInstances
+    lib.mapAttrsToList (instanceName: instance: "${mkServiceName instanceName instance}.service") enabledInstances
     ++ lib.optionals cfg.litellm.enable [ "litellm-proxy.service" ];
+
+  runtimePackages =
+    lib.unique (
+      (lib.optionals hasLlamaInstance [ llamaPackage ])
+      ++ (lib.optionals hasWhisperInstance [ whisperPackage ])
+      ++ lib.optionals cfg.litellm.enable [ pkgs.litellm ]
+    );
 in
 {
   options.alanix.llm = {
-    enable = lib.mkEnableOption "local llama.cpp servers";
+    enable = lib.mkEnableOption "local model servers";
 
     backend = lib.mkOption {
       type = types.enum [
@@ -460,11 +632,11 @@ in
     instances = lib.mkOption {
       type = types.attrsOf mkInstanceSubmodule;
       default = { };
-      description = "Named llama.cpp server instances.";
+      description = "Named local model server instances.";
     };
 
     litellm = {
-      enable = lib.mkEnableOption "LiteLLM proxy in front of enabled llama.cpp instances";
+      enable = lib.mkEnableOption "LiteLLM proxy in front of enabled local model instances";
 
       host = lib.mkOption {
         type = types.str;
@@ -528,11 +700,11 @@ in
           }
           {
             assertion = !cfg.litellm.enable || !(lib.elem cfg.litellm.port enabledPorts);
-            message = "alanix.llm.litellm.port must not conflict with an enabled llama.cpp instance port.";
+            message = "alanix.llm.litellm.port must not conflict with an enabled model instance port.";
           }
           {
             assertion = !dashboardCfg.enable || !(lib.elem dashboardCfg.port enabledPorts);
-            message = "alanix.llm.dashboard.port must not conflict with an enabled llama.cpp instance port.";
+            message = "alanix.llm.dashboard.port must not conflict with an enabled model instance port.";
           }
           {
             assertion = !dashboardCfg.enable || !cfg.litellm.enable || dashboardCfg.port != cfg.litellm.port;
@@ -548,27 +720,82 @@ in
         ++ lib.flatten (
           lib.mapAttrsToList
             (instanceName: instance:
-              lib.optionals instance.enable [
-                {
-                  assertion = lib.length (lib.filter (x: x != null) [
-                    instance.model.path
-                    instance.model.url
-                    instance.model.hfRepo
-                  ]) == 1;
-                  message = "alanix.llm.instances.${instanceName}.model: set exactly one of path, url, or hfRepo.";
-                }
-                {
-                  assertion = instance.model.hfRepo != null || instance.model.hfFile == null;
-                  message = "alanix.llm.instances.${instanceName}.model.hfFile requires alanix.llm.instances.${instanceName}.model.hfRepo.";
-                }
-                {
-                  assertion = lib.length (lib.filter (x: x != null) [
-                    instance.model.mmprojPath
-                    instance.model.mmprojUrl
-                  ]) <= 1;
-                  message = "alanix.llm.instances.${instanceName}.model: set at most one of mmprojPath or mmprojUrl.";
-                }
-              ])
+              lib.optionals instance.enable (
+                [
+                  {
+                    assertion = instance.runtime == "llama" || instance.runtime == "whisper";
+                    message = "alanix.llm.instances.${instanceName}.runtime must be set to llama or whisper.";
+                  }
+                ]
+                ++ lib.optionals (isLlamaInstance instance) [
+                  {
+                    assertion = lib.all (value: value != null) [
+                      instance.ctxSize
+                      instance.batchSize
+                      instance.ubatchSize
+                      instance.parallel
+                      instance.gpuLayers
+                      instance.flashAttention
+                      instance.mmap
+                      instance.mlock
+                    ];
+                    message = "alanix.llm.instances.${instanceName}: llama runtime requires ctxSize, batchSize, ubatchSize, parallel, gpuLayers, flashAttention, mmap, and mlock.";
+                  }
+                  {
+                    assertion = lib.length (lib.filter (x: x != null) [
+                      instance.model.path
+                      instance.model.url
+                      instance.model.hfRepo
+                    ]) == 1;
+                    message = "alanix.llm.instances.${instanceName}.model: llama runtime requires exactly one of path, url, or hfRepo.";
+                  }
+                  {
+                    assertion = instance.model.hfRepo != null || instance.model.hfFile == null;
+                    message = "alanix.llm.instances.${instanceName}.model.hfFile requires alanix.llm.instances.${instanceName}.model.hfRepo.";
+                  }
+                  {
+                    assertion = lib.length (lib.filter (x: x != null) [
+                      instance.model.mmprojPath
+                      instance.model.mmprojUrl
+                    ]) <= 1;
+                    message = "alanix.llm.instances.${instanceName}.model: set at most one of mmprojPath or mmprojUrl.";
+                  }
+                  {
+                    assertion = instance.model.downloadName == null;
+                    message = "alanix.llm.instances.${instanceName}.model.downloadName is only valid for whisper runtime.";
+                  }
+                ]
+                ++ lib.optionals (isWhisperInstance instance) [
+                  {
+                    assertion = lib.length (lib.filter (x: x != null) [
+                      instance.model.path
+                      instance.model.downloadName
+                    ]) == 1;
+                    message = "alanix.llm.instances.${instanceName}.model: whisper runtime requires exactly one of path or downloadName.";
+                  }
+                  {
+                    assertion = lib.all (value: value == null) [
+                      instance.model.url
+                      instance.model.hfRepo
+                      instance.model.hfFile
+                      instance.model.mmprojPath
+                      instance.model.mmprojUrl
+                      instance.ctxSize
+                      instance.batchSize
+                      instance.ubatchSize
+                      instance.parallel
+                      instance.gpuLayers
+                      instance.flashAttention
+                      instance.threadsBatch
+                      instance.mmap
+                      instance.mlock
+                      instance.imageMinTokens
+                      instance.imageMaxTokens
+                    ];
+                    message = "alanix.llm.instances.${instanceName}: whisper runtime does not accept llama-specific options.";
+                  }
+                ]
+              ))
             cfg.instances
         );
 
@@ -599,6 +826,8 @@ in
         "z ${cfg.stateDir} 0750 llm llm - -"
         "d ${cfg.stateDir}/models 0750 llm llm - -"
         "z ${cfg.stateDir}/models 0750 llm llm - -"
+        "d ${cfg.stateDir}/models/whisper 0750 llm llm - -"
+        "z ${cfg.stateDir}/models/whisper 0750 llm llm - -"
         "d ${cfg.stateDir}/cache 0750 llm llm - -"
         "z ${cfg.stateDir}/cache 0750 llm llm - -"
         "d ${cfg.stateDir}/huggingface 0750 llm llm - -"
@@ -610,10 +839,20 @@ in
       systemd.services =
         (lib.mapAttrs'
           (instanceName: instance:
-            lib.nameValuePair (mkServiceName instanceName) {
-              description = "Local llama.cpp model server (${instanceName})";
+            lib.nameValuePair (mkServiceName instanceName instance) {
+              description = "Local ${instance.runtime}.cpp model server (${instanceName})";
               after = [ "network.target" ];
               wantedBy = [ "multi-user.target" ];
+              path =
+                lib.optionals (isWhisperInstance instance) (
+                  with pkgs;
+                  [
+                    coreutils
+                    curl
+                    ffmpeg
+                    gnugrep
+                  ]
+                );
 
               environment = {
                 HOME = cfg.stateDir;
@@ -626,14 +865,14 @@ in
                 Group = "llm";
                 WorkingDirectory = cfg.stateDir;
                 ExecStart = mkStartScript instanceName instance;
-              Restart = "always";
-              RestartSec = "5s";
-              StateDirectory = "llm";
-              StateDirectoryMode = "0750";
-              LogsDirectory = "llm";
-              LogsDirectoryMode = "0750";
-            };
-          })
+                Restart = "always";
+                RestartSec = "5s";
+                StateDirectory = "llm";
+                StateDirectoryMode = "0750";
+                LogsDirectory = "llm";
+                LogsDirectoryMode = "0750";
+              };
+            })
           enabledInstances)
         // lib.optionalAttrs dashboardCfg.enable {
           "alanix-llm-dashboard" = {
@@ -662,9 +901,9 @@ in
         }
         // lib.optionalAttrs cfg.litellm.enable {
           litellm-proxy = {
-            description = "LiteLLM proxy for local llama.cpp model servers";
-            after = [ "network.target" ] ++ lib.mapAttrsToList (instanceName: _: "${mkServiceName instanceName}.service") enabledInstances;
-            wants = lib.mapAttrsToList (instanceName: _: "${mkServiceName instanceName}.service") enabledInstances;
+            description = "LiteLLM proxy for local model servers";
+            after = [ "network.target" ] ++ lib.mapAttrsToList (instanceName: instance: "${mkServiceName instanceName instance}.service") enabledInstances;
+            wants = lib.mapAttrsToList (instanceName: instance: "${mkServiceName instanceName instance}.service") enabledInstances;
             wantedBy = [ "multi-user.target" ];
 
             environment = {
@@ -688,7 +927,7 @@ in
           };
         };
 
-      environment.systemPackages = [ package ] ++ lib.optionals cfg.litellm.enable [ pkgs.litellm ];
+      environment.systemPackages = runtimePackages;
     }
 
     (lib.mkIf dashboardCfg.enable (

@@ -87,6 +87,8 @@ def summarize_source(service: dict) -> str:
     model = service.get("model") or {}
     if model.get("path"):
         return model["path"]
+    if model.get("downloadName"):
+        return f'download:{model["downloadName"]}'
     if model.get("url"):
         return model["url"]
     if model.get("hfRepo"):
@@ -201,12 +203,25 @@ class Dashboard:
 
     def _health(self, service: dict) -> dict:
         url = service["healthUrl"]
+        mode = service.get("healthCheckMode", "openai-models")
         started_at = time.time()
         try:
-            with urllib.request.urlopen(url, timeout=3) as response:
+            request = urllib.request.Request(
+                url,
+                method="OPTIONS" if mode == "http-options" else "GET",
+            )
+            with urllib.request.urlopen(request, timeout=3) as response:
                 body = response.read()
-                payload = json.loads(body.decode("utf-8"))
             elapsed_ms = int((time.time() - started_at) * 1000)
+            if mode in ("http-status", "http-options"):
+                return {
+                    "ok": 200 <= response.status < 300,
+                    "status": response.status,
+                    "elapsedMs": elapsed_ms,
+                    "modelIds": [],
+                }
+
+            payload = json.loads(body.decode("utf-8"))
             model_ids = [item.get("id") for item in payload.get("data", []) if item.get("id")]
             return {
                 "ok": True,
@@ -614,21 +629,44 @@ class Dashboard:
         log_text = "\n".join(logs.get("lines", [])) if logs.get("lines") else logs.get("error", "No logs yet.")
         extra_details = []
         if meta["kind"] == "instance":
-            extra_details.extend(
-                [
-                    ("Model Alias", meta.get("alias") or "none"),
-                    ("Model Name", meta.get("modelName") or "unknown"),
-                    ("Model Source", summarize_source(meta)),
-                    ("MMProj", mmproj_summary(meta) or "none"),
-                    ("Input", ", ".join(meta.get("input", [])) or "none"),
-                    ("Ctx / Batch", f'{meta.get("ctxSize")} / {meta.get("batchSize")} / {meta.get("ubatchSize")}'),
-                    ("Parallel / GPU", f'{meta.get("parallel")} / {meta.get("gpuLayers")}'),
-                    ("Threads", f'{meta.get("threads") or "auto"} / {meta.get("threadsBatch") or "auto"}'),
-                    ("Flags", f'mmap={meta.get("mmap")} mlock={meta.get("mlock")} flash={meta.get("flashAttention")}'),
-                    ("LiteLLM", "included" if meta.get("litellmIncluded") else "not enabled"),
-                    ("Extra Args", " ".join(meta.get("extraArgs", [])) or "none"),
-                ]
-            )
+            if meta.get("runtime") == "whisper":
+                extra_details.extend(
+                    [
+                        ("Runtime", "whisper.cpp"),
+                        ("Model Alias", meta.get("alias") or "none"),
+                        ("Model Name", meta.get("modelName") or "unknown"),
+                        ("Model Source", summarize_source(meta)),
+                        ("Download Name", (meta.get("model") or {}).get("downloadName") or "none"),
+                        ("Input", ", ".join(meta.get("input", [])) or "none"),
+                        ("Language", meta.get("language") or "auto"),
+                        ("Translate", str(meta.get("translate"))),
+                        ("Processors", str(meta.get("processors") or "1")),
+                        ("Threads", str(meta.get("threads") or "auto")),
+                        ("GPU", str(meta.get("gpu"))),
+                        ("Convert Audio", str(meta.get("convertAudio"))),
+                        ("Request Path", meta.get("requestPath") or "/"),
+                        ("Inference Path", meta.get("inferencePath") or "none"),
+                        ("LiteLLM", "included" if meta.get("litellmIncluded") else "not enabled"),
+                        ("Extra Args", " ".join(meta.get("extraArgs", [])) or "none"),
+                    ]
+                )
+            else:
+                extra_details.extend(
+                    [
+                        ("Runtime", "llama.cpp"),
+                        ("Model Alias", meta.get("alias") or "none"),
+                        ("Model Name", meta.get("modelName") or "unknown"),
+                        ("Model Source", summarize_source(meta)),
+                        ("MMProj", mmproj_summary(meta) or "none"),
+                        ("Input", ", ".join(meta.get("input", [])) or "none"),
+                        ("Ctx / Batch", f'{meta.get("ctxSize")} / {meta.get("batchSize")} / {meta.get("ubatchSize")}'),
+                        ("Parallel / GPU", f'{meta.get("parallel")} / {meta.get("gpuLayers")}'),
+                        ("Threads", f'{meta.get("threads") or "auto"} / {meta.get("threadsBatch") or "auto"}'),
+                        ("Flags", f'mmap={meta.get("mmap")} mlock={meta.get("mlock")} flash={meta.get("flashAttention")}'),
+                        ("LiteLLM", "included" if meta.get("litellmIncluded") else "not enabled"),
+                        ("Extra Args", " ".join(meta.get("extraArgs", [])) or "none"),
+                    ]
+                )
         else:
             extra_details.extend(
                 [
