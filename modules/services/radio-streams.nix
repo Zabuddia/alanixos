@@ -43,8 +43,6 @@ let
       audioLowPass =
         if station.audioLowPass != null then
           station.audioLowPass
-        else if station.mode == "wbfm" then
-          15000
         else
           null;
 
@@ -79,7 +77,29 @@ let
         ++ lib.optionals (station.mode == "wbfm") [ "-F" "9" ]
         ++ station.extraRtlFmArgs;
 
-      tunerCommand = "${pkgs.rtl-sdr-blog}/bin/rtl_fm ${lib.escapeShellArgs rtlArgs}";
+      # For wbfm: output at the composite rate so sox can FIR-filter before
+      # decimation, preventing FM stereo subcarrier / RDS from aliasing.
+      rtlArgsSox =
+        [
+          "-d"
+          cfg.device
+          "-f"
+          (toString station.frequency)
+          "-M"
+          "wbfm"
+        ]
+        ++ lib.optionals (station.gain != "auto") [ "-g" (toString station.gain) ]
+        ++ lib.optionals (station.ppm != 0) [ "-p" (toString station.ppm) ]
+        ++ lib.optionals (station.biasTee == true) [ "-T" ]
+        ++ [ "-s" (toString rtlSampleRate) "-r" (toString rtlSampleRate) "-F" "9" ]
+        ++ station.extraRtlFmArgs;
+
+      tunerCommand =
+        if station.mode == "wbfm" then
+          "${pkgs.rtl-sdr-blog}/bin/rtl_fm ${lib.escapeShellArgs rtlArgsSox}"
+          + " | ${pkgs.sox}/bin/sox -V0 -r ${toString rtlSampleRate} -t raw -e signed-integer -b 16 -L -c 1 - -r ${toString audioRate} -t raw -e signed-integer -b 16 -L -c 1 - sinc -15000"
+        else
+          "${pkgs.rtl-sdr-blog}/bin/rtl_fm ${lib.escapeShellArgs rtlArgs}";
     in
     station
     // {
