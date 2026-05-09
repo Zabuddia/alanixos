@@ -687,16 +687,20 @@ in
         };
 
       system.activationScripts.alanixNavidromeReconcile =
-        lib.mkIf (baseConfigReady && (reconcileEnabled || radioReconcileEnabled)) ''
-          if ${pkgs.systemd}/bin/systemctl --quiet is-active navidrome.service; then
-            ${lib.optionalString reconcileEnabled ''
-              ${pkgs.systemd}/bin/systemctl start navidrome-reconcile-users.service || true
-            ''}
-            ${lib.optionalString radioReconcileEnabled ''
-              ${pkgs.systemd}/bin/systemctl start navidrome-reconcile-internet-radios.service || true
-            ''}
-          fi
-        '';
+        lib.mkIf (baseConfigReady && (reconcileEnabled || radioReconcileEnabled)) {
+          deps = [ "setupEtc" ];
+          text = ''
+            if ${pkgs.systemd}/bin/systemctl --quiet is-active navidrome.service; then
+              ${pkgs.systemd}/bin/systemctl daemon-reload
+              ${lib.optionalString reconcileEnabled ''
+                ${pkgs.systemd}/bin/systemctl start navidrome-reconcile-users.service || true
+              ''}
+              ${lib.optionalString radioReconcileEnabled ''
+                ${pkgs.systemd}/bin/systemctl start navidrome-reconcile-internet-radios.service || true
+              ''}
+            fi
+          '';
+        };
 
       systemd.tmpfiles.rules = lib.mkIf baseConfigReady mediaTmpfilesRules;
     }
