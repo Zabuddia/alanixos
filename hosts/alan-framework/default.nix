@@ -272,7 +272,6 @@
           # OpenClaw and Open WebUI expect plain assistant content here; when
           # Qwen thinks out loud it can stall chats and return empty content.
           extraArgs = [
-            "--swa-full"
             "--reasoning"
             "off"
           ];
