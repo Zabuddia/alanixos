@@ -54,6 +54,8 @@ let
 
       deemphasisHz = if applyDeemphasis then 2122 else null;
 
+      pilotNotchHz = if station.mode == "wbfm" then 19000 else null;
+
       rtlMode =
         if station.mode == "nfm" then
           "fm"
@@ -89,7 +91,7 @@ let
     in
     station
     // {
-      inherit audioRate audioLowPass deemphasisHz tunerCommand;
+      inherit audioRate audioLowPass deemphasisHz pilotNotchHz tunerCommand;
       stationId = id;
     };
 
@@ -121,6 +123,9 @@ let
           station_description=${lib.escapeShellArg station.description}
           station_genre=${lib.escapeShellArg station.genre}
           station_audio_rate=${lib.escapeShellArg (toString station.audioRate)}
+          station_pilot_notch_liq=${lib.escapeShellArg (
+            if station.pilotNotchHz == null then "" else "radio = filter.iir.eq.notch(frequency=${toString station.pilotNotchHz}., q=30., radio)"
+          )}
           station_deemphasis_liq=${lib.escapeShellArg (
             if station.deemphasisHz == null then "" else "radio = filter.iir.butterworth.low(frequency=${toString station.deemphasisHz}., order=1, radio)"
           )}
@@ -694,6 +699,7 @@ in
         ])
 
         radio = stereo(radio)
+        $station_pilot_notch_liq
         $station_deemphasis_liq
         $station_audio_low_pass_liq
         radio = mksafe(radio)
