@@ -9,6 +9,8 @@
       ./secrets.nix
     ];
 
+    programs.adb.enable = true;
+
     alanix.system = {
       stateVersion = "25.11";
       timeZone = "America/Denver";
@@ -60,7 +62,7 @@
       accounts.buddia = {
         enable = true;
         isNormalUser = true;
-        extraGroups = [ "wheel" "networkmanager" "input" ];
+        extraGroups = [ "wheel" "networkmanager" "input" "adbusers" "kvm" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
         sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExSf9y7yGFQySwkx42MXCgZ6EkgP2PebAJb4++5X0SB fife.alan@protonmail.com";
@@ -84,6 +86,7 @@
             zoom-us
             usbimager
             tmux
+            android-studio
           ];
           unstablePackages = with pkgs-unstable; [
             yt-dlp
