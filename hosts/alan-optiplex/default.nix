@@ -7,7 +7,6 @@
     imports = [
       ./hardware-configuration.nix
       ./secrets.nix
-      ../../modules/services/bitcoin.nix
     ];
 
     alanix.system = {
