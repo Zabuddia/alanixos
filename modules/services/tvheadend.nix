@@ -199,6 +199,8 @@ in
         extraOptions = containerOptions;
       };
 
+      systemd.services.podman-tvheadend.unitConfig.ConditionPathExists = cfg.devicePaths;
+
       environment.systemPackages = [ pkgs.v4l-utils ];
     }
 
