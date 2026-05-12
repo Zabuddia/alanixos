@@ -568,6 +568,7 @@ in
                 --if-exists \
                 --no-owner \
                 --no-privileges \
+                --role="$pg_user" \
                 --exit-on-error \
                 --dbname="$pg_database" \
                 "$restore_dump"
