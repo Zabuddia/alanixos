@@ -1579,6 +1579,7 @@ class Controller:
                             owner_gid=self.repo_gid,
                             mode=0o644,
                         )
+                        self.write_active_snapshot(service_name, manifest)
                         self._prune_local_manifests(manifest_dir, retain_days, service_name)
                     else:
                         phase = f"replicating to {target['host']}"
