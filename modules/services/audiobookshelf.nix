@@ -23,6 +23,12 @@ let
   bootstrapAdminName = if adminUserNames == [ ] then null else builtins.head adminUserNames;
   reconcileEnabled = cfg.users != { };
 
+  libraryManifestJson = builtins.toJSON (lib.mapAttrsToList (name: libCfg: {
+    inherit name;
+    inherit (libCfg) mediaType;
+    folders = map (p: { fullPath = p; }) libCfg.folders;
+  }) cfg.libraries);
+
   sanitizedUsersForRestart =
     lib.mapAttrs (_: userCfg: { inherit (userCfg) admin email passwordSecret; }) cfg.users;
 
@@ -113,6 +119,25 @@ in
         and enforced on every service restart through Audiobookshelf's HTTP API.
         The first declared admin user initializes the root account on first boot.
       '';
+    };
+
+    libraries = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.submodule ({ ... }: {
+        options = {
+          mediaType = lib.mkOption {
+            type = lib.types.enum [ "book" "podcast" ];
+            default = "book";
+            description = "Audiobookshelf media type: book or podcast.";
+          };
+
+          folders = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            description = "Absolute filesystem paths for this library.";
+          };
+        };
+      }));
+      default = { };
+      description = "Declarative Audiobookshelf libraries. Created and kept in sync via the HTTP API.";
     };
 
     mediaFolders = lib.mkOption {
@@ -512,9 +537,71 @@ in
                 cfg.users)}
 
             echo "Audiobookshelf user reconciliation complete."
+
+            reconcile_libraries() {
+              local token="$1"
+              local manifest="$2"
+              local lib_count lib_name lib_media_type lib_folders existing_libs existing_lib lib_id existing_folders want_folders payload
+
+              lib_count="$(printf '%s' "$manifest" | jq 'length')"
+              http_json GET "/api/libraries" "" "$token"
+              if ! is_success_status "$RESPONSE_STATUS"; then
+                echo "Warning: Unable to list Audiobookshelf libraries (HTTP $RESPONSE_STATUS)." >&2
+                return 0
+              fi
+              existing_libs="$RESPONSE_BODY"
+
+              local i=0
+              while [ "$i" -lt "$lib_count" ]; do
+                lib_name="$(printf '%s' "$manifest" | jq -r ".[$i].name")"
+                lib_media_type="$(printf '%s' "$manifest" | jq -r ".[$i].mediaType")"
+                lib_folders="$(printf '%s' "$manifest" | jq -c ".[$i].folders")"
+
+                existing_lib="$(printf '%s' "$existing_libs" | jq -c --arg n "$lib_name" '.libraries[] | select(.name == $n)' | head -n 1)"
+
+                if [ -z "$existing_lib" ]; then
+                  echo "Creating Audiobookshelf library: $lib_name"
+                  payload="$(jq -cn \
+                    --arg name "$lib_name" \
+                    --arg mediaType "$lib_media_type" \
+                    --argjson folders "$lib_folders" \
+                    '{ name: $name, mediaType: $mediaType, folders: $folders, settings: {} }')"
+                  http_json POST "/api/libraries" "$payload" "$token"
+                  if ! is_success_status "$RESPONSE_STATUS"; then
+                    echo "Warning: Failed to create library '$lib_name' (HTTP $RESPONSE_STATUS)." >&2
+                    printf '%s\n' "$RESPONSE_BODY" >&2
+                  fi
+                else
+                  lib_id="$(printf '%s' "$existing_lib" | jq -r '.id')"
+                  existing_folders="$(printf '%s' "$existing_lib" | jq -c '[.folders[].fullPath] | sort')"
+                  want_folders="$(printf '%s' "$lib_folders" | jq -c '[.[].fullPath] | sort')"
+                  if [ "$existing_folders" != "$want_folders" ]; then
+                    echo "Updating Audiobookshelf library folders: $lib_name"
+                    payload="$(jq -cn \
+                      --arg name "$lib_name" \
+                      --arg mediaType "$lib_media_type" \
+                      --argjson folders "$lib_folders" \
+                      '{ name: $name, mediaType: $mediaType, folders: $folders, settings: {} }')"
+                    http_json PATCH "/api/libraries/$lib_id" "$payload" "$token"
+                    if ! is_success_status "$RESPONSE_STATUS"; then
+                      echo "Warning: Failed to update library '$lib_name' (HTTP $RESPONSE_STATUS)." >&2
+                      printf '%s\n' "$RESPONSE_BODY" >&2
+                    fi
+                  else
+                    echo "Audiobookshelf library already up to date: $lib_name"
+                  fi
+                fi
+                i=$((i + 1))
+              done
+            }
+
+            ${lib.optionalString (cfg.libraries != { }) ''
+            reconcile_libraries "$token" ${lib.escapeShellArg libraryManifestJson}
+            echo "Audiobookshelf library reconciliation complete."
+            ''}
           '';
 
-          restartTriggers = [ (builtins.toJSON sanitizedUsersForRestart) ];
+          restartTriggers = [ (builtins.toJSON sanitizedUsersForRestart) libraryManifestJson ];
         };
 
       system.activationScripts.alanixAudiobookshelfReconcile =
