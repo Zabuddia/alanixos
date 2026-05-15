@@ -33,6 +33,10 @@ let
   bootstrapAdminName = if adminUsers == { } then null else builtins.head (builtins.attrNames adminUsers);
   reconcileEnabled = cfg.users != { };
 
+  libraryTypeInt = {
+    Manga = 0; Comic = 1; Book = 2; Image = 3; LightNovel = 4; ComicVine = 5;
+  };
+
   # JSON manifest embedded in the script; sops secret paths resolved at eval time.
   userManifestJson = lib.optionalString reconcileEnabled (
     builtins.toJSON (
@@ -42,6 +46,13 @@ let
         passfile = config.sops.secrets.${userCfg.passwordSecret}.path;
       }) cfg.users
     )
+  );
+
+  libraryManifestJson = builtins.toJSON (
+    lib.mapAttrs (_: libCfg: {
+      type = libraryTypeInt.${libCfg.type};
+      folders = libCfg.folders;
+    }) cfg.libraries
   );
 in
 {
@@ -130,6 +141,28 @@ in
         invite flow (/api/Account/invite + /api/Account/confirm-email) and
         require an email address. Existing users have their passwords reset via
         /api/Account/reset-password on each reconcile run.
+      '';
+    };
+
+    libraries = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.submodule ({ ... }: {
+        options = {
+          type = lib.mkOption {
+            type = lib.types.enum [ "Book" "Manga" "Comic" "Image" "LightNovel" "ComicVine" ];
+            default = "Book";
+            description = "Kavita library type.";
+          };
+
+          folders = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            description = "Absolute paths to include in this library.";
+          };
+        };
+      }));
+      default = { };
+      description = ''
+        Declarative Kavita libraries. Created on first run; folders are kept
+        in sync on subsequent reconcile runs.
       '';
     };
 
@@ -304,6 +337,7 @@ in
             BASE_URL=${lib.escapeShellArg "http://${cfg.listenAddress}:${toString cfg.port}"}
             ADMIN_USER=${lib.escapeShellArg (if bootstrapAdminName == null then "" else bootstrapAdminName)}
             USERS_JSON=${lib.escapeShellArg userManifestJson}
+            LIBRARIES_JSON=${lib.escapeShellArg libraryManifestJson}
 
             RESPONSE_STATUS=""
             RESPONSE_BODY=""
@@ -451,6 +485,100 @@ in
               echo "Password synced: $uname"
             }
 
+            reconcile_libraries() {
+              local libs_json="$1"
+
+              # Get existing libraries as: name\tid\ttype\tfolders_json
+              local existing_libs
+              existing_libs=$(curl -sf \
+                -H "Authorization: Bearer $LOGIN_TOKEN" \
+                "$BASE_URL/api/Library/libraries" \
+              | jq -c '[.[] | {name,id,type,folders}]')
+
+              printf '%s' "$libs_json" \
+              | jq -r 'to_entries[] | "\(.key)\t\(.value.type)\t\(.value.folders | @json)"' \
+              | while IFS=$'\t' read -r libname libtype folders_json; do
+                local existing_id
+                existing_id=$(printf '%s' "$existing_libs" \
+                  | jq -r --arg n "$libname" '.[] | select(.name == $n) | .id')
+
+                if [ -z "$existing_id" ]; then
+                  echo "Creating library: $libname"
+                  local payload
+                  payload=$(jq -cn \
+                    --arg name "$libname" \
+                    --argjson type "$libtype" \
+                    --argjson folders "$folders_json" \
+                    '{
+                      id: 0,
+                      name: $name,
+                      type: $type,
+                      folders: $folders,
+                      folderWatching: true,
+                      includeInDashboard: true,
+                      includeInSearch: true,
+                      manageCollections: true,
+                      manageReadingLists: true,
+                      allowScrobbling: false,
+                      allowMetadataMatching: true,
+                      enableMetadata: true,
+                      removePrefixForSortName: false,
+                      inheritWebLinksFromFirstChapter: false,
+                      fileGroupTypes: [1,2,3,4],
+                      excludePatterns: []
+                    }')
+                  http_json POST "/api/Library/create" "$payload" "$LOGIN_TOKEN"
+                  if ! is_success "$RESPONSE_STATUS"; then
+                    echo "Failed to create library $libname (HTTP $RESPONSE_STATUS): $RESPONSE_BODY" >&2
+                    return 1
+                  fi
+                  echo "Created library: $libname"
+                else
+                  # Sync folders if they differ
+                  local current_folders
+                  current_folders=$(printf '%s' "$existing_libs" \
+                    | jq -c --arg n "$libname" '.[] | select(.name == $n) | .folders | sort')
+                  local desired_folders
+                  desired_folders=$(printf '%s' "$folders_json" | jq -c 'sort')
+                  if [ "$current_folders" != "$desired_folders" ]; then
+                    echo "Updating folders for library: $libname"
+                    local payload
+                    payload=$(jq -cn \
+                      --arg name "$libname" \
+                      --argjson id "$existing_id" \
+                      --argjson type "$libtype" \
+                      --argjson folders "$folders_json" \
+                      '{
+                        id: $id,
+                        name: $name,
+                        type: $type,
+                        folders: $folders,
+                        folderWatching: true,
+                        includeInDashboard: true,
+                        includeInSearch: true,
+                        manageCollections: true,
+                        manageReadingLists: true,
+                        allowScrobbling: false,
+                        allowMetadataMatching: true,
+                        enableMetadata: true,
+                        removePrefixForSortName: false,
+                        inheritWebLinksFromFirstChapter: false,
+                        fileGroupTypes: [1,2,3,4],
+                        excludePatterns: []
+                      }')
+                    http_json POST "/api/Library/update" "$payload" "$LOGIN_TOKEN"
+                    if ! is_success "$RESPONSE_STATUS"; then
+                      echo "Failed to update library $libname (HTTP $RESPONSE_STATUS): $RESPONSE_BODY" >&2
+                      return 1
+                    fi
+                    echo "Updated library: $libname"
+                  else
+                    echo "Library up to date: $libname"
+                  fi
+                fi
+              done
+            }
+
             main() {
               wait_for_server
               bootstrap_or_login
@@ -469,6 +597,8 @@ in
                   invite_and_confirm "$uname" "$email" "$pass" "$is_admin"
                 fi
               done
+
+              reconcile_libraries "$LIBRARIES_JSON"
 
               echo "Kavita user reconciliation complete."
             }
