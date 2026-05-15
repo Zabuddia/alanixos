@@ -592,7 +592,14 @@ in
                 local pass
                 pass=$(tr -d '\r\n' < "$passfile")
                 if printf '%s\n' "$existing_users" | grep -qxF "$uname"; then
-                  reset_password "$uname" "$pass"
+                  # Skip reset for the bootstrap admin — password was proven correct
+                  # by login/bootstrap succeeding. Kavita requires oldPassword for
+                  # self-reset which we cannot provide declaratively.
+                  if [ "$uname" = "$ADMIN_USER" ]; then
+                    echo "Skipping password reset for bootstrap admin: $uname"
+                  else
+                    reset_password "$uname" "$pass"
+                  fi
                 else
                   invite_and_confirm "$uname" "$email" "$pass" "$is_admin"
                 fi
