@@ -295,6 +295,13 @@
     mode = "0400";
   };
 
+  sops.secrets."audiobookshelf-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."mail-password-hashes/buddia" = {
     sopsFile = (import ../../secrets/files.nix).servicePasswords;
     owner = "root";

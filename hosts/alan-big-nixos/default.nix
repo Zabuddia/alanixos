@@ -219,7 +219,7 @@
 
     alanix.openwebrx = {
       enable = true;
-      users.buddia.passwordSecret = "navidrome-passwords/buddia";
+      users.buddia.passwordSecret = "openwebrx-passwords/buddia";
 
       rtlSdr = {
         name = "RTL-SDR Blog";
@@ -348,8 +348,8 @@
     alanix.icecast = {
       enable = true;
       admin.user = "buddia";
-      admin.passwordSecret = "navidrome-passwords/buddia";
-      source.passwordSecret = "navidrome-passwords/buddia";
+      admin.passwordSecret = "icecast-passwords/buddia";
+      source.passwordSecret = "icecast-passwords/buddia";
 
       expose.tailscale = {
         enable = true;
