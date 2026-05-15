@@ -112,6 +112,7 @@ in
           "mail.fifefin.com"
           "mqtt.fifefin.com"
           "navidrome.fifefin.com"
+          "audiobookshelf.fifefin.com"
           "owntracks.fifefin.com"
           "radicale.fifefin.com"
           "searxng.fifefin.com"
@@ -163,7 +164,7 @@ in
       transport = "tailscale";
       listenPort = 22000;
       syncRoot = "/srv/syncthing";
-      folderSets = [ "jellyfin-media" "navidrome-media" "filebrowser-files" ];
+      folderSets = [ "jellyfin-media" "navidrome-media" "audiobookshelf-media" "filebrowser-files" ];
       externalDevices.pixel-fold = {
         id = "BT23SPJ-ICTEBQ7-GJTDRQT-LCUQ773-U63QFZR-472O3YA-2KRJ4KY-AMPZ7AF";
         addresses = [ "tcp://pixel-fold:22000" ];
@@ -672,6 +673,52 @@ in
           user = "root";
           group = "root";
           mode = "0755";
+        };
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "12h";
+        maxBackupAge = "48h";
+      };
+    };
+
+    alanix.audiobookshelf = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 13378;
+      backupDir = "/var/backup/audiobookshelf";
+      extraGroups = [ "users" ];
+
+      users.buddia = {
+        admin = true;
+        email = "fife.alan@protonmail.com";
+        passwordSecret = "audiobookshelf-passwords/buddia";
+      };
+
+      mediaFolders.books = {
+        path = "${config.alanix.syncthing.syncRoot}/media/books";
+        create = true;
+        user = "buddia";
+        group = "users";
+        mode = "2775";
+      };
+
+      expose = {
+        wan = {
+          enable = true;
+          domain = "audiobookshelf.fifefin.com";
+        };
+
+        tailscale = {
+          enable = true;
+          address = config.alanix.tailscale.address;
+          port = 13378;
+        };
+
+        wireguard = {
+          enable = true;
+          port = 13378;
         };
       };
 

@@ -16,6 +16,7 @@
     ./network/tailscale.nix
     ./network/wifi.nix
     ./network/tor.nix
+    ./services/audiobookshelf.nix
     ./services/filebrowser.nix
     ./services/forgejo.nix
     ./services/icecast.nix

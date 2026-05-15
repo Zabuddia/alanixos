@@ -261,6 +261,7 @@ in
       jellyfinCfg = config.alanix.jellyfin;
       mailCfg = config.alanix.mail;
       navidromeCfg = config.alanix.navidrome;
+      audiobookshelfCfg = config.alanix.audiobookshelf;
       openwebuiCfg = config.alanix.openwebui;
       roundcubeCfg = config.alanix.roundcube;
       searxngCfg = config.alanix.searxng;
@@ -275,6 +276,7 @@ in
       jellyfinCluster = jellyfinCfg.enable && jellyfinCfg.cluster.enable;
       mailCluster = mailCfg.enable && mailCfg.cluster.enable && mailCfg.cluster.backupDir != null;
       navidromeCluster = navidromeCfg.enable && navidromeCfg.cluster.enable;
+      audiobookshelfCluster = audiobookshelfCfg.enable && audiobookshelfCfg.cluster.enable;
       openwebuiCluster = openwebuiCfg.enable && openwebuiCfg.cluster.enable;
       roundcubeCluster = roundcubeCfg.enable && roundcubeCfg.cluster.enable && roundcubeCfg.backupDir != null;
       searxngCluster = searxngCfg.enable && searxngCfg.cluster.enable;
@@ -620,6 +622,9 @@ in
 
       navidromeClusteredPaths =
         [ navidromeCfg.dataDir ];
+
+      audiobookshelfClusteredPaths =
+        [ audiobookshelfCfg.dataDir ];
 
       roundcubeStateDir = "/var/lib/roundcube";
 
@@ -973,6 +978,40 @@ in
             '') navidromeClusteredPaths}
 
             chown -R navidrome:navidrome ${lib.escapeShellArg navidromeCfg.dataDir}
+          ''
+        else
+          null;
+
+      audiobookshelfRestoreScript =
+        if audiobookshelfCluster then
+          pkgs.writeShellScript "alanix-audiobookshelf-cluster-restore-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg audiobookshelfCfg.backupDir}
+            trap 'rm -rf "$backup_dir"' EXIT
+
+            restore_dir() {
+              local target="$1"
+              local staged_dir="$backup_dir$target"
+
+              if [[ -e "$target" && ! -d "$target" ]]; then
+                rm -rf "$target"
+              fi
+              mkdir -p "$target"
+
+              if [[ -d "$staged_dir" ]]; then
+                rsync -a --delete "$staged_dir"/ "$target"/
+              else
+                rm -rf "$target"
+                mkdir -p "$target"
+              fi
+            }
+
+            ${lib.concatMapStringsSep "\n" (path: ''
+              restore_dir ${lib.escapeShellArg path}
+            '') audiobookshelfClusteredPaths}
+
+            chown -R audiobookshelf:audiobookshelf ${lib.escapeShellArg audiobookshelfCfg.dataDir}
           ''
         else
           null;
@@ -1497,6 +1536,49 @@ in
         else
           null;
 
+      audiobookshelfBackupPrepScript =
+        if audiobookshelfCluster then
+          let
+            audiobookshelfPrepStepCount = builtins.length audiobookshelfClusteredPaths + 1;
+          in
+          pkgs.writeShellScript "alanix-audiobookshelf-cluster-backup-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg audiobookshelfCfg.backupDir}
+            backup_group=${lib.escapeShellArg backupRepoUserGroup}
+            data_dir=${lib.escapeShellArg audiobookshelfCfg.dataDir}
+
+            ${backupPrepProgressHelpers}
+
+            rm -rf "$backup_dir"
+            mkdir -p "$backup_dir"
+
+            ${lib.concatStringsSep "\n" (builtins.genList
+              (index:
+                let
+                  path = builtins.elemAt audiobookshelfClusteredPaths index;
+                in
+                ''
+                  rsync_prep_step ${toString (index + 1)} ${toString audiobookshelfPrepStepCount} ${lib.escapeShellArg "staging ${path}"} ${lib.escapeShellArg path} ${lib.escapeShellArg "${audiobookshelfCfg.backupDir}${path}"}
+                '')
+              (builtins.length audiobookshelfClusteredPaths))}
+
+            emit_prep_step ${toString audiobookshelfPrepStepCount} ${toString audiobookshelfPrepStepCount} ${lib.escapeShellArg "snapshotting audiobookshelf sqlite databases"}
+            shopt -s globstar nullglob
+            for db_path in "$data_dir"/**/*.db "$data_dir"/*.db "$data_dir"/**/*.sqlite "$data_dir"/*.sqlite "$data_dir"/**/*.sqlite3 "$data_dir"/*.sqlite3; do
+              [[ -f "$db_path" ]] || continue
+              staged_db="$backup_dir$db_path"
+              mkdir -p "$(dirname "$staged_db")"
+              sqlite3 "$db_path" ".backup '$staged_db'"
+            done
+            shopt -u globstar nullglob
+
+            chgrp -R "$backup_group" "$backup_dir"
+            chmod -R u=rwX,g=rX,o= "$backup_dir"
+          ''
+        else
+          null;
+
       mailBackupPrepScript =
         if mailCluster then
           let
@@ -2006,6 +2088,38 @@ in
         else
           null;
 
+      audiobookshelfWireguardAddress =
+        if audiobookshelfCfg.expose.wireguard.address != null then
+          audiobookshelfCfg.expose.wireguard.address
+        else
+          config.alanix.wireguard.vpnIP;
+
+      audiobookshelfTailscaleTlsName =
+        if audiobookshelfCfg.expose.tailscale.tlsName != null then
+          audiobookshelfCfg.expose.tailscale.tlsName
+        else
+          config.alanix.tailscale.address;
+
+      audiobookshelfTorTargetAddress =
+        normalizeLocalAddress (
+          if audiobookshelfCfg.expose.tor.targetAddress != null then
+            audiobookshelfCfg.expose.tor.targetAddress
+          else
+            audiobookshelfCfg.listenAddress
+        );
+
+      audiobookshelfTorTargetPort =
+        if audiobookshelfCfg.expose.tor.tls then
+          audiobookshelfCfg.expose.tor.publicPort
+        else
+          audiobookshelfCfg.port;
+
+      audiobookshelfTorSecretPath =
+        if audiobookshelfCfg.expose.tor.secretKeyBase64Secret != null then
+          config.sops.secrets.${audiobookshelfCfg.expose.tor.secretKeyBase64Secret}.path
+        else
+          null;
+
       openwebuiWireguardAddress =
         if openwebuiCfg.expose.wireguard.address != null then
           openwebuiCfg.expose.wireguard.address
@@ -2234,6 +2348,14 @@ in
           )
         )
         || (
+          audiobookshelfCluster
+          && (
+            audiobookshelfCfg.expose.tailscale.enable
+            || audiobookshelfCfg.expose.wireguard.enable
+            || (audiobookshelfCfg.expose.tor.enable && audiobookshelfCfg.expose.tor.tls)
+          )
+        )
+        || (
           openwebuiCluster
           && (
             openwebuiCfg.expose.tailscale.enable
@@ -2278,6 +2400,7 @@ in
         || (immichCluster && immichCfg.expose.wan.enable)
         || (jellyfinCluster && jellyfinCfg.expose.wan.enable)
         || (navidromeCluster && navidromeCfg.expose.wan.enable)
+        || (audiobookshelfCluster && audiobookshelfCfg.expose.wan.enable)
         || (openwebuiCluster && openwebuiCfg.expose.wan.enable)
         || (roundcubeCluster && roundcubeCfg.expose.wan.enable)
         || (owntracksCluster && owntracksCfg.recorder.expose.wan.enable)
@@ -2294,6 +2417,7 @@ in
         || (immichCluster && immichCfg.expose.tailscale.enable)
         || (jellyfinCluster && jellyfinCfg.expose.tailscale.enable)
         || (navidromeCluster && navidromeCfg.expose.tailscale.enable)
+        || (audiobookshelfCluster && audiobookshelfCfg.expose.tailscale.enable)
         || (openwebuiCluster && openwebuiCfg.expose.tailscale.enable)
         || (roundcubeCluster && roundcubeCfg.expose.tailscale.enable)
         || (owntracksCluster && owntracksCfg.recorder.expose.tailscale.enable)
@@ -2310,6 +2434,7 @@ in
         || (immichCluster && immichCfg.expose.tor.enable)
         || (jellyfinCluster && jellyfinCfg.expose.tor.enable)
         || (navidromeCluster && navidromeCfg.expose.tor.enable)
+        || (audiobookshelfCluster && audiobookshelfCfg.expose.tor.enable)
         || (openwebuiCluster && openwebuiCfg.expose.tor.enable)
         || (roundcubeCluster && roundcubeCfg.expose.tor.enable)
         || (owntracksCluster && owntracksCfg.recorder.expose.tor.enable)
@@ -2640,6 +2765,36 @@ in
               label = "Navidrome (wan)";
               transport = "wan";
               url = "https://${navidromeCfg.expose.wan.domain}/";
+            }
+          ]
+        ))
+      ];
+
+      audiobookshelfLinksByHost = mergeLinksByHost [
+        (lib.optionalAttrs (audiobookshelfCluster && audiobookshelfCfg.expose.tailscale.enable) (
+          mkPeerLinksByHost {
+            label = "Audiobookshelf";
+            transport = "tailscale";
+            scheme = if audiobookshelfCfg.expose.tailscale.tls then "https" else "http";
+            port = audiobookshelfCfg.expose.tailscale.port;
+            addressFn = peerTailscaleAddress;
+          }
+        ))
+        (lib.optionalAttrs (audiobookshelfCluster && audiobookshelfCfg.expose.wireguard.enable) (
+          mkPeerLinksByHost {
+            label = "Audiobookshelf";
+            transport = "wireguard";
+            scheme = if audiobookshelfCfg.expose.wireguard.tls then "https" else "http";
+            port = audiobookshelfCfg.expose.wireguard.port;
+            addressFn = peerWireguardAddress;
+          }
+        ))
+        (lib.optionalAttrs (audiobookshelfCluster && audiobookshelfCfg.expose.wan.enable) (
+          mkConstantLinksByHost [
+            {
+              label = "Audiobookshelf (wan)";
+              transport = "wan";
+              url = "https://${audiobookshelfCfg.expose.wan.domain}/";
             }
           ]
         ))
@@ -3164,6 +3319,33 @@ in
                 tls = navidromeCfg.expose.tor.tls;
                 publicPort = navidromeCfg.expose.tor.publicPort;
                 stateDirName = "navidrome";
+              };
+            };
+          })
+          // (lib.optionalAttrs audiobookshelfCluster {
+            audiobookshelf = {
+              name = "audiobookshelf";
+              label = "Audiobookshelf";
+              backupInterval = audiobookshelfCfg.cluster.backupInterval;
+              maxBackupAge = audiobookshelfCfg.cluster.maxBackupAge;
+              activeUnits =
+                [ "audiobookshelf.service" ]
+                ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
+              backupPaths = [ audiobookshelfCfg.backupDir ];
+              preBackupCommand = [ audiobookshelfBackupPrepScript ];
+              postBackupCommand = [ "rm" "-rf" audiobookshelfCfg.backupDir ];
+              postRestoreCommand = [ audiobookshelfRestoreScript ];
+              restoreTarget = "/";
+              remoteTargets = mkRemoteTargets "audiobookshelf";
+              manifestGlobs = mkManifestGlobs "audiobookshelf";
+              localTarget = mkLocalTarget "audiobookshelf";
+              linksByHost = audiobookshelfLinksByHost;
+              torUrl = mkTorUrl audiobookshelfCfg.expose.tor;
+              tor = {
+                enabled = audiobookshelfCfg.expose.tor.enable;
+                tls = audiobookshelfCfg.expose.tor.tls;
+                publicPort = audiobookshelfCfg.expose.tor.publicPort;
+                stateDirName = "audiobookshelf";
               };
             };
           })
@@ -3881,6 +4063,61 @@ in
             EOF
           ''}
 
+          ${lib.optionalString (audiobookshelfCluster && audiobookshelfCfg.expose.tailscale.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if audiobookshelfCfg.expose.tailscale.tls then "https" else "http"}://${audiobookshelfTailscaleTlsName}:${toString audiobookshelfCfg.expose.tailscale.port} {
+              bind $ts_ip
+              ${lib.optionalString audiobookshelfCfg.expose.tailscale.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress audiobookshelfCfg.listenAddress}:${toString audiobookshelfCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (audiobookshelfCluster && audiobookshelfCfg.expose.wireguard.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if audiobookshelfCfg.expose.wireguard.tls then "https" else "http"}://${audiobookshelfWireguardAddress}:${toString audiobookshelfCfg.expose.wireguard.port} {
+              bind ${audiobookshelfWireguardAddress}
+              ${lib.optionalString audiobookshelfCfg.expose.wireguard.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress audiobookshelfCfg.listenAddress}:${toString audiobookshelfCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (audiobookshelfCluster && audiobookshelfCfg.expose.tor.enable && audiobookshelfCfg.expose.tor.tls) ''
+            cat >> "$caddy_file" <<EOF
+            https://${audiobookshelfCfg.expose.tor.tlsName}:${toString audiobookshelfCfg.expose.tor.publicPort} {
+              bind ${audiobookshelfTorTargetAddress}
+              tls internal
+              reverse_proxy ${normalizeLocalAddress audiobookshelfCfg.listenAddress}:${toString audiobookshelfCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (audiobookshelfCluster && audiobookshelfCfg.expose.tor.enable) ''
+            rm -rf "$tor_state_dir/audiobookshelf"
+            mkdir -p "$tor_state_dir/audiobookshelf"
+            chown tor:tor "$tor_state_dir/audiobookshelf"
+            chmod 0700 "$tor_state_dir/audiobookshelf"
+          ''}
+
+          ${lib.optionalString (audiobookshelfCluster && audiobookshelfCfg.expose.tor.enable && audiobookshelfTorSecretPath != null) ''
+            base64 --decode ${lib.escapeShellArg audiobookshelfTorSecretPath} > "$tor_state_dir/audiobookshelf/hs_ed25519_secret_key"
+            chown tor:tor "$tor_state_dir/audiobookshelf/hs_ed25519_secret_key"
+            chmod 0600 "$tor_state_dir/audiobookshelf/hs_ed25519_secret_key"
+          ''}
+
+          ${lib.optionalString (audiobookshelfCluster && audiobookshelfCfg.expose.tor.enable) ''
+            cat >> "$tor_file" <<EOF
+            HiddenServiceDir $tor_state_dir/audiobookshelf
+            HiddenServiceVersion 3
+            HiddenServicePort ${toString audiobookshelfCfg.expose.tor.publicPort} ${audiobookshelfTorTargetAddress}:${toString audiobookshelfTorTargetPort}
+
+            EOF
+          ''}
+
           ${lib.optionalString (openwebuiCluster && openwebuiCfg.expose.tailscale.enable) ''
             cat >> "$caddy_file" <<EOF
             ${if openwebuiCfg.expose.tailscale.tls then "https" else "http"}://${openwebuiTailscaleTlsName}:${toString openwebuiCfg.expose.tailscale.port} {
@@ -4205,6 +4442,15 @@ in
             EOF
           ''}
 
+          ${lib.optionalString (audiobookshelfCluster && audiobookshelfCfg.expose.wan.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${audiobookshelfCfg.expose.wan.domain} {
+              reverse_proxy ${normalizeLocalAddress audiobookshelfCfg.listenAddress}:${toString audiobookshelfCfg.port}
+            }
+
+            EOF
+          ''}
+
           ${lib.optionalString (openwebuiCluster && openwebuiCfg.expose.wan.enable) ''
             cat >> "$caddy_file" <<EOF
             ${openwebuiCfg.expose.wan.domain} {
@@ -4319,6 +4565,9 @@ in
             ${lib.optionalString (navidromeCluster && navidromeCfg.expose.tor.enable) ''
               publish_tor_hostname navidrome
             ''}
+            ${lib.optionalString (audiobookshelfCluster && audiobookshelfCfg.expose.tor.enable) ''
+              publish_tor_hostname audiobookshelf
+            ''}
             ${lib.optionalString (openwebuiCluster && openwebuiCfg.expose.tor.enable) ''
               publish_tor_hostname openwebui
             ''}
@@ -4341,6 +4590,7 @@ in
           rm -rf "$tor_state_dir/immich"
           rm -rf "$tor_state_dir/jellyfin"
           rm -rf "$tor_state_dir/navidrome"
+          rm -rf "$tor_state_dir/audiobookshelf"
           rm -rf "$tor_state_dir/filebrowser"
           rm -rf "$tor_state_dir/radicale"
           rm -rf "$tor_state_dir/nextcloud"
@@ -4537,6 +4787,16 @@ in
               message = "Navidrome cluster mode requires alanix.navidrome.backupDir to be an absolute path.";
             }
           ]
+          ++ lib.optionals audiobookshelfCluster [
+            {
+              assertion = lib.hasPrefix "/" audiobookshelfCfg.dataDir;
+              message = "Audiobookshelf cluster mode requires alanix.audiobookshelf.dataDir to be an absolute path.";
+            }
+            {
+              assertion = lib.hasPrefix "/" audiobookshelfCfg.backupDir;
+              message = "Audiobookshelf cluster mode requires alanix.audiobookshelf.backupDir to be an absolute path.";
+            }
+          ]
           ++ lib.optionals mailCluster [
             {
               assertion = lib.hasPrefix "/" mailCfg.mailDirectory;
@@ -4717,6 +4977,9 @@ in
           ++ lib.optionals navidromeCluster [
             "d ${navidromeCfg.backupDir} 0750 navidrome ${backupRepoUserGroup} - -"
           ]
+          ++ lib.optionals audiobookshelfCluster [
+            "d ${audiobookshelfCfg.backupDir} 0750 audiobookshelf ${backupRepoUserGroup} - -"
+          ]
           ++ lib.optionals mailCluster [
             "d ${mailCfg.cluster.backupDir} 0750 root ${backupRepoUserGroup} - -"
           ]
@@ -4887,6 +5150,7 @@ in
             ++ lib.optionals immichCluster [ "immich-server.service" ]
             ++ lib.optionals jellyfinCluster [ "jellyfin.service" ]
             ++ lib.optionals navidromeCluster [ "navidrome.service" ]
+            ++ lib.optionals audiobookshelfCluster [ "audiobookshelf.service" ]
             ++ lib.optionals openwebuiCluster [ "open-webui.service" ]
             ++ lib.optionals roundcubeCluster [
               "nginx.service"
@@ -4908,6 +5172,7 @@ in
             ++ lib.optionals immichCluster [ "immich-server.service" ]
             ++ lib.optionals jellyfinCluster [ "jellyfin.service" ]
             ++ lib.optionals navidromeCluster [ "navidrome.service" ]
+            ++ lib.optionals audiobookshelfCluster [ "audiobookshelf.service" ]
             ++ lib.optionals openwebuiCluster [ "open-webui.service" ]
             ++ lib.optionals roundcubeCluster [
               "nginx.service"
@@ -5022,6 +5287,13 @@ in
 
       (lib.mkIf navidromeCluster {
         systemd.services.navidrome = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+      })
+
+      (lib.mkIf audiobookshelfCluster {
+        systemd.services.audiobookshelf = {
           wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
           partOf = [ "alanix-cluster-active.target" ];
         };

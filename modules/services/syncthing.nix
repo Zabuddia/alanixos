@@ -168,6 +168,17 @@ let
     };
   };
 
+  audiobookshelfMediaFolders = {
+    "media-books" = {
+      label = "media/books";
+      relativePath = "media/books";
+      user = "buddia";
+      group = "users";
+      mode = "2775";
+      ignorePerms = true;
+    };
+  };
+
   filebrowserUserDeclarations =
     lib.flatten (
       lib.mapAttrsToList
@@ -220,6 +231,7 @@ let
     emulation-ryujinx = ryujinxFolders;
     jellyfin-media = jellyfinMediaFolders;
     navidrome-media = navidromeMediaFolders;
+    audiobookshelf-media = audiobookshelfMediaFolders;
   } // filebrowserUserFolderSets;
 
   azaharLinks = {
