@@ -750,6 +750,11 @@ in
         passwordSecret = "kavita-passwords/buddia";
       };
 
+      libraries.Ebooks = {
+        type = "Book";
+        folders = [ "${config.alanix.syncthing.syncRoot}/media/ebooks" ];
+      };
+
       mediaFolders.ebooks = {
         path = "${config.alanix.syncthing.syncRoot}/media/ebooks";
         create = true;
