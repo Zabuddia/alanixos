@@ -697,6 +697,11 @@ in
         passwordSecret = "audiobookshelf-passwords/buddia";
       };
 
+      libraries.Audiobooks = {
+        mediaType = "book";
+        folders = [ "${config.alanix.syncthing.syncRoot}/media/audiobooks" ];
+      };
+
       mediaFolders.books = {
         path = "${config.alanix.syncthing.syncRoot}/media/audiobooks";
         create = true;
