@@ -262,6 +262,8 @@
         "emulation-melonds"
         "emulation-ryujinx"
         "navidrome-media"
+        "audiobookshelf-media"
+        "kavita-media"
         "filebrowser-buddia-files"
       ];
       linkFolderSets = [

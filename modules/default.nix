@@ -23,6 +23,7 @@
     ./services/immich.nix
     ./services/invidious.nix
     ./services/jellyfin.nix
+    ./services/kavita.nix
     ./services/llm.nix
     ./services/mail.nix
     ./services/navidrome.nix

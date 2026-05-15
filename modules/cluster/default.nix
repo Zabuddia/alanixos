@@ -259,6 +259,7 @@ in
       invidiousCfg = config.alanix.invidious;
       immichCfg = config.alanix.immich;
       jellyfinCfg = config.alanix.jellyfin;
+      kavitaCfg = config.alanix.kavita;
       mailCfg = config.alanix.mail;
       navidromeCfg = config.alanix.navidrome;
       audiobookshelfCfg = config.alanix.audiobookshelf;
@@ -274,6 +275,7 @@ in
       invidiousCluster = invidiousCfg.enable && invidiousCfg.cluster.enable;
       immichCluster = immichCfg.enable && immichCfg.cluster.enable;
       jellyfinCluster = jellyfinCfg.enable && jellyfinCfg.cluster.enable;
+      kavitaCluster = kavitaCfg.enable && kavitaCfg.cluster.enable;
       mailCluster = mailCfg.enable && mailCfg.cluster.enable && mailCfg.cluster.backupDir != null;
       navidromeCluster = navidromeCfg.enable && navidromeCfg.cluster.enable;
       audiobookshelfCluster = audiobookshelfCfg.enable && audiobookshelfCfg.cluster.enable;
@@ -619,6 +621,9 @@ in
 
       jellyfinClusteredPaths =
         [ jellyfinCfg.dataDir ];
+
+      kavitaClusteredPaths =
+        [ kavitaCfg.dataDir ];
 
       navidromeClusteredPaths =
         [ navidromeCfg.dataDir ];
@@ -978,6 +983,40 @@ in
             '') navidromeClusteredPaths}
 
             chown -R navidrome:navidrome ${lib.escapeShellArg navidromeCfg.dataDir}
+          ''
+        else
+          null;
+
+      kavitaRestoreScript =
+        if kavitaCluster then
+          pkgs.writeShellScript "alanix-kavita-cluster-restore-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg kavitaCfg.backupDir}
+            trap 'rm -rf "$backup_dir"' EXIT
+
+            restore_dir() {
+              local target="$1"
+              local staged_dir="$backup_dir$target"
+
+              if [[ -e "$target" && ! -d "$target" ]]; then
+                rm -rf "$target"
+              fi
+              mkdir -p "$target"
+
+              if [[ -d "$staged_dir" ]]; then
+                rsync -a --delete "$staged_dir"/ "$target"/
+              else
+                rm -rf "$target"
+                mkdir -p "$target"
+              fi
+            }
+
+            ${lib.concatMapStringsSep "\n" (path: ''
+              restore_dir ${lib.escapeShellArg path}
+            '') kavitaClusteredPaths}
+
+            chown -R kavita:kavita ${lib.escapeShellArg kavitaCfg.dataDir}
           ''
         else
           null;
@@ -1536,6 +1575,49 @@ in
         else
           null;
 
+      kavitaBackupPrepScript =
+        if kavitaCluster then
+          let
+            kavitaPrepStepCount = builtins.length kavitaClusteredPaths + 1;
+          in
+          pkgs.writeShellScript "alanix-kavita-cluster-backup-runtime" ''
+            set -euo pipefail
+
+            backup_dir=${lib.escapeShellArg kavitaCfg.backupDir}
+            backup_group=${lib.escapeShellArg backupRepoUserGroup}
+            data_dir=${lib.escapeShellArg kavitaCfg.dataDir}
+
+            ${backupPrepProgressHelpers}
+
+            rm -rf "$backup_dir"
+            mkdir -p "$backup_dir"
+
+            ${lib.concatStringsSep "\n" (builtins.genList
+              (index:
+                let
+                  path = builtins.elemAt kavitaClusteredPaths index;
+                in
+                ''
+                  rsync_prep_step ${toString (index + 1)} ${toString kavitaPrepStepCount} ${lib.escapeShellArg "staging ${path}"} ${lib.escapeShellArg path} ${lib.escapeShellArg "${kavitaCfg.backupDir}${path}"}
+                '')
+              (builtins.length kavitaClusteredPaths))}
+
+            emit_prep_step ${toString kavitaPrepStepCount} ${toString kavitaPrepStepCount} ${lib.escapeShellArg "snapshotting kavita sqlite databases"}
+            shopt -s globstar nullglob
+            for db_path in "$data_dir"/**/*.db "$data_dir"/*.db "$data_dir"/**/*.sqlite "$data_dir"/*.sqlite "$data_dir"/**/*.sqlite3 "$data_dir"/*.sqlite3; do
+              [[ -f "$db_path" ]] || continue
+              staged_db="$backup_dir$db_path"
+              mkdir -p "$(dirname "$staged_db")"
+              sqlite3 "$db_path" ".backup '$staged_db'"
+            done
+            shopt -u globstar nullglob
+
+            chgrp -R "$backup_group" "$backup_dir"
+            chmod -R u=rwX,g=rX,o= "$backup_dir"
+          ''
+        else
+          null;
+
       audiobookshelfBackupPrepScript =
         if audiobookshelfCluster then
           let
@@ -2056,6 +2138,38 @@ in
         else
           null;
 
+      kavitaWireguardAddress =
+        if kavitaCfg.expose.wireguard.address != null then
+          kavitaCfg.expose.wireguard.address
+        else
+          config.alanix.wireguard.vpnIP;
+
+      kavitaTailscaleTlsName =
+        if kavitaCfg.expose.tailscale.tlsName != null then
+          kavitaCfg.expose.tailscale.tlsName
+        else
+          config.alanix.tailscale.address;
+
+      kavitaTorTargetAddress =
+        normalizeLocalAddress (
+          if kavitaCfg.expose.tor.targetAddress != null then
+            kavitaCfg.expose.tor.targetAddress
+          else
+            kavitaCfg.listenAddress
+        );
+
+      kavitaTorTargetPort =
+        if kavitaCfg.expose.tor.tls then
+          kavitaCfg.expose.tor.publicPort
+        else
+          kavitaCfg.port;
+
+      kavitaTorSecretPath =
+        if kavitaCfg.expose.tor.secretKeyBase64Secret != null then
+          config.sops.secrets.${kavitaCfg.expose.tor.secretKeyBase64Secret}.path
+        else
+          null;
+
       navidromeWireguardAddress =
         if navidromeCfg.expose.wireguard.address != null then
           navidromeCfg.expose.wireguard.address
@@ -2340,6 +2454,14 @@ in
           )
         )
         || (
+          kavitaCluster
+          && (
+            kavitaCfg.expose.tailscale.enable
+            || kavitaCfg.expose.wireguard.enable
+            || (kavitaCfg.expose.tor.enable && kavitaCfg.expose.tor.tls)
+          )
+        )
+        || (
           navidromeCluster
           && (
             navidromeCfg.expose.tailscale.enable
@@ -2399,6 +2521,7 @@ in
         || (invidiousCluster && invidiousCfg.expose.wan.enable)
         || (immichCluster && immichCfg.expose.wan.enable)
         || (jellyfinCluster && jellyfinCfg.expose.wan.enable)
+        || (kavitaCluster && kavitaCfg.expose.wan.enable)
         || (navidromeCluster && navidromeCfg.expose.wan.enable)
         || (audiobookshelfCluster && audiobookshelfCfg.expose.wan.enable)
         || (openwebuiCluster && openwebuiCfg.expose.wan.enable)
@@ -2416,6 +2539,7 @@ in
         || (invidiousCluster && invidiousCfg.expose.tailscale.enable)
         || (immichCluster && immichCfg.expose.tailscale.enable)
         || (jellyfinCluster && jellyfinCfg.expose.tailscale.enable)
+        || (kavitaCluster && kavitaCfg.expose.tailscale.enable)
         || (navidromeCluster && navidromeCfg.expose.tailscale.enable)
         || (audiobookshelfCluster && audiobookshelfCfg.expose.tailscale.enable)
         || (openwebuiCluster && openwebuiCfg.expose.tailscale.enable)
@@ -2433,6 +2557,7 @@ in
         || (invidiousCluster && invidiousCfg.expose.tor.enable)
         || (immichCluster && immichCfg.expose.tor.enable)
         || (jellyfinCluster && jellyfinCfg.expose.tor.enable)
+        || (kavitaCluster && kavitaCfg.expose.tor.enable)
         || (navidromeCluster && navidromeCfg.expose.tor.enable)
         || (audiobookshelfCluster && audiobookshelfCfg.expose.tor.enable)
         || (openwebuiCluster && openwebuiCfg.expose.tor.enable)
@@ -2735,6 +2860,36 @@ in
               label = "Jellyfin (wan)";
               transport = "wan";
               url = "https://${jellyfinCfg.expose.wan.domain}/";
+            }
+          ]
+        ))
+      ];
+
+      kavitaLinksByHost = mergeLinksByHost [
+        (lib.optionalAttrs (kavitaCluster && kavitaCfg.expose.tailscale.enable) (
+          mkPeerLinksByHost {
+            label = "Kavita";
+            transport = "tailscale";
+            scheme = if kavitaCfg.expose.tailscale.tls then "https" else "http";
+            port = kavitaCfg.expose.tailscale.port;
+            addressFn = peerTailscaleAddress;
+          }
+        ))
+        (lib.optionalAttrs (kavitaCluster && kavitaCfg.expose.wireguard.enable) (
+          mkPeerLinksByHost {
+            label = "Kavita";
+            transport = "wireguard";
+            scheme = if kavitaCfg.expose.wireguard.tls then "https" else "http";
+            port = kavitaCfg.expose.wireguard.port;
+            addressFn = peerWireguardAddress;
+          }
+        ))
+        (lib.optionalAttrs (kavitaCluster && kavitaCfg.expose.wan.enable) (
+          mkConstantLinksByHost [
+            {
+              label = "Kavita (wan)";
+              transport = "wan";
+              url = "https://${kavitaCfg.expose.wan.domain}/";
             }
           ]
         ))
@@ -3293,6 +3448,33 @@ in
                 tls = jellyfinCfg.expose.tor.tls;
                 publicPort = jellyfinCfg.expose.tor.publicPort;
                 stateDirName = "jellyfin";
+              };
+            };
+          })
+          // (lib.optionalAttrs kavitaCluster {
+            kavita = {
+              name = "kavita";
+              label = "Kavita";
+              backupInterval = kavitaCfg.cluster.backupInterval;
+              maxBackupAge = kavitaCfg.cluster.maxBackupAge;
+              activeUnits =
+                [ "kavita.service" ]
+                ++ lib.optionals (anyCaddyExposure || anyTorExposure) [ "alanix-cluster-exposure.service" ];
+              backupPaths = [ kavitaCfg.backupDir ];
+              preBackupCommand = [ kavitaBackupPrepScript ];
+              postBackupCommand = [ "rm" "-rf" kavitaCfg.backupDir ];
+              postRestoreCommand = [ kavitaRestoreScript ];
+              restoreTarget = "/";
+              remoteTargets = mkRemoteTargets "kavita";
+              manifestGlobs = mkManifestGlobs "kavita";
+              localTarget = mkLocalTarget "kavita";
+              linksByHost = kavitaLinksByHost;
+              torUrl = mkTorUrl kavitaCfg.expose.tor;
+              tor = {
+                enabled = kavitaCfg.expose.tor.enable;
+                tls = kavitaCfg.expose.tor.tls;
+                publicPort = kavitaCfg.expose.tor.publicPort;
+                stateDirName = "kavita";
               };
             };
           })
@@ -4008,6 +4190,61 @@ in
             EOF
           ''}
 
+          ${lib.optionalString (kavitaCluster && kavitaCfg.expose.tailscale.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if kavitaCfg.expose.tailscale.tls then "https" else "http"}://${kavitaTailscaleTlsName}:${toString kavitaCfg.expose.tailscale.port} {
+              bind $ts_ip
+              ${lib.optionalString kavitaCfg.expose.tailscale.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress kavitaCfg.listenAddress}:${toString kavitaCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (kavitaCluster && kavitaCfg.expose.wireguard.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${if kavitaCfg.expose.wireguard.tls then "https" else "http"}://${kavitaWireguardAddress}:${toString kavitaCfg.expose.wireguard.port} {
+              bind ${kavitaWireguardAddress}
+              ${lib.optionalString kavitaCfg.expose.wireguard.tls "tls internal"}
+              reverse_proxy ${normalizeLocalAddress kavitaCfg.listenAddress}:${toString kavitaCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (kavitaCluster && kavitaCfg.expose.tor.enable && kavitaCfg.expose.tor.tls) ''
+            cat >> "$caddy_file" <<EOF
+            https://${kavitaCfg.expose.tor.tlsName}:${toString kavitaCfg.expose.tor.publicPort} {
+              bind ${kavitaTorTargetAddress}
+              tls internal
+              reverse_proxy ${normalizeLocalAddress kavitaCfg.listenAddress}:${toString kavitaCfg.port}
+            }
+
+            EOF
+          ''}
+
+          ${lib.optionalString (kavitaCluster && kavitaCfg.expose.tor.enable) ''
+            rm -rf "$tor_state_dir/kavita"
+            mkdir -p "$tor_state_dir/kavita"
+            chown tor:tor "$tor_state_dir/kavita"
+            chmod 0700 "$tor_state_dir/kavita"
+          ''}
+
+          ${lib.optionalString (kavitaCluster && kavitaCfg.expose.tor.enable && kavitaTorSecretPath != null) ''
+            base64 --decode ${lib.escapeShellArg kavitaTorSecretPath} > "$tor_state_dir/kavita/hs_ed25519_secret_key"
+            chown tor:tor "$tor_state_dir/kavita/hs_ed25519_secret_key"
+            chmod 0600 "$tor_state_dir/kavita/hs_ed25519_secret_key"
+          ''}
+
+          ${lib.optionalString (kavitaCluster && kavitaCfg.expose.tor.enable) ''
+            cat >> "$tor_file" <<EOF
+            HiddenServiceDir $tor_state_dir/kavita
+            HiddenServiceVersion 3
+            HiddenServicePort ${toString kavitaCfg.expose.tor.publicPort} ${kavitaTorTargetAddress}:${toString kavitaTorTargetPort}
+
+            EOF
+          ''}
+
           ${lib.optionalString (navidromeCluster && navidromeCfg.expose.tailscale.enable) ''
             cat >> "$caddy_file" <<EOF
             ${if navidromeCfg.expose.tailscale.tls then "https" else "http"}://${navidromeTailscaleTlsName}:${toString navidromeCfg.expose.tailscale.port} {
@@ -4433,6 +4670,15 @@ in
             EOF
           ''}
 
+          ${lib.optionalString (kavitaCluster && kavitaCfg.expose.wan.enable) ''
+            cat >> "$caddy_file" <<EOF
+            ${kavitaCfg.expose.wan.domain} {
+              reverse_proxy ${normalizeLocalAddress kavitaCfg.listenAddress}:${toString kavitaCfg.port}
+            }
+
+            EOF
+          ''}
+
           ${lib.optionalString (navidromeCluster && navidromeCfg.expose.wan.enable) ''
             cat >> "$caddy_file" <<EOF
             ${navidromeCfg.expose.wan.domain} {
@@ -4562,6 +4808,9 @@ in
             ${lib.optionalString (jellyfinCluster && jellyfinCfg.expose.tor.enable) ''
               publish_tor_hostname jellyfin
             ''}
+            ${lib.optionalString (kavitaCluster && kavitaCfg.expose.tor.enable) ''
+              publish_tor_hostname kavita
+            ''}
             ${lib.optionalString (navidromeCluster && navidromeCfg.expose.tor.enable) ''
               publish_tor_hostname navidrome
             ''}
@@ -4589,6 +4838,7 @@ in
           rm -rf "$tor_state_dir/invidious"
           rm -rf "$tor_state_dir/immich"
           rm -rf "$tor_state_dir/jellyfin"
+          rm -rf "$tor_state_dir/kavita"
           rm -rf "$tor_state_dir/navidrome"
           rm -rf "$tor_state_dir/audiobookshelf"
           rm -rf "$tor_state_dir/filebrowser"
@@ -4775,6 +5025,16 @@ in
             {
               assertion = lib.hasPrefix "/" jellyfinCfg.backupDir;
               message = "Jellyfin cluster mode requires alanix.jellyfin.backupDir to be an absolute path.";
+            }
+          ]
+          ++ lib.optionals kavitaCluster [
+            {
+              assertion = lib.hasPrefix "/" kavitaCfg.dataDir;
+              message = "Kavita cluster mode requires alanix.kavita.dataDir to be an absolute path.";
+            }
+            {
+              assertion = lib.hasPrefix "/" kavitaCfg.backupDir;
+              message = "Kavita cluster mode requires alanix.kavita.backupDir to be an absolute path.";
             }
           ]
           ++ lib.optionals navidromeCluster [
@@ -4974,6 +5234,9 @@ in
           ++ lib.optionals jellyfinCluster [
             "d ${jellyfinCfg.backupDir} 0750 jellyfin ${backupRepoUserGroup} - -"
           ]
+          ++ lib.optionals kavitaCluster [
+            "d ${kavitaCfg.backupDir} 0750 kavita ${backupRepoUserGroup} - -"
+          ]
           ++ lib.optionals navidromeCluster [
             "d ${navidromeCfg.backupDir} 0750 navidrome ${backupRepoUserGroup} - -"
           ]
@@ -5149,6 +5412,7 @@ in
             ++ lib.optionals invidiousCluster [ "invidious.service" ]
             ++ lib.optionals immichCluster [ "immich-server.service" ]
             ++ lib.optionals jellyfinCluster [ "jellyfin.service" ]
+            ++ lib.optionals kavitaCluster [ "kavita.service" ]
             ++ lib.optionals navidromeCluster [ "navidrome.service" ]
             ++ lib.optionals audiobookshelfCluster [ "audiobookshelf.service" ]
             ++ lib.optionals openwebuiCluster [ "open-webui.service" ]
@@ -5171,6 +5435,7 @@ in
             ++ lib.optionals invidiousCluster [ "invidious.service" ]
             ++ lib.optionals immichCluster [ "immich-server.service" ]
             ++ lib.optionals jellyfinCluster [ "jellyfin.service" ]
+            ++ lib.optionals kavitaCluster [ "kavita.service" ]
             ++ lib.optionals navidromeCluster [ "navidrome.service" ]
             ++ lib.optionals audiobookshelfCluster [ "audiobookshelf.service" ]
             ++ lib.optionals openwebuiCluster [ "open-webui.service" ]
@@ -5294,6 +5559,13 @@ in
 
       (lib.mkIf audiobookshelfCluster {
         systemd.services.audiobookshelf = {
+          wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
+          partOf = [ "alanix-cluster-active.target" ];
+        };
+      })
+
+      (lib.mkIf kavitaCluster {
+        systemd.services.kavita = {
           wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
           partOf = [ "alanix-cluster-active.target" ];
         };

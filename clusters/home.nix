@@ -113,6 +113,7 @@ in
           "mqtt.fifefin.com"
           "navidrome.fifefin.com"
           "audiobookshelf.fifefin.com"
+          "kavita.fifefin.com"
           "owntracks.fifefin.com"
           "radicale.fifefin.com"
           "searxng.fifefin.com"
@@ -164,11 +165,11 @@ in
       transport = "tailscale";
       listenPort = 22000;
       syncRoot = "/srv/syncthing";
-      folderSets = [ "jellyfin-media" "navidrome-media" "audiobookshelf-media" "filebrowser-files" ];
+      folderSets = [ "jellyfin-media" "navidrome-media" "audiobookshelf-media" "kavita-media" "filebrowser-files" ];
       externalDevices.pixel-fold = {
         id = "BT23SPJ-ICTEBQ7-GJTDRQT-LCUQ773-U63QFZR-472O3YA-2KRJ4KY-AMPZ7AF";
         addresses = [ "tcp://pixel-fold:22000" ];
-        folderSets = [ "filebrowser-buddia-files" ];
+        folderSets = [ "kavita-media" "filebrowser-buddia-files" ];
       };
     };
 
@@ -697,7 +698,7 @@ in
       };
 
       mediaFolders.books = {
-        path = "${config.alanix.syncthing.syncRoot}/media/books";
+        path = "${config.alanix.syncthing.syncRoot}/media/audiobooks";
         create = true;
         user = "buddia";
         group = "users";
@@ -710,6 +711,13 @@ in
           domain = "audiobookshelf.fifefin.com";
         };
 
+        tor = {
+          enable = true;
+          publicPort = 80;
+          secretKeyBase64Secret = "tor/audiobookshelf/secret-key-base64";
+          hostname = "yhoyukchgqwdehu5t4s2vaj6feozpw353ykv47ki2eeq7bilvazctaad.onion";
+        };
+
         tailscale = {
           enable = true;
           address = config.alanix.tailscale.address;
@@ -719,6 +727,59 @@ in
         wireguard = {
           enable = true;
           port = 13378;
+        };
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "12h";
+        maxBackupAge = "48h";
+      };
+    };
+
+    alanix.kavita = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 5000;
+      backupDir = "/var/backup/kavita";
+      extraGroups = [ "users" ];
+
+      users.buddia = {
+        admin = true;
+        email = "fife.alan@protonmail.com";
+        passwordSecret = "kavita-passwords/buddia";
+      };
+
+      mediaFolders.ebooks = {
+        path = "${config.alanix.syncthing.syncRoot}/media/ebooks";
+        create = true;
+        user = "buddia";
+        group = "users";
+        mode = "2775";
+      };
+
+      expose = {
+        wan = {
+          enable = true;
+          domain = "kavita.fifefin.com";
+        };
+
+        tor = {
+          enable = true;
+          publicPort = 80;
+          secretKeyBase64Secret = "tor/kavita/secret-key-base64";
+          hostname = "fmandr4ystw6pod5kz3obrczjz2pztqf2l627hmpfc2bwn26kh673zqd.onion";
+        };
+
+        tailscale = {
+          enable = true;
+          address = config.alanix.tailscale.address;
+          port = 5000;
+        };
+
+        wireguard = {
+          enable = true;
+          port = 5000;
         };
       };
 
@@ -957,6 +1018,13 @@ in
         wan = {
           enable = true;
           domain = "openwebui.fifefin.com";
+        };
+
+        tor = {
+          enable = true;
+          publicPort = 80;
+          secretKeyBase64Secret = "tor/openwebui/secret-key-base64";
+          hostname = "uogrbydngyykybpe7eo4w6mxllcnany6dgkbskfjkzncg6upe4mwedqd.onion";
         };
 
         tailscale = {

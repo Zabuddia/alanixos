@@ -169,9 +169,20 @@ let
   };
 
   audiobookshelfMediaFolders = {
-    "media-books" = {
-      label = "media/books";
-      relativePath = "media/books";
+    "media-audiobooks" = {
+      label = "media/audiobooks";
+      relativePath = "media/audiobooks";
+      user = "buddia";
+      group = "users";
+      mode = "2775";
+      ignorePerms = true;
+    };
+  };
+
+  kavitaMediaFolders = {
+    "media-ebooks" = {
+      label = "media/ebooks";
+      relativePath = "media/ebooks";
       user = "buddia";
       group = "users";
       mode = "2775";
@@ -232,6 +243,7 @@ let
     jellyfin-media = jellyfinMediaFolders;
     navidrome-media = navidromeMediaFolders;
     audiobookshelf-media = audiobookshelfMediaFolders;
+    kavita-media = kavitaMediaFolders;
   } // filebrowserUserFolderSets;
 
   azaharLinks = {
