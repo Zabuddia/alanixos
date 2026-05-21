@@ -83,6 +83,7 @@
             remmina
             tor-browser
             hyprpicker
+            wdisplays
             zoom-us
             usbimager
             tmux
