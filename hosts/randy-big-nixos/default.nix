@@ -155,6 +155,29 @@
       operator = "buddia";
     };
 
+    alanix.tvheadend = {
+      enable = true;
+      recordingsDir = "/srv/tvheadend/recordings";
+      expose.tailscale = {
+        enable = true;
+        port = 19981;
+      };
+      expose.wireguard = {
+        enable = true;
+        address = "10.100.0.2";
+        port = 9981;
+      };
+      htsp.expose.tailscale = {
+        enable = true;
+        port = 19982;
+      };
+      htsp.expose.wireguard = {
+        enable = true;
+        address = "10.100.0.2";
+        port = 9982;
+      };
+    };
+
     alanix.syncthing = {
       deviceId = "WOQMMD4-ZYSB3YY-F4WFRQJ-O7T4X2A-UV54S74-Z26UPI2-DCNKC2I-ALDOWAN";
       peers = [
