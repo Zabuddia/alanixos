@@ -1,4 +1,4 @@
-{ lib, config, hostname, allHosts, ... }:
+{ lib, pkgs, config, hostname, allHosts, ... }:
 
 let
   cfg = config.alanix.wireguard;
@@ -121,6 +121,25 @@ in
         listenPort = cfg.listenPort;
         privateKeyFile = cfg.privateKeyFile;
         peers = peers;
+      };
+
+      systemd.services.alanix-wireguard-address = {
+        description = "Ensure Alanix WireGuard address is present";
+        after = [ "wireguard-wg0.service" ];
+        wants = [ "wireguard-wg0.service" ];
+        wantedBy = [ "multi-user.target" ];
+        partOf = [ "wireguard-wg0.service" ];
+        path = [ pkgs.iproute2 ];
+        script = ''
+          set -euo pipefail
+          ip link show dev wg0 >/dev/null
+          ip address replace ${lib.escapeShellArg "${cfg.vpnIP}/24"} dev wg0
+          ip link set up dev wg0
+        '';
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
       };
     })
   ];

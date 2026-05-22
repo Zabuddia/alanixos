@@ -2547,6 +2547,24 @@ in
         || (owntracksCluster && owntracksCfg.recorder.expose.tailscale.enable)
         || (searxngCluster && searxngCfg.expose.tailscale.enable);
 
+      anyWireguardCaddyExposure =
+        (nextcloudCluster && nextcloudCfg.expose.wireguard.enable)
+        || (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.wireguard.enable)
+        || (filebrowserCluster && filebrowserCfg.expose.wireguard.enable)
+        || (radicaleCluster && radicaleCfg.expose.wireguard.enable)
+        || (vaultwardenCluster && vaultwardenCfg.expose.wireguard.enable)
+        || (forgejoCluster && forgejoCfg.expose.wireguard.enable)
+        || (invidiousCluster && invidiousCfg.expose.wireguard.enable)
+        || (immichCluster && immichCfg.expose.wireguard.enable)
+        || (jellyfinCluster && jellyfinCfg.expose.wireguard.enable)
+        || (kavitaCluster && kavitaCfg.expose.wireguard.enable)
+        || (navidromeCluster && navidromeCfg.expose.wireguard.enable)
+        || (audiobookshelfCluster && audiobookshelfCfg.expose.wireguard.enable)
+        || (openwebuiCluster && openwebuiCfg.expose.wireguard.enable)
+        || (roundcubeCluster && roundcubeCfg.expose.wireguard.enable)
+        || (owntracksCluster && owntracksCfg.recorder.expose.wireguard.enable)
+        || (searxngCluster && searxngCfg.expose.wireguard.enable);
+
       anyTorExposure =
         (nextcloudCluster && nextcloudCfg.expose.tor.enable)
         || (nextcloudCluster && nextcloudCollaboraCfg.enable && nextcloudCollaboraCfg.expose.tor.enable)
@@ -3693,6 +3711,12 @@ in
               echo "failed to determine Tailscale IPv4 address" >&2
               exit 1
             fi
+          ''}
+
+          ${lib.optionalString anyWireguardCaddyExposure ''
+            ip link show dev wg0 >/dev/null
+            ip address replace ${lib.escapeShellArg "${config.alanix.wireguard.vpnIP}/24"} dev wg0
+            ip link set up dev wg0
           ''}
 
           ${lib.optionalString (nextcloudCluster && nextcloudCfg.expose.tailscale.enable) ''
@@ -5402,6 +5426,10 @@ in
           after =
             lib.optionals nextcloudCluster [ "phpfpm-nextcloud.service" ]
             ++ lib.optionals (nextcloudCluster && nextcloudCollaboraCfg.enable) [ "coolwsd.service" ]
+            ++ lib.optionals anyWireguardCaddyExposure [
+              "wireguard-wg0.service"
+              "alanix-wireguard-address.service"
+            ]
             ++
             lib.optionals filebrowserCluster [ "filebrowser.service" ]
             ++
@@ -5425,6 +5453,10 @@ in
           wants =
             lib.optionals nextcloudCluster [ "phpfpm-nextcloud.service" ]
             ++ lib.optionals (nextcloudCluster && nextcloudCollaboraCfg.enable) [ "coolwsd.service" ]
+            ++ lib.optionals anyWireguardCaddyExposure [
+              "wireguard-wg0.service"
+              "alanix-wireguard-address.service"
+            ]
             ++
             lib.optionals filebrowserCluster [ "filebrowser.service" ]
             ++
@@ -5448,6 +5480,7 @@ in
           path =
             [ pkgs.coreutils pkgs.systemd ]
             ++ lib.optionals anyCaddyExposure [ config.services.caddy.package ]
+            ++ lib.optionals anyWireguardCaddyExposure [ pkgs.iproute2 ]
             ++ lib.optionals (cfg.transport == "tailscale") [ config.services.tailscale.package ];
           script = "${exposureScript} start";
           serviceConfig = {
