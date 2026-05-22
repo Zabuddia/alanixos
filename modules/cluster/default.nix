@@ -3564,7 +3564,7 @@ in
                   "postfix.service"
                 ]
                 ++ lib.optional (mailCfg.dkim.privateKeySecrets != { }) "alanix-mail-dkim-keys.service"
-                ++ lib.optional mailCfg.localDnsResolver "kresd.service"
+                ++ lib.optional mailCfg.localDnsResolver "kresd.target"
                 ++ lib.optional mailCfg.dmarcReporting.enable "rspamd-dmarc-reporter.timer"
                 ++ lib.optionals mailCfg.virusScanning [
                   "clamav-daemon.socket"
@@ -5630,7 +5630,7 @@ in
           partOf = [ "alanix-cluster-active.target" ];
         };
 
-        systemd.services.kresd = lib.mkIf mailCfg.localDnsResolver {
+        systemd.targets.kresd = lib.mkIf mailCfg.localDnsResolver {
           wantedBy = lib.mkForce [ "alanix-cluster-active.target" ];
           partOf = [ "alanix-cluster-active.target" ];
         };
