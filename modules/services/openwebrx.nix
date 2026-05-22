@@ -2,6 +2,15 @@
 let
   cfg = config.alanix.openwebrx;
   serviceExposure = import ../../lib/mkServiceExposure.nix { inherit lib pkgs; };
+  rtlDeviceSelector =
+    if cfg.rtlSdr.device == null then
+      null
+    else if lib.hasPrefix "serial:" cfg.rtlSdr.device then
+      lib.removePrefix "serial:" cfg.rtlSdr.device
+    else if lib.hasPrefix "index:" cfg.rtlSdr.device then
+      lib.removePrefix "index:" cfg.rtlSdr.device
+    else
+      cfg.rtlSdr.device;
 
   endpoint = {
     address = cfg.listenAddress;
@@ -35,7 +44,7 @@ let
             })
           cfg.rtlSdr.profiles;
     }
-    // lib.optionalAttrs (cfg.rtlSdr.device != null) { device = cfg.rtlSdr.device; }
+    // lib.optionalAttrs (rtlDeviceSelector != null) { device = rtlDeviceSelector; }
     // lib.optionalAttrs (cfg.rtlSdr.biasTee != null) { bias_tee = cfg.rtlSdr.biasTee; }
     // lib.optionalAttrs (cfg.rtlSdr.directSampling != null) {
       direct_sampling = cfg.rtlSdr.directSampling;
@@ -190,7 +199,11 @@ in
       device = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
-        description = "Optional RTL-SDR device serial or index.";
+        description = ''
+          Optional RTL-SDR device selector. Plain numeric values are passed
+          through as indexes. Use `serial:<serial>` to pin a device by serial,
+          which is useful when the serial itself is numeric.
+        '';
       };
 
       biasTee = lib.mkOption {
@@ -290,6 +303,20 @@ in
           {
             assertion = cfg.rtlSdr.profiles != { };
             message = "alanix.openwebrx.rtlSdr.profiles must include at least one host-defined profile.";
+          }
+          {
+            assertion =
+              cfg.rtlSdr.device == null
+              || !lib.hasPrefix "index:" cfg.rtlSdr.device
+              || builtins.match "[0-9]+" rtlDeviceSelector != null;
+            message = "alanix.openwebrx.rtlSdr.device with index: must contain only digits after the prefix.";
+          }
+          {
+            assertion =
+              cfg.rtlSdr.device == null
+              || !lib.hasPrefix "serial:" cfg.rtlSdr.device
+              || rtlDeviceSelector != "";
+            message = "alanix.openwebrx.rtlSdr.device with serial: must include a non-empty serial.";
           }
           {
             assertion = !(cfg.expose.tailscale.enable && cfg.expose.tailscale.port == cfg.port);

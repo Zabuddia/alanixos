@@ -1,6 +1,22 @@
 { config, lib, pkgs, ... }:
 let
   cfg = config.alanix.radioStreams;
+  rtlDeviceSelector =
+    if lib.hasPrefix "serial:" cfg.device then
+      {
+        kind = "serial";
+        value = lib.removePrefix "serial:" cfg.device;
+      }
+    else if lib.hasPrefix "index:" cfg.device then
+      {
+        kind = "index";
+        value = lib.removePrefix "index:" cfg.device;
+      }
+    else
+      {
+        kind = "index";
+        value = cfg.device;
+      };
 
   hasValue = value: value != null && value != "";
   sanitizeName = name: lib.replaceStrings [ "-" "." "@" "+" " " "/" ] [ "_" "_" "_" "_" "_" "_" ] name;
@@ -62,8 +78,6 @@ let
 
       rtlArgs =
         [
-          "-d"
-          cfg.device
           "-f"
           (toString station.frequency)
           "-M"
@@ -81,8 +95,6 @@ let
       # decimation, preventing FM stereo subcarrier / RDS from aliasing.
       rtlArgsSox =
         [
-          "-d"
-          cfg.device
           "-f"
           (toString station.frequency)
           "-M"
@@ -96,10 +108,10 @@ let
 
       tunerCommand =
         if station.mode == "wbfm" then
-          "${pkgs.rtl-sdr-blog}/bin/rtl_fm ${lib.escapeShellArgs rtlArgsSox}"
+          "${pkgs.rtl-sdr-blog}/bin/rtl_fm -d \"$RTL_DEVICE_ARG\" ${lib.escapeShellArgs rtlArgsSox}"
           + " | ${pkgs.sox}/bin/sox -V0 -r ${toString rtlSampleRate} -t raw -e signed-integer -b 16 -L -c 1 - -r ${toString audioRate} -t raw -e signed-integer -b 16 -L -c 1 - sinc -15000"
         else
-          "${pkgs.rtl-sdr-blog}/bin/rtl_fm ${lib.escapeShellArgs rtlArgs}";
+          "${pkgs.rtl-sdr-blog}/bin/rtl_fm -d \"$RTL_DEVICE_ARG\" ${lib.escapeShellArgs rtlArgs}";
     in
     station
     // {
@@ -186,6 +198,39 @@ let
       chown radio-stream:radio-stream ${lib.escapeShellArg currentStationFile}
     fi
     chmod 0644 ${lib.escapeShellArg currentStationFile}
+  '';
+
+  resolveRtlDeviceScript = ''
+    resolve_rtl_device_arg() {
+      local selector_kind=${lib.escapeShellArg rtlDeviceSelector.kind}
+      local selector_value=${lib.escapeShellArg rtlDeviceSelector.value}
+
+      case "$selector_kind" in
+        index)
+          printf '%s\n' "$selector_value"
+          ;;
+        serial)
+          local listing resolved_index
+          listing="$(${pkgs.rtl-sdr-blog}/bin/rtl_test -t 2>&1 || true)"
+          resolved_index=""
+
+          while IFS= read -r line; do
+            if [[ "$line" =~ ^[[:space:]]*([0-9]+):[[:space:]].*SN:[[:space:]](.*)$ ]] && [[ "''${BASH_REMATCH[2]}" == "$selector_value" ]]; then
+              resolved_index="''${BASH_REMATCH[1]}"
+              break
+            fi
+          done <<< "$listing"
+
+          if [[ -z "$resolved_index" ]]; then
+            echo "Unable to resolve RTL-SDR serial '$selector_value' to a device index." >&2
+            printf '%s\n' "$listing" >&2
+            exit 1
+          fi
+
+          printf '%s\n' "$resolved_index"
+          ;;
+      esac
+    }
   '';
 
   writeCurrentStation = ''
@@ -420,7 +465,11 @@ in
     device = lib.mkOption {
       type = lib.types.str;
       default = "0";
-      description = "RTL-SDR device index or serial passed to rtl_fm.";
+      description = ''
+        RTL-SDR device selector passed to rtl_fm. Plain numeric values are
+        treated as indexes. Use `serial:<serial>` to pin a device by serial,
+        which is useful when the serial itself is numeric.
+      '';
     };
 
     stateDir = lib.mkOption {
@@ -603,6 +652,18 @@ in
           assertion = lib.hasAttrByPath [ "sops" "secrets" cfg.sourcePasswordSecret ] config;
           message = "alanix.radioStreams.sourcePasswordSecret must reference a declared sops secret.";
         }
+        {
+          assertion =
+            rtlDeviceSelector.kind != "index"
+            || builtins.match "[0-9]+" rtlDeviceSelector.value != null;
+          message = "alanix.radioStreams.device must be numeric when using a plain value or index: prefix.";
+        }
+        {
+          assertion =
+            rtlDeviceSelector.kind != "serial"
+            || rtlDeviceSelector.value != "";
+          message = "alanix.radioStreams.device with serial: must include a non-empty serial.";
+        }
       ]
       ++ lib.flatten (lib.mapAttrsToList
         (id: _: [
@@ -662,6 +723,10 @@ in
       script = ''
         set -euo pipefail
 
+        ${resolveRtlDeviceScript}
+        RTL_DEVICE_ARG="$(resolve_rtl_device_arg)"
+        export RTL_DEVICE_ARG
+
         station_id="$(tr -d '\r\n' < ${lib.escapeShellArg currentStationFile})"
 
         case "$station_id" in
@@ -713,6 +778,7 @@ in
         LIQ
 
         echo "Starting station $station_id: $station_name"
+        echo "Resolved RTL-SDR device index: $RTL_DEVICE_ARG"
         echo "Tuner command: $station_tuner_command_liq"
         exec ${pkgs.liquidsoap}/bin/liquidsoap "$liquidsoap_script"
       '';
