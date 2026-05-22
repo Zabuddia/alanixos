@@ -111,6 +111,7 @@
         dolphin.enable = true;
         melonds.enable = true;
         ryubing.enable = true;
+        vscode.enable = true;
       };
     };
 
