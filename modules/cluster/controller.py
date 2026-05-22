@@ -2560,7 +2560,7 @@ class Controller:
         now = time.monotonic()
         self.schedule_due_backups(now)
 
-    def tick_passive(self):
+    def tick_passive(self, mode_state=None):
         try:
             leader = self.get_leader()
         except EtcdUnavailable as exc:
@@ -2587,7 +2587,14 @@ class Controller:
             log("stopping active target because no cluster lease is present")
             self.stop_target()
 
-        peer_mode, _ = self.peer_guard_mode()
+        if (
+            mode_state is not None
+            and mode_state.get("mode") == self.HA_MODE
+            and mode_state.get("source") == "etcd"
+        ):
+            peer_mode = self.local_ha_mode()
+        else:
+            peer_mode, _ = self.peer_guard_mode()
         if peer_mode.get("mode") != self.HA_MODE:
             if peer_mode.get("mode") == "peer-unknown":
                 self.log_every(
@@ -2634,7 +2641,7 @@ class Controller:
                 if self.apply_runtime_mode(mode_state):
                     pass
                 elif self.lease_id is None:
-                    self.tick_passive()
+                    self.tick_passive(mode_state)
                 else:
                     self.tick_active()
             except Exception as exc:
