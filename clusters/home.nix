@@ -1001,7 +1001,7 @@ in
     alanix.openwebui = {
       enable = true;
       listenAddress = "127.0.0.1";
-      port = 8000;
+      port = 18080;
       rootUrl = "https://openwebui.fifefin.com";
       disableRegistration = true;
       backupDir = "/var/backup/openwebui";
