@@ -51,6 +51,15 @@ let
     // lib.optionalAttrs (cfg.runOpts != null && cfg.runOpts != "") {
       RUN_OPTS = cfg.runOpts;
     };
+
+  proxyUnitNamesFor =
+    serviceName: exposeCfg:
+    lib.optionals (exposeCfg.tailscale.enable && !exposeCfg.tailscale.tls) [ "alanix-expose-tailscale-${serviceName}" ]
+    ++ lib.optionals (exposeCfg.wireguard.enable && !exposeCfg.wireguard.tls) [ "alanix-expose-wireguard-${serviceName}" ];
+
+  proxyUnitNames =
+    proxyUnitNamesFor "tvheadend" cfg.expose
+    ++ proxyUnitNamesFor "tvheadend-htsp" cfg.htsp.expose;
 in
 {
   options.alanix.tvheadend = {
@@ -199,7 +208,14 @@ in
         extraOptions = containerOptions;
       };
 
-      systemd.services.podman-tvheadend.unitConfig.ConditionPathExists = cfg.devicePaths;
+      systemd.sockets = lib.genAttrs proxyUnitNames (_: {
+        unitConfig.ConditionPathExists = cfg.devicePaths;
+      });
+      systemd.services =
+        { "podman-tvheadend".unitConfig.ConditionPathExists = cfg.devicePaths; }
+        // lib.genAttrs proxyUnitNames (_: {
+          unitConfig.ConditionPathExists = cfg.devicePaths;
+        });
 
       environment.systemPackages = [ pkgs.v4l-utils ];
     }

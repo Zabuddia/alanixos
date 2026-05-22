@@ -222,7 +222,8 @@
 
       rtlSdr = {
         name = "RTL-SDR Blog";
-        device = "0";
+        # Pin the SDR services to the Blog V4 dongle by EEPROM serial.
+        device = "serial:00000001";
 
         profiles = {
           am_broadcast = {
@@ -364,7 +365,7 @@
 
     alanix.radioStreams = {
       enable = true;
-      device = "0";
+      device = "serial:00000001";
       defaultStation = "fm_94_9";
       liveMount = "/live.mp3";
 
