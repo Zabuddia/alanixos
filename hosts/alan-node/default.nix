@@ -12,7 +12,7 @@
 
     alanix.system = {
       stateVersion = "25.11";
-      timeZone = "America/Denver";
+      timeZone = "America/Chicago";
       locale = "en_US.UTF-8";
       enableSystemdBoot = true;
       canTouchEfiVariables = true;
