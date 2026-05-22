@@ -433,9 +433,17 @@ class Dashboard:
 
     def mode_probe_payload(self) -> dict:
         controller_state = self.controller_runtime_state()
+        local_mode = self.local_runtime_mode()
+        controller_mode = controller_state.get("runtimeMode")
+        if local_mode.get("mode") != "ha":
+            mode_state = local_mode
+        elif controller_mode and controller_mode.get("mode") == "ha":
+            mode_state = controller_mode
+        else:
+            mode_state = local_mode
         return {
             "hostname": self.hostname,
-            "modeState": controller_state.get("runtimeMode") or self.local_runtime_mode(),
+            "modeState": mode_state,
             "generatedAt": iso_timestamp(),
         }
 
