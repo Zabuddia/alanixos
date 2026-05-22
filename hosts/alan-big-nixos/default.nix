@@ -154,9 +154,7 @@
       operator = "buddia";
     };
 
-    alanix.wifi.networks = [
-      { ssid = "Cinnamon Tree"; pskSecret = "wifi-passwords/cinnamon-tree"; }
-    ];
+    alanix.wifi.radio.enable = false;
 
     alanix.syncthing = {
       deviceId = "5CVWFSK-CV4SWJP-Z7S4TTV-UAX263E-AEEWI6K-Z22GRUZ-F2JFFQY-LOZWLAS";

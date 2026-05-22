@@ -243,7 +243,7 @@
     };
 
     alanix.wifi.networks = [
-      { ssid = "Cinnamon Tree"; pskSecret = "wifi-passwords/cinnamon-tree"; }
+      { ssid = "ATT2edMYDj"; pskSecret = "wifi-passwords/ATT2edMYDj"; }
     ];
 
     alanix.syncthing = {
