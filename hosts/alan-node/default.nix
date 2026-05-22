@@ -23,6 +23,7 @@
       enableFirewall = true;
       packages = with pkgs; [
         age
+        bind
         caddy
         curl
         git
