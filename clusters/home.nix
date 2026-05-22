@@ -1,8 +1,8 @@
 { config, lib, hostname, ... }:
 let
   members = [
-    "randy-big-nixos"
     "alan-big-nixos"
+    "randy-big-nixos"
     "alan-node"
   ];
 

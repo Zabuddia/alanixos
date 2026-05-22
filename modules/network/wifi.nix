@@ -1,4 +1,4 @@
-{ lib, config, ... }:
+{ lib, config, pkgs, ... }:
 
 let
   cfg = config.alanix.wifi;
@@ -8,6 +8,12 @@ let
 in
 {
   options.alanix.wifi = {
+    radio.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Whether the NetworkManager Wi-Fi radio should stay enabled.";
+    };
+
     networks = lib.mkOption {
       type = lib.types.listOf (lib.types.submodule {
         options = {
@@ -27,26 +33,44 @@ in
     };
   };
 
-  config = lib.mkIf (networks != [ ]) {
-    sops.templates."alanix-wifi-env" = {
-      content = lib.concatMapStrings (x:
-        "${toVar x.i}=${config.sops.placeholder.${x.pskSecret}}\n"
-      ) indexed;
-      owner = "root";
-      mode = "0400";
-    };
+  config = lib.mkMerge [
+    (lib.mkIf (networks != [ ]) {
+      sops.templates."alanix-wifi-env" = {
+        content = lib.concatMapStrings (x:
+          "${toVar x.i}=${config.sops.placeholder.${x.pskSecret}}\n"
+        ) indexed;
+        owner = "root";
+        mode = "0400";
+      };
 
-    networking.networkmanager.ensureProfiles = {
-      environmentFiles = [ config.sops.templates."alanix-wifi-env".path ];
-      profiles = lib.listToAttrs (map (x:
-        lib.nameValuePair x.ssid {
-          connection = { id = x.ssid; type = "wifi"; };
-          wifi = { mode = "infrastructure"; ssid = x.ssid; };
-          wifi-security = { auth-alg = "open"; key-mgmt = "wpa-psk"; psk = "$" + (toVar x.i); };
-          ipv4 = { method = "auto"; };
-          ipv6 = { addr-gen-mode = "stable-privacy"; method = "auto"; };
-        }
-      ) indexed);
-    };
-  };
+      networking.networkmanager.ensureProfiles = {
+        environmentFiles = [ config.sops.templates."alanix-wifi-env".path ];
+        profiles = lib.listToAttrs (map (x:
+          lib.nameValuePair x.ssid {
+            connection = { id = x.ssid; type = "wifi"; };
+            wifi = { mode = "infrastructure"; ssid = x.ssid; };
+            wifi-security = { auth-alg = "open"; key-mgmt = "wpa-psk"; psk = "$" + (toVar x.i); };
+            ipv4 = { method = "auto"; };
+            ipv6 = { addr-gen-mode = "stable-privacy"; method = "auto"; };
+          }
+        ) indexed);
+      };
+    })
+
+    (lib.mkIf (!cfg.radio.enable) {
+      systemd.services.alanix-wifi-radio-off = {
+        description = "Disable Wi-Fi radio";
+        wantedBy = [ "multi-user.target" ];
+        after = [ "NetworkManager.service" ];
+        wants = [ "NetworkManager.service" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        script = ''
+          ${pkgs.networkmanager}/bin/nmcli radio wifi off || true
+        '';
+      };
+    })
+  ];
 }
