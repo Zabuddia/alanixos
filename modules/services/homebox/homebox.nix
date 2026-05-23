@@ -30,7 +30,13 @@ let
     wait_for_server() {
       local attempts=120
       while [ "$attempts" -gt 0 ]; do
-        if curl -sf "$BASE_URL/api/v1/status/properties" >/dev/null 2>&1; then
+        # Any HTTP response (even 400/422) means the server is up
+        local status
+        status=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 3 \
+          -X POST "$BASE_URL/api/v1/users/login" \
+          -H "Content-Type: application/json" \
+          -d '{}' 2>/dev/null || true)
+        if [[ "$status" =~ ^[0-9]+$ ]] && [ "$status" != "000" ]; then
           return 0
         fi
         sleep 1
@@ -244,7 +250,7 @@ in
 
       system.activationScripts.alanixHomeboxReconcileUsers =
         lib.mkIf (baseConfigReady && reconcileEnabled) {
-          deps = [ "etc" ];
+          deps = [ "etc" "setupSecrets" ];
           text = ''
             if ${pkgs.systemd}/bin/systemctl --quiet is-active homebox.service; then
               ${pkgs.systemd}/bin/systemctl daemon-reload
