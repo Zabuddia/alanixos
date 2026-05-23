@@ -328,7 +328,10 @@ in
       port = 8091;
       backupDir = "/var/backup/grocy";
 
-      users.buddia.passwordSecret = "grocy-passwords/buddia";
+      users.buddia = {
+        passwordSecret = "grocy-passwords/buddia";
+        admin = true;
+      };
 
       expose = {
         wan = {

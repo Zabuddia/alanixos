@@ -22,7 +22,9 @@ let
   reconcileEnabled = cfg.users != { };
 
   sanitizedUsersForRestart =
-    lib.mapAttrs (_: u: { inherit (u) passwordSecret; }) cfg.users;
+    lib.mapAttrs (_: u: { inherit (u) passwordSecret admin; }) cfg.users;
+
+  removeDefaultAdmin = lib.any (u: u.admin) (lib.attrValues cfg.users);
 
   grocyDb = "${cfg.dataDir}/grocy.db";
 
@@ -79,7 +81,20 @@ let
         ${pkgs.sqlite}/bin/sqlite3 "$DB" \
           "UPDATE users SET password = '$HASH_${username}' WHERE username = '${username}';"
       fi
+      ${lib.optionalString userCfg.admin ''
+      echo "Granting ADMIN permission to Grocy user: ${username}"
+      ${pkgs.sqlite}/bin/sqlite3 "$DB" "
+        INSERT OR IGNORE INTO user_permissions (permission_id, user_id)
+        SELECT (SELECT id FROM permission_hierarchy WHERE name = 'ADMIN'), id
+        FROM users WHERE username = '${username}';
+      "
+      ''}
     '') cfg.users)}
+
+    ${lib.optionalString removeDefaultAdmin ''
+    echo "Removing default admin/admin user if present"
+    ${pkgs.sqlite}/bin/sqlite3 "$DB" "DELETE FROM users WHERE username = 'admin';"
+    ''}
 
     echo "Grocy user reconciliation complete."
   '';
@@ -147,6 +162,11 @@ in
         options.passwordSecret = lib.mkOption {
           type = lib.types.str;
           description = "Name of the sops secret containing the plaintext password for Grocy user ${name}.";
+        };
+        options.admin = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Whether to grant the ADMIN permission to this Grocy user.";
         };
       }));
       default = { };
