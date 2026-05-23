@@ -69,15 +69,15 @@ let
       HASH_${username}=$(${pkgs.php}/bin/php -r "echo password_hash(getenv('_GROCY_PASS'), PASSWORD_DEFAULT);" \
         _GROCY_PASS="$PASS_${username}")
       existing=$(${pkgs.sqlite}/bin/sqlite3 "$DB" \
-        "SELECT COUNT(*) FROM users WHERE username = ${lib.escapeShellArg username};")
+        "SELECT COUNT(*) FROM users WHERE username = '${username}';")
       if [ "$existing" = "0" ]; then
         echo "Creating Grocy user: ${username}"
         ${pkgs.sqlite}/bin/sqlite3 "$DB" \
-          "INSERT INTO users (username, password, row_created_timestamp) VALUES (${lib.escapeShellArg username}, '$HASH_${username}', datetime('now'));"
+          "INSERT INTO users (username, password, row_created_timestamp) VALUES ('${username}', '$HASH_${username}', datetime('now'));"
       else
         echo "Updating Grocy user password: ${username}"
         ${pkgs.sqlite}/bin/sqlite3 "$DB" \
-          "UPDATE users SET password = '$HASH_${username}' WHERE username = ${lib.escapeShellArg username};"
+          "UPDATE users SET password = '$HASH_${username}' WHERE username = '${username}';"
       fi
     '') cfg.users)}
 
