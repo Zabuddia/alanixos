@@ -104,6 +104,7 @@ in
           "filebrowser.fifefin.com"
           "forgejo.fifefin.com"
           "grocy.fifefin.com"
+          "homebox.fifefin.com"
           "nextcloud.fifefin.com"
           "collabora.fifefin.com"
           "immich.fifefin.com"
@@ -327,6 +328,8 @@ in
       port = 8091;
       backupDir = "/var/backup/grocy";
 
+      users.buddia.passwordSecret = "grocy-passwords/buddia";
+
       expose = {
         wan = {
           enable = true;
@@ -348,6 +351,50 @@ in
         wireguard = {
           enable = true;
           port = 8091;
+        };
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "1h";
+        maxBackupAge = "6h";
+      };
+    };
+
+    alanix.homebox = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 8092;
+      backupDir = "/var/backup/homebox";
+      allowRegistration = true;
+
+      users.buddia = {
+        name = "Alan Fife";
+        email = "fife.alan@protonmail.com";
+        passwordSecret = "homebox-passwords/buddia";
+      };
+
+      expose = {
+        wan = {
+          enable = true;
+          domain = "homebox.fifefin.com";
+        };
+
+        tor = {
+          enable = true;
+          publicPort = 80;
+          secretKeyBase64Secret = "tor/homebox/secret-key-base64";
+          hostname = "h5tuqb4maq5nv4xegivo6zcnm3fpxbjawdydsqu4xsisswhukivweoyd.onion";
+        };
+
+        tailscale = {
+          enable = true;
+          port = 18092;
+        };
+
+        wireguard = {
+          enable = true;
+          port = 8092;
         };
       };
 

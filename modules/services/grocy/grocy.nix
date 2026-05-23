@@ -18,6 +18,54 @@ let
     && hasValue cfg.listenAddress
     && cfg.port != null
     && hasValue cfg.dataDir;
+
+  reconcileEnabled = cfg.users != { };
+
+  sanitizedUsersForRestart =
+    lib.mapAttrs (_: u: { inherit (u) passwordSecret; }) cfg.users;
+
+  grocyDb = "${cfg.dataDir}/grocy.db";
+
+  reconcileScript = pkgs.writeShellScript "alanix-grocy-reconcile-users" ''
+    set -euo pipefail
+
+    DB=${lib.escapeShellArg grocyDb}
+
+    wait_for_db() {
+      local attempts=120
+      while [ "$attempts" -gt 0 ]; do
+        if [[ -f "$DB" ]]; then
+          return 0
+        fi
+        sleep 1
+        attempts=$((attempts - 1))
+      done
+      echo "Timed out waiting for Grocy database to appear." >&2
+      return 1
+    }
+
+    wait_for_db
+
+    ${lib.concatStringsSep "\n" (lib.mapAttrsToList (username: userCfg: ''
+      echo "Reconciling Grocy user: ${username}"
+      PASS_${username}="$(tr -d '\r\n' < ${lib.escapeShellArg config.sops.secrets.${userCfg.passwordSecret}.path})"
+      HASH_${username}=$(${pkgs.php}/bin/php -r "echo password_hash(getenv('_GROCY_PASS'), PASSWORD_DEFAULT);" \
+        _GROCY_PASS="$PASS_${username}")
+      existing=$(${pkgs.sqlite}/bin/sqlite3 "$DB" \
+        "SELECT COUNT(*) FROM users WHERE username = ${lib.escapeShellArg username};")
+      if [ "$existing" = "0" ]; then
+        echo "Creating Grocy user: ${username}"
+        ${pkgs.sqlite}/bin/sqlite3 "$DB" \
+          "INSERT INTO users (username, password, row_created_timestamp) VALUES (${lib.escapeShellArg username}, '$HASH_${username}', datetime('now'));"
+      else
+        echo "Updating Grocy user password: ${username}"
+        ${pkgs.sqlite}/bin/sqlite3 "$DB" \
+          "UPDATE users SET password = '$HASH_${username}' WHERE username = ${lib.escapeShellArg username};"
+      fi
+    '') cfg.users)}
+
+    echo "Grocy user reconciliation complete."
+  '';
 in
 {
   options.alanix.grocy = {
@@ -77,6 +125,17 @@ in
       description = "Optional services.grocy.phpfpm.settings override.";
     };
 
+    users = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
+        options.passwordSecret = lib.mkOption {
+          type = lib.types.str;
+          description = "Name of the sops secret containing the plaintext password for Grocy user ${name}.";
+        };
+      }));
+      default = { };
+      description = "Declarative Grocy users. Passwords are hashed with bcrypt and upserted into the Grocy SQLite database on each deployment.";
+    };
+
     cluster = {
       enable = lib.mkEnableOption "cluster-manage Grocy through alanix.cluster";
 
@@ -127,6 +186,10 @@ in
             message = "alanix.grocy.cluster.enable requires alanix.grocy.backupDir to be set.";
           }
         ]
+        ++ lib.mapAttrsToList (username: userCfg: {
+          assertion = lib.hasAttrByPath [ "sops" "secrets" userCfg.passwordSecret ] config;
+          message = "alanix.grocy.users.${username}.passwordSecret '${userCfg.passwordSecret}' must be declared as a sops secret.";
+        }) cfg.users
         ++ serviceExposure.mkAssertions {
           inherit config endpoint exposeCfg;
           optionPrefix = "alanix.grocy.expose";
@@ -146,6 +209,38 @@ in
           phpfpm.settings = cfg.phpfpmSettings;
         }
       );
+
+      systemd.services.grocy-reconcile-users = lib.mkIf (reconcileEnabled && baseConfigReady) {
+        description = "Reconcile Grocy users";
+        after = [ "phpfpm-grocy.service" "sops-nix.service" ];
+        wants = [ "phpfpm-grocy.service" "sops-nix.service" ];
+        partOf = [ "phpfpm-grocy.service" ];
+        wantedBy = [ "phpfpm-grocy.service" ];
+
+        serviceConfig = {
+          Type = "oneshot";
+          User = "grocy";
+          Group = "nginx";
+          UMask = "0077";
+        };
+
+        path = [ pkgs.php pkgs.sqlite ];
+
+        script = builtins.readFile reconcileScript;
+
+        restartTriggers = [ (builtins.toJSON sanitizedUsersForRestart) ];
+      };
+
+      system.activationScripts.alanixGrocyReconcileUsers =
+        lib.mkIf (baseConfigReady && reconcileEnabled) {
+          deps = [ "etc" ];
+          text = ''
+            if ${pkgs.systemd}/bin/systemctl --quiet is-active phpfpm-grocy.service; then
+              ${pkgs.systemd}/bin/systemctl daemon-reload
+              ${pkgs.systemd}/bin/systemctl start grocy-reconcile-users.service || true
+            fi
+          '';
+        };
 
       services.nginx.virtualHosts = lib.mkIf baseConfigReady {
         ${cfg.hostName} = {

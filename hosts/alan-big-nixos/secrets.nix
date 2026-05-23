@@ -170,6 +170,20 @@
     mode = "0400";
   };
 
+  sops.secrets."grocy-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "grocy";
+    group = "nginx";
+    mode = "0400";
+  };
+
+  sops.secrets."homebox-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."openwebui-passwords/buddia" = {
     sopsFile = (import ../../secrets/files.nix).servicePasswords;
     owner = "root";
@@ -290,6 +304,13 @@
   };
 
   sops.secrets."tor/grocy/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/homebox/secret-key-base64" = {
     sopsFile = (import ../../secrets/files.nix).tor;
     owner = "root";
     group = "root";
