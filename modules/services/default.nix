@@ -1,0 +1,29 @@
+{
+  imports = [
+    ./audiobookshelf
+    ./filebrowser
+    ./forgejo
+    ./icecast
+    ./immich
+    ./invidious
+    ./jellyfin
+    ./kavita
+    ./llm
+    ./mail
+    ./navidrome
+    ./nextcloud
+    ./owntracks
+    ./openclaw
+    ./openwebrx
+    ./openwebui
+    ./radio-streams
+    ./radicale
+    ./remote-desktop
+    ./roundcube
+    ./searxng
+    ./sunshine
+    ./syncthing
+    ./tvheadend
+    ./vaultwarden
+  ];
+}

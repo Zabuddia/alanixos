@@ -16,30 +16,6 @@
     ./network/tailscale.nix
     ./network/wifi.nix
     ./network/tor.nix
-    ./services/audiobookshelf.nix
-    ./services/filebrowser.nix
-    ./services/forgejo.nix
-    ./services/icecast.nix
-    ./services/immich.nix
-    ./services/invidious.nix
-    ./services/jellyfin.nix
-    ./services/kavita.nix
-    ./services/llm.nix
-    ./services/mail.nix
-    ./services/navidrome.nix
-    ./services/nextcloud.nix
-    ./services/owntracks.nix
-    ./services/openclaw.nix
-    ./services/openwebrx.nix
-    ./services/openwebui.nix
-    ./services/radio-streams.nix
-    ./services/radicale.nix
-    ./services/remote-desktop.nix
-    ./services/roundcube.nix
-    ./services/searxng.nix
-    ./services/sunshine.nix
-    ./services/syncthing.nix
-    ./services/tvheadend.nix
-    ./services/vaultwarden.nix
+    ./services
   ];
 }
