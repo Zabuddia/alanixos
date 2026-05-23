@@ -103,6 +103,7 @@ in
           "dashboard.fifefin.com"
           "filebrowser.fifefin.com"
           "forgejo.fifefin.com"
+          "grocy.fifefin.com"
           "nextcloud.fifefin.com"
           "collabora.fifefin.com"
           "immich.fifefin.com"
@@ -316,6 +317,44 @@ in
           scope = "users/buddia";
           passwordSecret = "filebrowser-passwords/buddia";
         };
+      };
+    };
+
+    alanix.grocy = {
+      enable = true;
+      hostName = "grocy.fifefin.com";
+      listenAddress = "127.0.0.1";
+      port = 8091;
+      backupDir = "/var/backup/grocy";
+
+      expose = {
+        wan = {
+          enable = true;
+          domain = "grocy.fifefin.com";
+        };
+
+        tor = {
+          enable = true;
+          publicPort = 80;
+          secretKeyBase64Secret = "tor/grocy/secret-key-base64";
+          hostname = "x3azimkrpa7x36q4kpa5modub3iemb5h6rcl7uw5x7cvogthb2limjyd.onion";
+        };
+
+        tailscale = {
+          enable = true;
+          port = 18091;
+        };
+
+        wireguard = {
+          enable = true;
+          port = 8091;
+        };
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "1h";
+        maxBackupAge = "6h";
       };
     };
 

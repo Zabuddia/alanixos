@@ -3,6 +3,7 @@
     ./audiobookshelf
     ./filebrowser
     ./forgejo
+    ./grocy
     ./icecast
     ./immich
     ./invidious
