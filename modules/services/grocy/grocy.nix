@@ -30,9 +30,25 @@ let
     set -euo pipefail
 
     DB=${lib.escapeShellArg grocyDb}
+    BASE_URL=${lib.escapeShellArg "http://${cfg.listenAddress}:${toString cfg.port}"}
+
+    # Grocy initialises grocy.db lazily on the first HTTP request.
+    # Prod one request to trigger migrations, then wait for the file.
+    wait_for_grocy() {
+      local attempts=120
+      while [ "$attempts" -gt 0 ]; do
+        if curl -sf --max-time 3 "$BASE_URL/" >/dev/null 2>&1; then
+          return 0
+        fi
+        sleep 1
+        attempts=$((attempts - 1))
+      done
+      echo "Timed out waiting for Grocy to become ready." >&2
+      return 1
+    }
 
     wait_for_db() {
-      local attempts=120
+      local attempts=30
       while [ "$attempts" -gt 0 ]; do
         if [[ -f "$DB" ]]; then
           return 0
@@ -40,10 +56,11 @@ let
         sleep 1
         attempts=$((attempts - 1))
       done
-      echo "Timed out waiting for Grocy database to appear." >&2
+      echo "Timed out waiting for Grocy database to appear after HTTP trigger." >&2
       return 1
     }
 
+    wait_for_grocy
     wait_for_db
 
     ${lib.concatStringsSep "\n" (lib.mapAttrsToList (username: userCfg: ''
@@ -224,7 +241,7 @@ in
           UMask = "0077";
         };
 
-        path = [ pkgs.php pkgs.sqlite ];
+        path = [ pkgs.php pkgs.sqlite pkgs.curl ];
 
         script = builtins.readFile reconcileScript;
 
@@ -233,7 +250,7 @@ in
 
       system.activationScripts.alanixGrocyReconcileUsers =
         lib.mkIf (baseConfigReady && reconcileEnabled) {
-          deps = [ "etc" ];
+          deps = [ "etc" "setupSecrets" ];
           text = ''
             if ${pkgs.systemd}/bin/systemctl --quiet is-active phpfpm-grocy.service; then
               ${pkgs.systemd}/bin/systemctl daemon-reload
