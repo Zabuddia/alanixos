@@ -295,6 +295,13 @@
     mode = "0400";
   };
 
+  sops.secrets."tor/grocy/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."tor/cluster-dashboard/alan-node/secret-key-base64" = {
     sopsFile = (import ../../secrets/files.nix).tor;
     owner = "root";
