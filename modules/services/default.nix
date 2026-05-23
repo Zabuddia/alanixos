@@ -4,6 +4,7 @@
     ./filebrowser
     ./forgejo
     ./grocy
+    ./homebox
     ./icecast
     ./immich
     ./invidious
