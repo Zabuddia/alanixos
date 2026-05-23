@@ -66,8 +66,8 @@ let
     ${lib.concatStringsSep "\n" (lib.mapAttrsToList (username: userCfg: ''
       echo "Reconciling Grocy user: ${username}"
       PASS_${username}="$(tr -d '\r\n' < ${lib.escapeShellArg config.sops.secrets.${userCfg.passwordSecret}.path})"
-      HASH_${username}=$(${pkgs.php}/bin/php -r "echo password_hash(getenv('_GROCY_PASS'), PASSWORD_DEFAULT);" \
-        _GROCY_PASS="$PASS_${username}")
+      HASH_${username}=$(printf '%s' "$PASS_${username}" | \
+        ${pkgs.php}/bin/php -r 'echo password_hash(file_get_contents("php://stdin"), PASSWORD_DEFAULT);')
       existing=$(${pkgs.sqlite}/bin/sqlite3 "$DB" \
         "SELECT COUNT(*) FROM users WHERE username = '${username}';")
       if [ "$existing" = "0" ]; then
