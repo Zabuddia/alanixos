@@ -612,15 +612,22 @@ in
 
         xdg.configFile."antimicrox/profiles/${cfg.profile.fileName}".text = profile;
 
+        systemd.user.services.antimicrox = lib.mkIf swayActive {
+          Unit = {
+            Description = "AntiMicroX controller mapping daemon";
+            After = [ "graphical-session.target" ];
+            PartOf = [ "graphical-session.target" ];
+          };
+          Service = {
+            ExecStart = "${lib.getExe cfg.package} --tray --eventgen uinput --profile ${lib.escapeShellArg profilePath}";
+            Restart = "on-failure";
+            RestartSec = 2;
+          };
+          Install.WantedBy = [ "graphical-session.target" ];
+        };
+
         wayland.windowManager.sway.config = lib.mkIf swayActive {
           menu = lib.mkIf cfg.launcher.enable cfg.launcher.command;
-
-          startup = lib.mkAfter [
-            {
-              command = "${lib.getExe cfg.package} --tray --eventgen uinput --profile ${lib.escapeShellArg profilePath}";
-              always = false;
-            }
-          ];
         };
 
         wayland.windowManager.sway.extraConfig = lib.mkIf (swayActive && swayKeybindings != { }) (

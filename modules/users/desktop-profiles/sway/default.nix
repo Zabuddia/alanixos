@@ -410,6 +410,7 @@ in
           config = {
             modifier = "Mod4";
             terminal = terminalEmulator;
+            menu = lib.mkDefault "${lib.getExe pkgs-unstable.wofi} --show drun";
             bars = [ ];
             startup = [
               { command = "waybar"; }
