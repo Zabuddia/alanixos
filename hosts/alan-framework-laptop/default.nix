@@ -256,6 +256,7 @@
         "alan-big-nixos"
         "alan-node"
         "alan-framework"
+        "alan-optiplex"
         "randy-big-nixos"
       ];
       folderSets = [

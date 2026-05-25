@@ -67,8 +67,12 @@
           packages = with pkgs; [
             handbrake
             tmux
+            vlc
           ];
-          unstablePackages = with pkgs-unstable; [ yt-dlp ];
+          unstablePackages = with pkgs-unstable; [ 
+            yt-dlp
+            moonlight-qt
+          ];
           modules = [ ];
         };
 
@@ -87,7 +91,10 @@
           enable = true;
           profile = "sway/default";
         };
+        azahar.enable = true;
         chromium.enable = true;
+        dolphin.enable = true;
+        melonds.enable = true;
       };
     };
 
@@ -155,10 +162,22 @@
       enable = true;
       transport = "tailscale";
       listenPort = 22000;
-      folderSets = [ "jellyfin-media" ];
+      folderSets = [
+        "emulation-azahar"
+        "emulation-dolphin"
+        "emulation-melonds"
+        "jellyfin-media"
+      ];
+      linkFolderSets = [
+        "emulation-azahar"
+        "emulation-dolphin"
+        "emulation-melonds"
+      ];
       deviceId = "2BGWQTB-75JJCIW-OEWFP4L-Y2BTROG-IYJ2ESY-IAQ5CIO-QGOXUYW-GBM5HA4";
       peers = [
         "alan-big-nixos"
+        "alan-framework"
+        "alan-framework-laptop"
         "alan-node"
         "randy-big-nixos"
       ];

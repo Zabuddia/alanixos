@@ -166,6 +166,7 @@ in
         home.packages =
           (with pkgs; [
             adwaita-icon-theme
+            pavucontrol
             pulseaudio
             swaylock
             swayosd

@@ -1,4 +1,4 @@
-# Access with http://localhost:47990
+# Access with https://localhost:47990
 { config, lib, pkgs, ... }:
 
 let
