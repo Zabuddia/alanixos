@@ -551,6 +551,12 @@ in
       };
     };
 
+    pauseForApps = lib.mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "Wayland app_ids (e.g. \"dolphin-emu\") that should pause AntiMicroX while focused so the controller passes through to the app directly.";
+    };
+
     buttonActions = lib.mkOption {
       type = types.attrsOf (types.enum actionNames);
       default = {
@@ -612,6 +618,38 @@ in
           ++ lib.optionals cfg.openThunar.enable [ cfg.openThunar.package ];
 
         xdg.configFile."antimicrox/profiles/${cfg.profile.fileName}".text = profile;
+
+        systemd.user.services.antimicrox-focus-watcher = lib.mkIf (swayActive && cfg.pauseForApps != [ ]) (
+          let
+            pauseAppIds = cfg.pauseForApps;
+            watcherScript = pkgs.writeShellScript "antimicrox-focus-watcher" ''
+              pause_apps=${lib.escapeShellArg (lib.concatStringsSep "|" pauseAppIds)}
+              ${pkgs.sway}/bin/swaymsg -t subscribe '["window"]' | while IFS= read -r event; do
+                app_id=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.app_id // ""')
+                title=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.name // ""')
+                if printf '%s' "$app_id" | ${pkgs.gnugrep}/bin/grep -qE "^($pause_apps)$" \
+                  && [ "$title" != "Dolphin" ]; then
+                  systemctl --user stop antimicrox
+                else
+                  systemctl --user start antimicrox
+                fi
+              done
+            '';
+          in
+          {
+            Unit = {
+              Description = "Pause AntiMicroX when a game has focus";
+              After = [ "graphical-session.target" "antimicrox.service" ];
+              PartOf = [ "graphical-session.target" ];
+            };
+            Service = {
+              ExecStart = "${watcherScript}";
+              Restart = "on-failure";
+              RestartSec = 2;
+            };
+            Install.WantedBy = [ "graphical-session.target" ];
+          }
+        );
 
         systemd.user.services.antimicrox = lib.mkIf swayActive {
           Unit = {

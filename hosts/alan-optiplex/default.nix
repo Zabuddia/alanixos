@@ -95,6 +95,7 @@
         antimicrox = {
           enable = true;
           mouse.precisionButton = "rb";
+          pauseForApps = [ "dolphin-emu" ];
           openDolphin.enable = true;
           openThunar.enable = true;
           buttonActions = {
