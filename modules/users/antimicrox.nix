@@ -625,12 +625,14 @@ in
             watcherScript = pkgs.writeShellScript "antimicrox-focus-watcher" ''
               pause_apps=${lib.escapeShellArg (lib.concatStringsSep "|" pauseAppIds)}
               ${pkgs.sway}/bin/swaymsg -t subscribe '["window"]' | while IFS= read -r event; do
+                change=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.change // ""')
                 app_id=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.app_id // ""')
                 title=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.name // ""')
-                if printf '%s' "$app_id" | ${pkgs.gnugrep}/bin/grep -qE "^($pause_apps)$" \
-                  && [ "$title" != "Dolphin" ]; then
+                if [ "$change" = "focus" ] \
+                  && printf '%s' "$app_id" | ${pkgs.gnugrep}/bin/grep -qE "^($pause_apps)$" \
+                  && printf '%s' "$title" | ${pkgs.gnugrep}/bin/grep -qF " | "; then
                   systemctl --user stop antimicrox
-                else
+                elif [ "$change" = "focus" ]; then
                   systemctl --user start antimicrox
                 fi
               done
