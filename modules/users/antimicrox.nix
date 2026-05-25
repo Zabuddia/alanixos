@@ -629,16 +629,17 @@ in
                   change=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.change // ""')
                   app_id=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.app_id // .container.window_properties.class // ""')
                   title=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.name // ""')
-                  case "$change" in
-                    focus|title|new|fullscreen_mode)
-                      if printf '%s' "$app_id" | ${pkgs.gnugrep}/bin/grep -qE "^($pause_apps)$" \
-                        && printf '%s' "$title" | ${pkgs.gnugrep}/bin/grep -qF " | "; then
-                        /run/current-system/sw/bin/systemctl --user stop antimicrox
-                      else
-                        /run/current-system/sw/bin/systemctl --user start antimicrox
-                      fi
-                      ;;
-                  esac
+                  is_game=$(printf '%s' "$app_id" | ${pkgs.gnugrep}/bin/grep -qE "^($pause_apps)$" \
+                    && printf '%s' "$title" | ${pkgs.gnugrep}/bin/grep -qF " | " && echo yes || echo no)
+                  if [ "$change" = "title" ] && [ "$is_game" = "yes" ]; then
+                    /run/current-system/sw/bin/systemctl --user stop antimicrox
+                  elif [ "$change" = "focus" ]; then
+                    if [ "$is_game" = "yes" ]; then
+                      /run/current-system/sw/bin/systemctl --user stop antimicrox
+                    else
+                      /run/current-system/sw/bin/systemctl --user start antimicrox
+                    fi
+                  fi
                 done
                 ${pkgs.coreutils}/bin/sleep 1
               done
