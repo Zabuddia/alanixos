@@ -149,7 +149,7 @@
         kodi = {
           enable = true;
           tvheadend.servers = [
-            { name = "alan-big-nixos"; host = "alan-big-nixos"; }
+            { name = "alan-big-nixos"; host = "alan-big-nixos"; htspPort = 19982; httpPort = 19981; }
           ];
         };
         dolphin.enable = true;

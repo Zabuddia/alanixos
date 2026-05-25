@@ -14,18 +14,18 @@ let
 
   tvheadendSettingsXml = server: ''
     <settings version="2">
+        <setting id="kodi_addon_instance_name">${server.name}</setting>
+        <setting id="kodi_addon_instance_enabled" default="true">true</setting>
         <setting id="host">${server.host}</setting>
         <setting id="htsp_port">${toString server.htspPort}</setting>
         <setting id="http_port">${toString server.httpPort}</setting>
     </settings>
   '';
 
-  # pvr.hts multi-instance: index 0 → settings.xml, index N>0 → instance-settings-N.xml
-  tvheadendFiles = builtins.listToAttrs (lib.imap0
+  # pvr.hts uses instance-settings-N.xml starting at 1 for all instances
+  tvheadendFiles = builtins.listToAttrs (lib.imap1
     (i: server: {
-      name = ".kodi/userdata/addon_data/pvr.hts/${
-        if i == 0 then "settings.xml" else "instance-settings-${toString i}.xml"
-      }";
+      name = ".kodi/userdata/addon_data/pvr.hts/instance-settings-${toString i}.xml";
       value.text = tvheadendSettingsXml server;
     })
     cfg.tvheadend.servers);
