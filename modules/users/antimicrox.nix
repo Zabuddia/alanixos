@@ -62,14 +62,7 @@ let
     "rb"
   ];
 
-  actionNames = [
-    "leftClick"
-    "rightClick"
-    "launcher"
-    "keyboard"
-    "enter"
-    "escape"
-  ];
+  actionNames = builtins.attrNames actionDefinitions;
 
   profilePath = "${config.home.directory}/.config/antimicrox/profiles/${cfg.profile.fileName}";
   keyboardProgramPath = "${cfg.onScreenKeyboard.package}/bin/${cfg.onScreenKeyboard.program}";
@@ -189,10 +182,10 @@ let
       mappedButtonNames;
 
   mouseStickButtons = [
-    (stickButton 1 { mousespeedx = cfg.mouse.speed; mousespeedy = cfg.mouse.speed; } [ (mouseMovementSlot mouseMovement.up) ])
-    (stickButton 3 { mousespeedx = cfg.mouse.speed; mousespeedy = cfg.mouse.speed; } [ (mouseMovementSlot mouseMovement.right) ])
-    (stickButton 5 { mousespeedx = cfg.mouse.speed; mousespeedy = cfg.mouse.speed; } [ (mouseMovementSlot mouseMovement.down) ])
-    (stickButton 7 { mousespeedx = cfg.mouse.speed; mousespeedy = cfg.mouse.speed; } [ (mouseMovementSlot mouseMovement.left) ])
+    (stickButton 1 { mousespeedx = cfg.mouse.speedX; mousespeedy = cfg.mouse.speedY; } [ (mouseMovementSlot mouseMovement.up) ])
+    (stickButton 3 { mousespeedx = cfg.mouse.speedX; mousespeedy = cfg.mouse.speedY; } [ (mouseMovementSlot mouseMovement.right) ])
+    (stickButton 5 { mousespeedx = cfg.mouse.speedX; mousespeedy = cfg.mouse.speedY; } [ (mouseMovementSlot mouseMovement.down) ])
+    (stickButton 7 { mousespeedx = cfg.mouse.speedX; mousespeedy = cfg.mouse.speedY; } [ (mouseMovementSlot mouseMovement.left) ])
   ];
 
   scrollStickButtons = [
@@ -201,10 +194,10 @@ let
   ];
 
   dpadButtons = [
-    (dpadButton 1 [ (keyboardSlot key.up) ])
-    (dpadButton 2 [ (keyboardSlot key.right) ])
-    (dpadButton 4 [ (keyboardSlot key.down) ])
-    (dpadButton 8 [ (keyboardSlot key.left) ])
+    (dpadButton 1 (map keyboardSlot cfg.dpad.up))
+    (dpadButton 2 (map keyboardSlot cfg.dpad.right))
+    (dpadButton 4 (map keyboardSlot cfg.dpad.down))
+    (dpadButton 8 (map keyboardSlot cfg.dpad.left))
   ];
 
   swayKeybindings =
@@ -274,10 +267,16 @@ in
     };
 
     mouse = {
-      speed = lib.mkOption {
+      speedX = lib.mkOption {
         type = types.int;
         default = 60;
-        description = "Mouse cursor speed for left-stick movement.";
+        description = "Horizontal mouse cursor speed for left-stick movement.";
+      };
+
+      speedY = lib.mkOption {
+        type = types.int;
+        default = 60;
+        description = "Vertical mouse cursor speed for left-stick movement.";
       };
 
       deadZone = lib.mkOption {
@@ -319,6 +318,29 @@ in
       };
     };
 
+    dpad = {
+      up = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ key.up ];
+        description = "AntiMicroX key codes sent when d-pad up is pressed.";
+      };
+      right = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ key.right ];
+        description = "AntiMicroX key codes sent when d-pad right is pressed.";
+      };
+      down = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ key.down ];
+        description = "AntiMicroX key codes sent when d-pad down is pressed.";
+      };
+      left = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ key.left ];
+        description = "AntiMicroX key codes sent when d-pad left is pressed.";
+      };
+    };
+
     launcher = {
       enable = lib.mkOption {
         type = types.bool;
@@ -338,9 +360,15 @@ in
         description = "AntiMicroX key codes to send for the launcher shortcut.";
       };
 
+      package = lib.mkOption {
+        type = types.package;
+        default = pkgs-unstable.wofi;
+        description = "Launcher package to install when launcher.enable is true.";
+      };
+
       command = lib.mkOption {
         type = types.str;
-        default = "${lib.getExe pkgs-unstable.wofi} --show drun";
+        default = "${lib.getExe cfg.launcher.package} --show drun";
         description = "Command run by the launcher keybinding.";
       };
     };
@@ -426,7 +454,7 @@ in
       {
         home.packages =
           [ cfg.package ]
-          ++ lib.optionals cfg.launcher.enable [ pkgs-unstable.wofi ]
+          ++ lib.optionals cfg.launcher.enable [ cfg.launcher.package ]
           ++ lib.optionals cfg.onScreenKeyboard.enable [ cfg.onScreenKeyboard.package ];
 
         xdg.configFile."antimicrox/profiles/${cfg.profile.fileName}".text = profile;
