@@ -631,15 +631,16 @@ in
                   title=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.name // ""')
                   is_game=$(printf '%s' "$app_id" | ${pkgs.gnugrep}/bin/grep -qE "^($pause_apps)$" \
                     && printf '%s' "$title" | ${pkgs.gnugrep}/bin/grep -qF " | " && echo yes || echo no)
+                  is_pause_app=$(printf '%s' "$app_id" | ${pkgs.gnugrep}/bin/grep -qE "^($pause_apps)$" && echo yes || echo no)
                   echo "change=$change app=$app_id is_game=$is_game title=$title"
-                  if [ "$change" = "title" ] && [ "$is_game" = "yes" ]; then
-                    /run/current-system/sw/bin/systemctl --user stop antimicrox
-                  elif [ "$change" = "focus" ]; then
+                  if [ "$change" = "title" ] || [ "$change" = "focus" ] || [ "$change" = "fullscreen_mode" ]; then
                     if [ "$is_game" = "yes" ]; then
                       /run/current-system/sw/bin/systemctl --user stop antimicrox
-                    else
+                    elif [ "$change" = "focus" ]; then
                       /run/current-system/sw/bin/systemctl --user start antimicrox
                     fi
+                  elif [ "$change" = "close" ] && [ "$is_pause_app" = "yes" ]; then
+                    /run/current-system/sw/bin/systemctl --user start antimicrox
                   fi
                 done
                 ${pkgs.coreutils}/bin/sleep 1
