@@ -631,6 +631,7 @@ in
                   title=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.name // ""')
                   is_game=$(printf '%s' "$app_id" | ${pkgs.gnugrep}/bin/grep -qE "^($pause_apps)$" \
                     && printf '%s' "$title" | ${pkgs.gnugrep}/bin/grep -qF " | " && echo yes || echo no)
+                  echo "change=$change app=$app_id is_game=$is_game title=$title"
                   if [ "$change" = "title" ] && [ "$is_game" = "yes" ]; then
                     /run/current-system/sw/bin/systemctl --user stop antimicrox
                   elif [ "$change" = "focus" ]; then
