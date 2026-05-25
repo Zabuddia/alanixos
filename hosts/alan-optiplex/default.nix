@@ -92,8 +92,31 @@
           profile = "sway/default";
         };
         azahar.enable = true;
-        antimicrox.enable = true;
+        antimicrox = {
+          enable = true;
+          mouse.precisionButton = "rb";
+          openDolphin.enable = true;
+          openThunar.enable = true;
+          buttonActions = {
+            a = "leftClick";
+            b = "rightClick";
+            x = "openDolphin";
+            y = "keyboard";
+            back = "escape";
+            guide = "launcher";
+            start = "enter";
+            lb = "launcher";
+            leftStick = "altTab";
+            rightStick = "middleClick";
+          };
+        };
         chromium.enable = true;
+        kodi = {
+          enable = true;
+          tvheadend.servers = [
+            { name = "alan-big-nixos"; host = "alan-big-nixos"; }
+          ];
+        };
         dolphin.enable = true;
         melonds.enable = true;
         vscode.enable = true;

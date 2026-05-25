@@ -8,20 +8,27 @@ let
 
   key = {
     escape = "0x1000000";
+    tab = "0x1000001";
     return = "0x1000004";
     left = "0x1000012";
     up = "0x1000013";
     right = "0x1000014";
     down = "0x1000015";
+    shift = "0x1000020";
     control = "0x1000021";
     super = "0x1000022";
     alt = "0x1000023";
     d = "0x44";
+    e = "0x45";
     k = "0x4b";
+    volumeDown = "0x1008ff11";
+    volumeMute = "0x1008ff12";
+    volumeUp = "0x1008ff13";
   };
 
   mouseButton = {
     left = "1";
+    middle = "2";
     right = "3";
     wheelUp = "4";
     wheelDown = "5";
@@ -98,6 +105,13 @@ let
                         </slot>
   '';
 
+  changeSetSlot = setIndex: ''
+                        <slot>
+                            <setindex>${toString setIndex}</setindex>
+                            <mode>changeset</mode>
+                        </slot>
+  '';
+
   slots = slotList: ''
                     <slots>
   ${lib.concatStrings slotList}                    </slots>
@@ -133,9 +147,17 @@ let
       label = "Left Click";
       slots = [ (mouseButtonSlot mouseButton.left) ];
     };
+    middleClick = {
+      label = "Middle Click";
+      slots = [ (mouseButtonSlot mouseButton.middle) ];
+    };
     rightClick = {
       label = "Right Click";
       slots = [ (mouseButtonSlot mouseButton.right) ];
+    };
+    altTab = {
+      label = "Alt+Tab";
+      slots = keyboardSlots [ key.alt key.tab ];
     };
     launcher = {
       label = "Launcher";
@@ -144,6 +166,26 @@ let
     keyboard = {
       label = "Keyboard";
       slots = keyboardSlots cfg.onScreenKeyboard.keyCodes;
+    };
+    openDolphin = {
+      label = "Open Dolphin";
+      slots = keyboardSlots cfg.openDolphin.keyCodes;
+    };
+    openThunar = {
+      label = "Open Thunar";
+      slots = keyboardSlots cfg.openThunar.keyCodes;
+    };
+    volumeUp = {
+      label = "Volume Up";
+      slots = keyboardSlots [ key.volumeUp ];
+    };
+    volumeDown = {
+      label = "Volume Down";
+      slots = keyboardSlots [ key.volumeDown ];
+    };
+    muteVolume = {
+      label = "Mute Volume";
+      slots = keyboardSlots [ key.volumeMute ];
     };
     enter = {
       label = "Enter";
@@ -165,27 +207,27 @@ let
     map
       (mappedButtonName:
         let
-          actionName = builtins.getAttr mappedButtonName cfg.buttonActions;
-          action = builtins.getAttr actionName actionDefinitions;
+          actionName = cfg.buttonActions.${mappedButtonName};
+          action = actionDefinitions.${actionName};
         in
-        buttonNameXml (builtins.getAttr mappedButtonName controllerButtonIndexes) action.label)
+        buttonNameXml controllerButtonIndexes.${mappedButtonName} action.label)
       mappedButtonNames;
 
   controllerButtons =
     map
       (mappedButtonName:
         let
-          actionName = builtins.getAttr mappedButtonName cfg.buttonActions;
-          action = builtins.getAttr actionName actionDefinitions;
+          actionName = cfg.buttonActions.${mappedButtonName};
+          action = actionDefinitions.${actionName};
         in
-        button (builtins.getAttr mappedButtonName controllerButtonIndexes) action.slots)
+        button controllerButtonIndexes.${mappedButtonName} action.slots)
       mappedButtonNames;
 
-  mouseStickButtons = [
-    (stickButton 1 { mousespeedx = cfg.mouse.speedX; mousespeedy = cfg.mouse.speedY; } [ (mouseMovementSlot mouseMovement.up) ])
-    (stickButton 3 { mousespeedx = cfg.mouse.speedX; mousespeedy = cfg.mouse.speedY; } [ (mouseMovementSlot mouseMovement.right) ])
-    (stickButton 5 { mousespeedx = cfg.mouse.speedX; mousespeedy = cfg.mouse.speedY; } [ (mouseMovementSlot mouseMovement.down) ])
-    (stickButton 7 { mousespeedx = cfg.mouse.speedX; mousespeedy = cfg.mouse.speedY; } [ (mouseMovementSlot mouseMovement.left) ])
+  makeMouseStickButtons = speedX: speedY: [
+    (stickButton 1 { mousespeedx = speedX; mousespeedy = speedY; } [ (mouseMovementSlot mouseMovement.up) ])
+    (stickButton 3 { mousespeedx = speedX; mousespeedy = speedY; } [ (mouseMovementSlot mouseMovement.right) ])
+    (stickButton 5 { mousespeedx = speedX; mousespeedy = speedY; } [ (mouseMovementSlot mouseMovement.down) ])
+    (stickButton 7 { mousespeedx = speedX; mousespeedy = speedY; } [ (mouseMovementSlot mouseMovement.left) ])
   ];
 
   scrollStickButtons = [
@@ -200,12 +242,41 @@ let
     (dpadButton 8 (map keyboardSlot cfg.dpad.left))
   ];
 
+  precisionButtonXml = switchToSet:
+    lib.optionalString (cfg.mouse.precisionButton != null)
+      (button controllerButtonIndexes.${cfg.mouse.precisionButton} [ (changeSetSlot switchToSet) ]);
+
+  makeSet = setIndex: mouseSpeedX: mouseSpeedY: switchToSet: ''
+              <set index="${toString setIndex}">
+                  <stick index="1">
+                      <deadZone>${toString cfg.mouse.deadZone}</deadZone>
+                      <maxZone>${toString cfg.mouse.maxZone}</maxZone>
+                      <diagonalRange>${toString cfg.mouse.diagonalRange}</diagonalRange>
+  ${lib.concatStrings (makeMouseStickButtons mouseSpeedX mouseSpeedY)}                </stick>
+                  <stick index="2">
+                      <deadZone>${toString cfg.scroll.deadZone}</deadZone>
+                      <maxZone>${toString cfg.scroll.maxZone}</maxZone>
+                      <mode>four-way</mode>
+  ${lib.concatStrings scrollStickButtons}                </stick>
+                  <dpad index="1">
+  ${lib.concatStrings dpadButtons}                </dpad>
+  ${lib.concatStrings controllerButtons}${precisionButtonXml switchToSet}          </set>
+  '';
+
+  hasPrecisionMode = cfg.mouse.precisionButton != null;
+
   swayKeybindings =
     lib.optionalAttrs cfg.launcher.enable {
       "${cfg.launcher.keybinding}" = "exec ${cfg.launcher.command}";
     }
     // lib.optionalAttrs cfg.onScreenKeyboard.enable {
       "${cfg.onScreenKeyboard.keybinding}" = "exec ${keyboardToggleCommand}";
+    }
+    // lib.optionalAttrs cfg.openDolphin.enable {
+      "${cfg.openDolphin.keybinding}" = "exec ${lib.getExe cfg.openDolphin.package}";
+    }
+    // lib.optionalAttrs cfg.openThunar.enable {
+      "${cfg.openThunar.keybinding}" = "exec ${lib.getExe cfg.openThunar.package} ${lib.escapeShellArg cfg.openThunar.path}";
     };
 
   profile = ''<?xml version="1.0" encoding="UTF-8"?>
@@ -218,21 +289,7 @@ let
             <controlstickname index="2">Scroll</controlstickname>
         </names>
         <sets>
-            <set index="1">
-                <stick index="1">
-                    <deadZone>${toString cfg.mouse.deadZone}</deadZone>
-                    <maxZone>${toString cfg.mouse.maxZone}</maxZone>
-                    <diagonalRange>${toString cfg.mouse.diagonalRange}</diagonalRange>
-  ${lib.concatStrings mouseStickButtons}                </stick>
-                <stick index="2">
-                    <deadZone>${toString cfg.scroll.deadZone}</deadZone>
-                    <maxZone>${toString cfg.scroll.maxZone}</maxZone>
-                    <mode>four-way</mode>
-  ${lib.concatStrings scrollStickButtons}                </stick>
-                <dpad index="1">
-  ${lib.concatStrings dpadButtons}                </dpad>
-  ${lib.concatStrings controllerButtons}            </set>
-        </sets>
+  ${makeSet 1 cfg.mouse.speedX cfg.mouse.speedY 2}${lib.optionalString hasPrecisionMode (makeSet 2 cfg.mouse.precisionSpeedX cfg.mouse.precisionSpeedY 1)}    </sets>
     </gamecontroller>
   '';
 in
@@ -270,13 +327,31 @@ in
       speedX = lib.mkOption {
         type = types.int;
         default = 60;
-        description = "Horizontal mouse cursor speed for left-stick movement.";
+        description = "Horizontal cursor speed for left-stick movement.";
       };
 
       speedY = lib.mkOption {
         type = types.int;
         default = 60;
-        description = "Vertical mouse cursor speed for left-stick movement.";
+        description = "Vertical cursor speed for left-stick movement.";
+      };
+
+      precisionSpeedX = lib.mkOption {
+        type = types.int;
+        default = 15;
+        description = "Horizontal cursor speed while in precision mode.";
+      };
+
+      precisionSpeedY = lib.mkOption {
+        type = types.int;
+        default = 15;
+        description = "Vertical cursor speed while in precision mode.";
+      };
+
+      precisionButton = lib.mkOption {
+        type = types.nullOr (types.enum (builtins.attrNames controllerButtonIndexes));
+        default = null;
+        description = "Button that toggles precision (slow) mouse mode. Must not also appear in buttonActions.";
       };
 
       deadZone = lib.mkOption {
@@ -411,6 +486,64 @@ in
       };
     };
 
+    openDolphin = {
+      enable = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Install dolphin and register a Sway keybinding to open it.";
+      };
+
+      package = lib.mkOption {
+        type = types.package;
+        default = pkgs.kdePackages.dolphin;
+        description = "Dolphin package to install.";
+      };
+
+      keybinding = lib.mkOption {
+        type = types.str;
+        default = "Mod4+e";
+        description = "Sway keybinding used to open Dolphin.";
+      };
+
+      keyCodes = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ key.super key.e ];
+        description = "AntiMicroX key codes to send for the open Dolphin shortcut.";
+      };
+    };
+
+    openThunar = {
+      enable = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Install Thunar and register a Sway keybinding to open it at a configured path.";
+      };
+
+      package = lib.mkOption {
+        type = types.package;
+        default = pkgs.xfce.thunar;
+        description = "Thunar package to install.";
+      };
+
+      keybinding = lib.mkOption {
+        type = types.str;
+        default = "Mod4+Shift+e";
+        description = "Sway keybinding used to open Thunar.";
+      };
+
+      keyCodes = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ key.super key.shift key.e ];
+        description = "AntiMicroX key codes to send for the open Thunar shortcut.";
+      };
+
+      path = lib.mkOption {
+        type = types.str;
+        default = "${config.home.directory}/Syncthing/media";
+        description = "Path Thunar opens to.";
+      };
+    };
+
     buttonActions = lib.mkOption {
       type = types.attrsOf (types.enum actionNames);
       default = {
@@ -448,6 +581,18 @@ in
         assertion = cfg.onScreenKeyboard.enable || !(usesAction "keyboard");
         message = "alanix.users.accounts.${name}.antimicrox.buttonActions uses keyboard, but antimicrox.onScreenKeyboard.enable is false.";
       }
+      {
+        assertion = cfg.openDolphin.enable || !(usesAction "openDolphin");
+        message = "alanix.users.accounts.${name}.antimicrox.buttonActions uses openDolphin, but antimicrox.openDolphin.enable is false.";
+      }
+      {
+        assertion = cfg.openThunar.enable || !(usesAction "openThunar");
+        message = "alanix.users.accounts.${name}.antimicrox.buttonActions uses openThunar, but antimicrox.openThunar.enable is false.";
+      }
+      {
+        assertion = cfg.mouse.precisionButton == null || !(lib.hasAttr cfg.mouse.precisionButton cfg.buttonActions);
+        message = "alanix.users.accounts.${name}.antimicrox.mouse.precisionButton \"${toString cfg.mouse.precisionButton}\" must not also appear in buttonActions.";
+      }
     ];
 
     home.modules = lib.optionals cfg.enable [
@@ -455,7 +600,9 @@ in
         home.packages =
           [ cfg.package ]
           ++ lib.optionals cfg.launcher.enable [ cfg.launcher.package ]
-          ++ lib.optionals cfg.onScreenKeyboard.enable [ cfg.onScreenKeyboard.package ];
+          ++ lib.optionals cfg.onScreenKeyboard.enable [ cfg.onScreenKeyboard.package ]
+          ++ lib.optionals cfg.openDolphin.enable [ cfg.openDolphin.package ]
+          ++ lib.optionals cfg.openThunar.enable [ cfg.openThunar.package ];
 
         xdg.configFile."antimicrox/profiles/${cfg.profile.fileName}".text = profile;
 

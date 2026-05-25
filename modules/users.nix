@@ -12,6 +12,7 @@ let
     ./users/desktop.nix
     ./users/dolphin.nix
     ./users/git.nix
+    ./users/kodi.nix
     ./users/librewolf.nix
     ./users/melonds.nix
     ./users/nextcloud-client.nix

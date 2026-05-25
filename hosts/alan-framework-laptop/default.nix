@@ -146,6 +146,12 @@
         };
         azahar.enable = true;
         chromium.enable = true;
+        kodi = {
+          enable = true;
+          tvheadend.servers = [
+            { name = "alan-big-nixos"; host = "alan-big-nixos"; }
+          ];
+        };
         dolphin.enable = true;
         librewolf.enable = true;
         melonds.enable = true;
