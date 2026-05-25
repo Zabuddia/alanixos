@@ -624,17 +624,20 @@ in
             pauseAppIds = cfg.pauseForApps;
             watcherScript = pkgs.writeShellScript "antimicrox-focus-watcher" ''
               pause_apps=${lib.escapeShellArg (lib.concatStringsSep "|" pauseAppIds)}
-              ${pkgs.sway}/bin/swaymsg -t subscribe '["window"]' | while IFS= read -r event; do
-                change=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.change // ""')
-                app_id=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.app_id // ""')
-                title=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.name // ""')
-                if [ "$change" = "focus" ] \
-                  && printf '%s' "$app_id" | ${pkgs.gnugrep}/bin/grep -qE "^($pause_apps)$" \
-                  && printf '%s' "$title" | ${pkgs.gnugrep}/bin/grep -qF " | "; then
-                  systemctl --user stop antimicrox
-                elif [ "$change" = "focus" ]; then
-                  systemctl --user start antimicrox
-                fi
+              while true; do
+                ${pkgs.sway}/bin/swaymsg -t subscribe '["window"]' | while IFS= read -r event; do
+                  change=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.change // ""')
+                  app_id=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.app_id // .container.window_properties.class // ""')
+                  title=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.name // ""')
+                  if [ "$change" = "focus" ] \
+                    && printf '%s' "$app_id" | ${pkgs.gnugrep}/bin/grep -qE "^($pause_apps)$" \
+                    && printf '%s' "$title" | ${pkgs.gnugrep}/bin/grep -qF " | "; then
+                    systemctl --user stop antimicrox
+                  elif [ "$change" = "focus" ]; then
+                    systemctl --user start antimicrox
+                  fi
+                done
+                sleep 1
               done
             '';
           in
@@ -646,7 +649,7 @@ in
             };
             Service = {
               ExecStart = "${watcherScript}";
-              Restart = "on-failure";
+              Restart = "always";
               RestartSec = 2;
             };
             Install.WantedBy = [ "graphical-session.target" ];
