@@ -11,14 +11,14 @@ in
       home.packages = [ pkgs-unstable.dolphin-emu ];
 
       xdg.configFile."dolphin-emu/Hotkeys.ini".text = ''
-        [Hotkeys1]
+        [Hotkeys]
         Device = SDL/0/Xbox 360 Controller
-        Stop = `Button 5`
+        General/Stop = Guide
       '';
 
       xdg.configFile."dolphin-emu/Profiles/Wiimote/MarioKartX360.ini".text = ''
         [Profile]
-        Device = SDL/0/X360 Controller
+        Device = SDL/0/Xbox 360 Controller
         Buttons/A = `Button E`
         Buttons/B = `Trigger R`
         Buttons/1 = `Button S`
