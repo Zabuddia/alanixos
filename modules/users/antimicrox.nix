@@ -110,7 +110,7 @@ let
 
   changeSetSlot = setIndex: ''
                         <slot>
-                            <code>${toString setIndex}</code>
+                            <code>${toString (setIndex - 1)}</code>
                             <mode>changeset</mode>
                         </slot>
   '';
@@ -279,7 +279,7 @@ let
       "${cfg.onScreenKeyboard.keybinding}" = "exec ${keyboardToggleCommand}";
     }
     // lib.optionalAttrs cfg.openDolphin.enable {
-      "${cfg.openDolphin.keybinding}" = "exec ${lib.getExe' cfg.openDolphin.package "dolphin"}";
+      "${cfg.openDolphin.keybinding}" = "exec ${lib.getExe' cfg.openDolphin.package "dolphin"} --new-window";
     }
     // lib.optionalAttrs cfg.openThunar.enable {
       "${cfg.openThunar.keybinding}" = "exec ${lib.getExe cfg.openThunar.package} ${lib.escapeShellArg cfg.openThunar.path}";
@@ -516,6 +516,7 @@ in
         default = [ key.super key.o ];
         description = "AntiMicroX key codes to send for the open Dolphin shortcut.";
       };
+
     };
 
     openThunar = {
@@ -619,6 +620,7 @@ in
             PartOf = [ "graphical-session.target" ];
           };
           Service = {
+            ExecStartPre = "${pkgs.coreutils}/bin/sleep 3";
             ExecStart = "${lib.getExe cfg.package} --tray --eventgen uinput --profile ${lib.escapeShellArg profilePath}";
             Restart = "on-failure";
             RestartSec = 2;
