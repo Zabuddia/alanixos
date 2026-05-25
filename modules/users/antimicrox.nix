@@ -629,15 +629,18 @@ in
                   change=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.change // ""')
                   app_id=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.app_id // .container.window_properties.class // ""')
                   title=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.name // ""')
-                  if [ "$change" = "focus" ] \
-                    && printf '%s' "$app_id" | ${pkgs.gnugrep}/bin/grep -qE "^($pause_apps)$" \
-                    && printf '%s' "$title" | ${pkgs.gnugrep}/bin/grep -qF " | "; then
-                    systemctl --user stop antimicrox
-                  elif [ "$change" = "focus" ]; then
-                    systemctl --user start antimicrox
-                  fi
+                  case "$change" in
+                    focus|title|new|fullscreen_mode)
+                      if printf '%s' "$app_id" | ${pkgs.gnugrep}/bin/grep -qE "^($pause_apps)$" \
+                        && printf '%s' "$title" | ${pkgs.gnugrep}/bin/grep -qF " | "; then
+                        /run/current-system/sw/bin/systemctl --user stop antimicrox
+                      elif [ "$change" = "focus" ] || [ "$change" = "fullscreen_mode" ]; then
+                        /run/current-system/sw/bin/systemctl --user start antimicrox
+                      fi
+                      ;;
+                  esac
                 done
-                sleep 1
+                ${pkgs.coreutils}/bin/sleep 1
               done
             '';
           in
