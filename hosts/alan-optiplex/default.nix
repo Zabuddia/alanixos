@@ -95,12 +95,14 @@
         chromium.enable = true;
         dolphin.enable = true;
         melonds.enable = true;
+        vscode.enable = true;
       };
     };
 
     alanix.desktop = {
       enable = true;
       profile = "sway";
+      bluetooth.enable = true;
       profiles.sway = {
         autoLogin = {
           enable = true;
