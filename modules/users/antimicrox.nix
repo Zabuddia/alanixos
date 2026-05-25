@@ -279,7 +279,7 @@ let
       "${cfg.onScreenKeyboard.keybinding}" = "exec ${keyboardToggleCommand}";
     }
     // lib.optionalAttrs cfg.openDolphin.enable {
-      "${cfg.openDolphin.keybinding}" = "exec ${lib.getExe' cfg.openDolphin.package "dolphin"} --new-window";
+      "${cfg.openDolphin.keybinding}" = "exec ${lib.getExe cfg.openDolphin.package}";
     }
     // lib.optionalAttrs cfg.openThunar.enable {
       "${cfg.openThunar.keybinding}" = "exec ${lib.getExe cfg.openThunar.package} ${lib.escapeShellArg cfg.openThunar.path}";
@@ -501,8 +501,8 @@ in
 
       package = lib.mkOption {
         type = types.package;
-        default = pkgs.kdePackages.dolphin;
-        description = "Dolphin package to install.";
+        default = pkgs-unstable.dolphin-emu;
+        description = "Dolphin emulator package to install.";
       };
 
       keybinding = lib.mkOption {
