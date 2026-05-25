@@ -111,7 +111,7 @@ let
   changeSetSlot = setIndex: ''
                         <slot>
                             <code>${toString (setIndex - 1)}</code>
-                            <mode>changeset</mode>
+                            <mode>setchange</mode>
                         </slot>
   '';
 
