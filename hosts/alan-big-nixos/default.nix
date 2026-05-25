@@ -100,6 +100,7 @@
     alanix.desktop = {
       enable = true;
       profile = "sway";
+      bluetooth.enable = true;
       profiles.sway = {
         autoLogin = {
           enable = true;

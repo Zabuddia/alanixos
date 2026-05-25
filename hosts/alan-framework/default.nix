@@ -184,6 +184,7 @@
       peers = [
         "alan-big-nixos"
         "alan-framework-laptop"
+        "alan-optiplex"
       ];
       folderSets = [
         "emulation-azahar"
