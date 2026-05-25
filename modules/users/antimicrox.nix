@@ -667,7 +667,7 @@ in
           };
           Service = {
             ExecStart = "${lib.getExe cfg.package} --tray --eventgen uinput --profile ${lib.escapeShellArg profilePath}";
-            Restart = "on-failure";
+            Restart = "always";
             RestartSec = 2;
           };
           Install.WantedBy = [ "graphical-session.target" ];
