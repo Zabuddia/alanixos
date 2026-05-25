@@ -619,11 +619,9 @@ in
               always = false;
             }
           ];
-        };
 
-        wayland.windowManager.sway.extraConfig = lib.mkIf swayActive (
-          lib.concatStringsSep "\n" (lib.mapAttrsToList (key: cmd: "bindsym ${key} ${cmd}") swayKeybindings)
-        );
+          keybindings = lib.mapAttrs (_: lib.mkForce) swayKeybindings;
+        };
       }
     ];
   };
