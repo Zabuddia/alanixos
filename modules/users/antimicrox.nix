@@ -21,6 +21,7 @@ let
     d = "0x44";
     e = "0x45";
     k = "0x4b";
+    o = "0x4f";
     q = "0x51";
     t = "0x54";
     volumeDown = "0x1008ff11";
@@ -271,11 +272,10 @@ let
 
   hasPrecisionMode = cfg.mouse.precisionButton != null;
 
+  # Launcher is handled via config.menu so Sway's built-in Mod4+d binding runs the right command.
+  # All remaining bindings use extraConfig so they never conflict with or replace Sway's defaults.
   swayKeybindings =
-    lib.optionalAttrs cfg.launcher.enable {
-      "${cfg.launcher.keybinding}" = "exec ${cfg.launcher.command}";
-    }
-    // lib.optionalAttrs cfg.onScreenKeyboard.enable {
+    lib.optionalAttrs cfg.onScreenKeyboard.enable {
       "${cfg.onScreenKeyboard.keybinding}" = "exec ${keyboardToggleCommand}";
     }
     // lib.optionalAttrs cfg.openDolphin.enable {
@@ -507,13 +507,13 @@ in
 
       keybinding = lib.mkOption {
         type = types.str;
-        default = "Mod4+e";
+        default = "Mod4+o";
         description = "Sway keybinding used to open Dolphin.";
       };
 
       keyCodes = lib.mkOption {
         type = types.listOf types.str;
-        default = [ key.super key.e ];
+        default = [ key.super key.o ];
         description = "AntiMicroX key codes to send for the open Dolphin shortcut.";
       };
     };
@@ -613,15 +613,19 @@ in
         xdg.configFile."antimicrox/profiles/${cfg.profile.fileName}".text = profile;
 
         wayland.windowManager.sway.config = lib.mkIf swayActive {
+          menu = lib.mkIf cfg.launcher.enable cfg.launcher.command;
+
           startup = lib.mkAfter [
             {
               command = "${lib.getExe cfg.package} --tray --eventgen uinput --profile ${lib.escapeShellArg profilePath}";
               always = false;
             }
           ];
-
-          keybindings = lib.mapAttrs (_: lib.mkForce) swayKeybindings;
         };
+
+        wayland.windowManager.sway.extraConfig = lib.mkIf (swayActive && swayKeybindings != { }) (
+          lib.concatStringsSep "\n" (lib.mapAttrsToList (key: cmd: "bindsym ${key} ${cmd}") swayKeybindings)
+        );
       }
     ];
   };
