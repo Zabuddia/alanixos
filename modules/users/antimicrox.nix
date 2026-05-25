@@ -21,6 +21,7 @@ let
     d = "0x44";
     e = "0x45";
     k = "0x4b";
+    t = "0x54";
     volumeDown = "0x1008ff11";
     volumeMute = "0x1008ff12";
     volumeUp = "0x1008ff13";
@@ -273,7 +274,7 @@ let
       "${cfg.onScreenKeyboard.keybinding}" = "exec ${keyboardToggleCommand}";
     }
     // lib.optionalAttrs cfg.openDolphin.enable {
-      "${cfg.openDolphin.keybinding}" = "exec ${lib.getExe cfg.openDolphin.package}";
+      "${cfg.openDolphin.keybinding}" = "exec ${lib.getExe' cfg.openDolphin.package "dolphin"}";
     }
     // lib.optionalAttrs cfg.openThunar.enable {
       "${cfg.openThunar.keybinding}" = "exec ${lib.getExe cfg.openThunar.package} ${lib.escapeShellArg cfg.openThunar.path}";
@@ -527,13 +528,13 @@ in
 
       keybinding = lib.mkOption {
         type = types.str;
-        default = "Mod4+Shift+e";
+        default = "Mod4+t";
         description = "Sway keybinding used to open Thunar.";
       };
 
       keyCodes = lib.mkOption {
         type = types.listOf types.str;
-        default = [ key.super key.shift key.e ];
+        default = [ key.super key.t ];
         description = "AntiMicroX key codes to send for the open Thunar shortcut.";
       };
 
