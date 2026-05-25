@@ -634,7 +634,7 @@ in
                       if printf '%s' "$app_id" | ${pkgs.gnugrep}/bin/grep -qE "^($pause_apps)$" \
                         && printf '%s' "$title" | ${pkgs.gnugrep}/bin/grep -qF " | "; then
                         /run/current-system/sw/bin/systemctl --user stop antimicrox
-                      elif [ "$change" = "focus" ] || [ "$change" = "fullscreen_mode" ]; then
+                      else
                         /run/current-system/sw/bin/systemctl --user start antimicrox
                       fi
                       ;;

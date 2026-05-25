@@ -10,6 +10,40 @@ in
     {
       home.packages = [ pkgs-unstable.dolphin-emu ];
 
+      xdg.configFile."dolphin-emu/Dolphin.ini".text = ''
+        [Analytics]
+        ID = 90cbd37d329edfd4a24683f5c5e53d6f
+        PermissionAsked = True
+        [General]
+        WirelessMac = 00:17:ab:bf:9e:37
+        ISOPath0 = /home/buddia/Syncthing/games/roms/wii
+        ISOPaths = 1
+        [NetPlay]
+        TraversalChoice = direct
+        [BluetoothPassthrough]
+        Enabled = False
+        [Core]
+        WiimoteContinuousScanning = True
+        WiimoteControllerInterface = False
+        WiimoteEnableSpeaker = False
+        [DSP]
+        DSPThread = True
+        [Input]
+        BackgroundInput = False
+        [SDL_Hints]
+        SDL_JOYSTICK_DIRECTINPUT = 1
+        SDL_JOYSTICK_ENHANCED_REPORTS = 1
+        SDL_JOYSTICK_HIDAPI_COMBINE_JOY_CONS = 1
+        SDL_JOYSTICK_HIDAPI_PS5_PLAYER_LED = 0
+        SDL_JOYSTICK_HIDAPI_VERTICAL_JOY_CONS = 0
+        SDL_JOYSTICK_WGI = 0
+        [Display]
+        Fullscreen = True
+        [Interface]
+        ConfirmStop = False
+        HideCursor = True
+      '';
+
       xdg.configFile."dolphin-emu/Hotkeys.ini".text = ''
         [Hotkeys]
         Device = SDL/0/Xbox 360 Controller
