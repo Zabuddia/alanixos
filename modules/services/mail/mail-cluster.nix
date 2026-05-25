@@ -164,6 +164,9 @@ in
         label = "Mail";
         backupInterval = cfg.cluster.backupInterval;
         maxBackupAge = cfg.cluster.maxBackupAge;
+        # Keep kresd out of the cluster active unit set. The local resolver is
+        # stateless infrastructure, and resolv.conf points at it on passive
+        # nodes too.
         activeUnits =
           [
             "activate-virtual-mail-users.service"
@@ -173,7 +176,6 @@ in
             "postfix.service"
           ]
           ++ lib.optional (cfg.dkim.privateKeySecrets != { }) "alanix-mail-dkim-keys.service"
-          ++ lib.optional cfg.localDnsResolver "kresd.target"
           ++ lib.optional cfg.dmarcReporting.enable "rspamd-dmarc-reporter.timer"
           ++ lib.optionals cfg.virusScanning [
             "clamav-daemon.socket"
@@ -196,7 +198,6 @@ in
           "postfix.service"
         ]
         ++ lib.optional (cfg.dkim.privateKeySecrets != { }) "alanix-mail-dkim-keys.service"
-        ++ lib.optional cfg.localDnsResolver "kresd.target"
         ++ lib.optionals cfg.dmarcReporting.enable [
           "rspamd-dmarc-reporter.timer"
           {
@@ -226,7 +227,6 @@ in
       "postfix.service"
     ])
     (lib.mkIf (cfg.dkim.privateKeySecrets != { }) (helpers.mkActiveTargetUnits [ "alanix-mail-dkim-keys.service" ]))
-    (lib.mkIf cfg.localDnsResolver (helpers.mkActiveTargetUnits [ "kresd.target" ]))
     (lib.mkIf cfg.dmarcReporting.enable (helpers.mkActiveTargetUnits [
       "rspamd-dmarc-reporter.timer"
       {
