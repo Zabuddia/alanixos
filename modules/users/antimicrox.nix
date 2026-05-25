@@ -663,7 +663,6 @@ in
             PartOf = [ "graphical-session.target" ];
           };
           Service = {
-            ExecStartPre = "${pkgs.coreutils}/bin/sleep 3";
             ExecStart = "${lib.getExe cfg.package} --tray --eventgen uinput --profile ${lib.escapeShellArg profilePath}";
             Restart = "on-failure";
             RestartSec = 2;
