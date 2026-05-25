@@ -105,7 +105,7 @@
             back = "escape";
             guide = "launcher";
             start = "enter";
-            lb = "launcher";
+            lb = "closeWindow";
             leftStick = "altTab";
             rightStick = "middleClick";
           };

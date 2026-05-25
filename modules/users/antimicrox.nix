@@ -21,6 +21,7 @@ let
     d = "0x44";
     e = "0x45";
     k = "0x4b";
+    q = "0x51";
     t = "0x54";
     volumeDown = "0x1008ff11";
     volumeMute = "0x1008ff12";
@@ -108,7 +109,7 @@ let
 
   changeSetSlot = setIndex: ''
                         <slot>
-                            <setindex>${toString setIndex}</setindex>
+                            <code>${toString setIndex}</code>
                             <mode>changeset</mode>
                         </slot>
   '';
@@ -187,6 +188,10 @@ let
     muteVolume = {
       label = "Mute Volume";
       slots = keyboardSlots [ key.volumeMute ];
+    };
+    closeWindow = {
+      label = "Close Window";
+      slots = keyboardSlots [ key.super key.shift key.q ];
     };
     enter = {
       label = "Enter";
@@ -614,9 +619,11 @@ in
               always = false;
             }
           ];
-
-          keybindings = lib.mkOptionDefault swayKeybindings;
         };
+
+        wayland.windowManager.sway.extraConfig = lib.mkIf swayActive (
+          lib.concatStringsSep "\n" (lib.mapAttrsToList (key: cmd: "bindsym ${key} ${cmd}") swayKeybindings)
+        );
       }
     ];
   };
