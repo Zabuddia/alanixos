@@ -481,13 +481,13 @@ in
 
       keybinding = lib.mkOption {
         type = types.str;
-        default = "Mod4+k";
+        default = "Mod4+Ctrl+k";
         description = "Sway keybinding used to toggle the on-screen keyboard.";
       };
 
       keyCodes = lib.mkOption {
         type = types.listOf types.str;
-        default = [ key.super key.k ];
+        default = [ key.super key.control key.k ];
         description = "AntiMicroX key codes to send for the on-screen keyboard shortcut.";
       };
     };
