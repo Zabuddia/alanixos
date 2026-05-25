@@ -92,6 +92,7 @@
           profile = "sway/default";
         };
         azahar.enable = true;
+        antimicrox.enable = true;
         chromium.enable = true;
         dolphin.enable = true;
         melonds.enable = true;

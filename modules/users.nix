@@ -6,6 +6,7 @@ let
   cfg = config.alanix.users;
 
   featureModules = [
+    ./users/antimicrox.nix
     ./users/azahar.nix
     ./users/chromium.nix
     ./users/desktop.nix
@@ -210,6 +211,7 @@ let
 
   enabledAccounts = lib.filterAttrs (_: userCfg: userCfg.enable) cfg.accounts;
   homeEnabledAccounts = lib.filterAttrs (_: userCfg: userCfg.enable && userCfg.home.enable) cfg.accounts;
+  antimicroxEnabledAccounts = lib.filterAttrs (_: userCfg: userCfg.enable && userCfg.antimicrox.enable) cfg.accounts;
   sshPublicKeyAccounts =
     lib.filterAttrs
       (_: userCfg:
@@ -282,6 +284,11 @@ in
       home-manager.extraSpecialArgs = { inherit pkgs-unstable; };
       home-manager.backupFileExtension = "hm-backup";
       home-manager.users = lib.mapAttrs mkHomeConfig homeEnabledAccounts;
+    })
+
+    (lib.mkIf (antimicroxEnabledAccounts != { }) {
+      hardware.uinput.enable = true;
+      users.groups.uinput.members = builtins.attrNames antimicroxEnabledAccounts;
     })
 
     (lib.mkIf (sshPublicKeyAccounts != { }) {
