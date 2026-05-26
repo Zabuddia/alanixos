@@ -147,6 +147,7 @@ let
       user = "buddia";
       group = "users";
       mode = "2775";
+      ignorePerms = true;
     };
     "media-shows" = {
       label = "media/shows";
@@ -154,6 +155,7 @@ let
       user = "buddia";
       group = "users";
       mode = "2775";
+      ignorePerms = true;
     };
   };
 
