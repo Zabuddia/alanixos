@@ -28,6 +28,55 @@ let
       value.text = tvheadendSettingsXml server;
     })
     cfg.tvheadend.servers);
+
+  hasMediaSources = cfg.mediaSources.video != [ ] || cfg.mediaSources.music != [ ];
+
+  withTrailingSlash = path:
+    if lib.hasSuffix "/" path then path else "${path}/";
+
+  sourceXml = source: ''
+          <source>
+              <name>${lib.escapeXML source.name}</name>
+              <path pathversion="1">${lib.escapeXML (withTrailingSlash source.path)}</path>
+              <allowsharing>true</allowsharing>
+          </source>
+  '';
+
+  sourcesXml = ''
+    <sources>
+        <programs>
+            <default pathversion="1"></default>
+        </programs>
+        <video>
+            <default pathversion="1"></default>
+    ${lib.concatMapStrings sourceXml cfg.mediaSources.video}
+        </video>
+        <music>
+            <default pathversion="1"></default>
+    ${lib.concatMapStrings sourceXml cfg.mediaSources.music}
+        </music>
+        <pictures>
+            <default pathversion="1"></default>
+        </pictures>
+        <files>
+            <default pathversion="1"></default>
+        </files>
+    </sources>
+  '';
+
+  mediaSourceType = types.submodule {
+    options = {
+      name = lib.mkOption {
+        type = types.str;
+        description = "Display name shown in Kodi.";
+      };
+
+      path = lib.mkOption {
+        type = types.str;
+        description = "Filesystem path Kodi should use for this media source.";
+      };
+    };
+  };
 in
 {
   options.kodi = {
@@ -70,12 +119,33 @@ in
         description = "List of TVHeadend servers to configure. The first entry is the primary instance; additional entries create multi-instance pvr.hts configs.";
       };
     };
+
+    mediaSources = {
+      video = lib.mkOption {
+        type = types.listOf mediaSourceType;
+        default = [ ];
+        description = "Video file sources declared in Kodi sources.xml.";
+      };
+
+      music = lib.mkOption {
+        type = types.listOf mediaSourceType;
+        default = [ ];
+        description = "Music file sources declared in Kodi sources.xml.";
+      };
+    };
   };
 
   config.home.modules = lib.optionals cfg.enable [
     ({ config, lib, ... }: {
       home.packages = [ kodiPackage ];
-      home.file = lib.optionalAttrs hasTvheadend tvheadendFiles;
+      home.file =
+        lib.optionalAttrs hasTvheadend tvheadendFiles
+        // lib.optionalAttrs hasMediaSources {
+          ".kodi/userdata/sources.xml" = {
+            text = sourcesXml;
+            force = true;
+          };
+        };
 
       home.activation.enableKodiTvheadendPvr = lib.mkIf hasTvheadend (lib.hm.dag.entryAfter [ "linkGeneration" ] ''
         db="${config.home.homeDirectory}/.kodi/userdata/Database/Addons33.db"

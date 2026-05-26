@@ -116,6 +116,15 @@
         chromium.enable = true;
         kodi = {
           enable = true;
+          mediaSources = {
+            video = [
+              { name = "Movies"; path = "${config.alanix.syncthing.syncRoot}/media/movies"; }
+              { name = "TV Shows"; path = "${config.alanix.syncthing.syncRoot}/media/shows"; }
+            ];
+            music = [
+              { name = "Music"; path = "${config.alanix.syncthing.syncRoot}/media/music"; }
+            ];
+          };
           tvheadend.servers = [
             { name = "alan-big-nixos"; host = "alan-big-nixos"; htspPort = 19982; httpPort = 19981; }
           ];
@@ -196,6 +205,9 @@
         "emulation-dolphin"
         "emulation-melonds"
         "jellyfin-media"
+        "navidrome-media"
+        "audiobookshelf-media"
+        "kavita-media"
       ];
       linkFolderSets = [
         "emulation-azahar"
