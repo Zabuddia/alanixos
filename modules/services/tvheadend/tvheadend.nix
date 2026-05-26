@@ -46,6 +46,8 @@ let
 
   containerEnvironment =
     {
+      PUID = toString cfg.userId;
+      PGID = toString cfg.groupId;
       TZ = cfg.timeZone;
     }
     // lib.optionalAttrs (cfg.runOpts != null && cfg.runOpts != "") {
@@ -105,6 +107,18 @@ in
       type = lib.types.str;
       default = config.time.timeZone or "UTC";
       description = "Timezone passed to the TVHeadend container.";
+    };
+
+    userId = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 911;
+      description = "UID passed to the LinuxServer TVHeadend image as PUID.";
+    };
+
+    groupId = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = config.ids.gids.video;
+      description = "GID passed to the LinuxServer TVHeadend image as PGID. Defaults to the host video group so TVHeadend can read DVB device nodes.";
     };
 
     runOpts = lib.mkOption {
