@@ -643,6 +643,12 @@ in
       description = "Wayland app_ids (e.g. \"dolphin-emu\") that should pause AntiMicroX while focused so the controller passes through to the app directly.";
     };
 
+    pauseForGameApps = lib.mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "Wayland app_ids that should pause AntiMicroX only while their title looks like an active game session.";
+    };
+
     buttonActions = lib.mkOption {
       type = types.attrsOf (types.enum actionNames);
       default = {
@@ -696,25 +702,36 @@ in
 
         xdg.configFile."antimicrox/profiles/${cfg.profile.fileName}".text = profile;
 
-        systemd.user.services.antimicrox-focus-watcher = lib.mkIf (swayActive && cfg.pauseForApps != [ ]) (
+        systemd.user.services.antimicrox-focus-watcher = lib.mkIf (swayActive && (cfg.pauseForApps != [ ] || cfg.pauseForGameApps != [ ])) (
           let
             pauseAppIds = cfg.pauseForApps;
+            pauseGameAppIds = cfg.pauseForGameApps;
             watcherScript = pkgs.writeShellScript "antimicrox-focus-watcher" ''
               pause_apps=${lib.escapeShellArg (lib.concatStringsSep "\n" pauseAppIds)}
+              pause_game_apps=${lib.escapeShellArg (lib.concatStringsSep "\n" pauseGameAppIds)}
+
+              contains_app() {
+                [ -n "$1" ] && [ -n "$2" ] || return 1
+                printf '%s\n' "$1" | ${pkgs.gnugrep}/bin/grep -Fxq -- "$2"
+              }
+
               while true; do
                 ${pkgs.sway}/bin/swaymsg -t subscribe '["window"]' | while IFS= read -r event; do
                   change=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.change // ""')
                   app_id=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.app_id // .container.window_properties.class // ""')
                   title=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.name // ""')
-                  is_pause_app=$(printf '%s\n' "$pause_apps" | ${pkgs.gnugrep}/bin/grep -Fxq -- "$app_id" && echo yes || echo no)
-                  echo "change=$change app=$app_id is_pause_app=$is_pause_app title=$title"
+                  is_pause_app=$(contains_app "$pause_apps" "$app_id" && echo yes || echo no)
+                  is_game_app=$(contains_app "$pause_game_apps" "$app_id" && echo yes || echo no)
+                  is_game_session=$([ "$is_game_app" = "yes" ] && printf '%s' "$title" | ${pkgs.gnugrep}/bin/grep -qF " | " && echo yes || echo no)
+                  should_pause=$([ "$is_pause_app" = "yes" ] || [ "$is_game_session" = "yes" ] && echo yes || echo no)
+                  echo "change=$change app=$app_id is_pause_app=$is_pause_app is_game_session=$is_game_session title=$title"
                   if [ "$change" = "title" ] || [ "$change" = "focus" ] || [ "$change" = "fullscreen_mode" ]; then
-                    if [ "$is_pause_app" = "yes" ]; then
+                    if [ "$should_pause" = "yes" ]; then
                       ${systemctl} --user stop antimicrox
-                    elif [ "$change" = "focus" ]; then
+                    elif [ "$change" = "focus" ] || [ "$is_game_app" = "yes" ]; then
                       ${systemctl} --user start antimicrox
                     fi
-                  elif [ "$change" = "close" ] && [ "$is_pause_app" = "yes" ]; then
+                  elif [ "$change" = "close" ] && { [ "$is_pause_app" = "yes" ] || [ "$is_game_app" = "yes" ]; }; then
                     ${systemctl} --user start antimicrox
                   fi
                 done

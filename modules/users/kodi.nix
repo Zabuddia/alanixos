@@ -7,10 +7,9 @@ let
 
   hasTvheadend = cfg.tvheadend.servers != [ ];
 
-  kodiPackage =
-    if hasTvheadend
-    then cfg.package.withPackages (p: [ p.pvr-hts ])
-    else cfg.package;
+  kodiPackage = cfg.package.withPackages (p:
+    [ p.joystick ]
+    ++ lib.optionals hasTvheadend [ p.pvr-hts ]);
 
   tvheadendSettingsXml = server: ''
     <settings version="2">
