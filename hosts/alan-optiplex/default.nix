@@ -118,12 +118,13 @@
           enable = true;
           mediaSources = {
             video = [
-              { name = "Movies"; path = "${config.alanix.syncthing.syncRoot}/media/movies"; }
-              { name = "TV Shows"; path = "${config.alanix.syncthing.syncRoot}/media/shows"; }
+              { name = "Movies"; path = "${config.alanix.syncthing.syncRoot}/media/movies"; content = "movies"; }
+              { name = "TV Shows"; path = "${config.alanix.syncthing.syncRoot}/media/shows"; content = "tvshows"; }
             ];
             music = [
               { name = "Music"; path = "${config.alanix.syncthing.syncRoot}/media/music"; }
             ];
+            updateLibraryOnStartup = true;
           };
           tvheadend.servers = [
             { name = "alan-big-nixos"; host = "alan-big-nixos"; htspPort = 19982; httpPort = 19981; }
