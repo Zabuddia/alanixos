@@ -193,6 +193,7 @@
     alanix.tvheadend = {
       enable = true;
       recordingsDir = "/srv/tvheadend/recordings";
+      epg.disableOverTheAirGrabbers = true;
       expose.tor = {
         enable = true;
         publicPort = 80;
