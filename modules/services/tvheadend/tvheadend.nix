@@ -54,6 +54,55 @@ let
       RUN_OPTS = cfg.runOpts;
     };
 
+  tvheadendApiAddress =
+    if cfg.listenAddress == "" || cfg.listenAddress == "0.0.0.0" then
+      "127.0.0.1"
+    else
+      cfg.listenAddress;
+
+  disableOverTheAirEpgGrabbers = pkgs.writeShellScript "tvheadend-disable-over-the-air-epggrabbers" ''
+    set -eu
+
+    base_url="http://${tvheadendApiAddress}:${toString cfg.port}"
+
+    for attempt in $(${pkgs.coreutils}/bin/seq 1 60); do
+      if ${pkgs.curl}/bin/curl -fsS --max-time 2 "$base_url/api/serverinfo" >/dev/null; then
+        break
+      fi
+
+      if [ "$attempt" -eq 60 ]; then
+        echo "TVHeadend API did not become ready; leaving EPG grabber state unchanged." >&2
+        exit 0
+      fi
+
+      ${pkgs.coreutils}/bin/sleep 1
+    done
+
+    module_json="$(${pkgs.curl}/bin/curl -fsS --max-time 10 "$base_url/api/epggrab/module/list" || true)"
+    if [ -z "$module_json" ]; then
+      echo "Could not read TVHeadend EPG grabber modules; leaving state unchanged." >&2
+      exit 0
+    fi
+
+    uuids="$(printf '%s' "$module_json" | ${pkgs.jq}/bin/jq -r '
+      .entries[]
+      | select(.status != "epggrabmodNone")
+      | select(
+          .title == "Over-the-air: PSIP: ATSC Grabber"
+          or .title == "Over-the-air: EIT: EPG Grabber"
+        )
+      | .uuid
+    ' || true)"
+
+    for uuid in $uuids; do
+      ${pkgs.curl}/bin/curl -fsS --max-time 10 \
+        -X POST \
+        --data-urlencode "node={\"uuid\":\"$uuid\",\"enabled\":false}" \
+        "$base_url/api/idnode/save" >/dev/null \
+        || echo "Could not disable TVHeadend EPG grabber $uuid." >&2
+    done
+  '';
+
   proxyUnitNamesFor =
     serviceName: exposeCfg:
     lib.optionals (exposeCfg.tailscale.enable && !exposeCfg.tailscale.tls) [ "alanix-expose-tailscale-${serviceName}" ]
@@ -137,6 +186,12 @@ in
       type = lib.types.listOf lib.types.str;
       default = [ ];
       description = "Additional Podman extraOptions appended to the TVHeadend container.";
+    };
+
+    epg.disableOverTheAirGrabbers = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Disable TVHeadend's over-the-air PSIP/EIT EPG grabbers after startup. This is useful for tuners where OTA EPG grabbing can monopolize or wedge DVB inputs.";
     };
 
     htsp = {
@@ -226,7 +281,14 @@ in
         unitConfig.ConditionPathExists = cfg.devicePaths;
       });
       systemd.services =
-        { "podman-tvheadend".unitConfig.ConditionPathExists = cfg.devicePaths; }
+        {
+          "podman-tvheadend" = {
+            unitConfig.ConditionPathExists = cfg.devicePaths;
+            serviceConfig = lib.mkIf cfg.epg.disableOverTheAirGrabbers {
+              ExecStartPost = lib.mkAfter [ "${disableOverTheAirEpgGrabbers}" ];
+            };
+          };
+        }
         // lib.genAttrs proxyUnitNames (_: {
           unitConfig.ConditionPathExists = cfg.devicePaths;
         });
