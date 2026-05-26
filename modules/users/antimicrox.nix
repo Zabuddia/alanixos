@@ -574,13 +574,13 @@ in
     openKodi = {
       keybinding = lib.mkOption {
         type = types.str;
-        default = "Mod4+k";
+        default = "Mod4+Ctrl+o";
         description = "Sway keybinding used to open Kodi.";
       };
 
       keyCodes = lib.mkOption {
         type = types.listOf types.str;
-        default = [ key.super key.k ];
+        default = [ key.super key.control key.o ];
         description = "AntiMicroX key codes to send for the open Kodi shortcut.";
       };
 
