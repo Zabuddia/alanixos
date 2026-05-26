@@ -73,9 +73,18 @@ in
   };
 
   config.home.modules = lib.optionals cfg.enable [
-    {
+    ({ config, lib, ... }: {
       home.packages = [ kodiPackage ];
       home.file = lib.optionalAttrs hasTvheadend tvheadendFiles;
-    }
+
+      home.activation.enableKodiTvheadendPvr = lib.mkIf hasTvheadend (lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+        db="${config.home.homeDirectory}/.kodi/userdata/Database/Addons33.db"
+        if [ -f "$db" ] && [ "$(${pkgs.sqlite}/bin/sqlite3 "$db" "select count(*) from sqlite_master where type = 'table' and name = 'installed';")" = "1" ]; then
+          if ! ${pkgs.sqlite}/bin/sqlite3 "$db" "update installed set enabled = 1, disabledReason = 0 where addonID = 'pvr.hts';"; then
+            echo "warning: could not enable Kodi pvr.hts in $db; Kodi may be running" >&2
+          fi
+        fi
+      '');
+    })
   ];
 }
