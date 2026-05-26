@@ -96,7 +96,8 @@
           enable = true;
           mouse.precisionButton = "rb";
           openThunar.path = "${config.alanix.users.accounts.buddia.home.directory}/Syncthing/media";
-          pauseForApps = [ "dolphin-emu" "kodi" ];
+          pauseForApps = [ "kodi" ];
+          pauseForGameApps = [ "dolphin-emu" ];
           buttonActions = {
             a = "leftClick";
             b = "rightClick";
