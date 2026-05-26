@@ -72,9 +72,10 @@ in
         IR/Down = `Cursor Y+`
         IR/Left = `Cursor X-`
         IR/Right = `Cursor X+`
-        Shake/X = `Click 2`
-        Shake/Y = `Click 2`
-        Shake/Z = `Click 2`
+        Shake/X = `Click 2` | `Trigger R`
+        Shake/Y = `Click 2` | `Trigger R`
+        Shake/Z = `Click 2` | `Trigger R`
+        Swing/Up = `Shoulder R`
         IRPassthrough/Object 1 X = `IR Object 1 X`
         IRPassthrough/Object 1 Y = `IR Object 1 Y`
         IRPassthrough/Object 1 Size = `IR Object 1 Size`
