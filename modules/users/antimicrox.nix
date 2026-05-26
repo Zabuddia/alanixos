@@ -5,6 +5,7 @@ let
 
   cfg = config.antimicrox;
   swayActive = config.desktop.enable && config.desktop.profile == "sway/default";
+  systemctl = "/run/current-system/sw/bin/systemctl";
 
   key = {
     escape = "0x1000000";
@@ -72,6 +73,18 @@ let
     "rb"
   ];
 
+  controllerTriggerIndexes = {
+    leftTrigger = 5;
+    rightTrigger = 6;
+  };
+
+  controllerTriggerOrder = [
+    "leftTrigger"
+    "rightTrigger"
+  ];
+
+  controllerInputIndexes = controllerButtonIndexes // controllerTriggerIndexes;
+
   actionNames = builtins.attrNames actionDefinitions;
 
   profilePath = "${config.home.directory}/.config/antimicrox/profiles/${cfg.profile.fileName}";
@@ -83,6 +96,30 @@ let
     fi
 
     exec ${keyboardLaunchCommand}
+  '';
+  openThunarCommand = lib.escapeShellArgs (
+    [ (lib.getExe cfg.openThunar.package) ]
+    ++ lib.optional (cfg.openThunar.path != null) cfg.openThunar.path
+  );
+  pauseAntimicroxCommand = name: command: pkgs.writeShellScript "alanix-${name}" ''
+    was_active=0
+    if ${systemctl} --user --quiet is-active antimicrox; then
+      was_active=1
+      ${systemctl} --user stop antimicrox || true
+    fi
+
+    cleanup() {
+      if [ "$was_active" -eq 1 ]; then
+        ${systemctl} --user start antimicrox || true
+      fi
+    }
+    trap cleanup EXIT
+
+    ${command}
+    status=$?
+    trap - EXIT
+    cleanup
+    exit "$status"
   '';
 
   keyboardSlot = code: ''
@@ -134,6 +171,14 @@ let
   ${slots slotList}                </dpadbutton>
   '';
 
+  trigger = index: slotList: ''
+                <trigger index="${toString index}">
+                    <throttle>positivehalf</throttle>
+                    <triggerbutton index="2">
+  ${slots slotList}                </triggerbutton>
+                </trigger>
+  '';
+
   stickButton = index: attrs: slotList:
     let
       attrXml = lib.concatStringsSep "\n" (lib.mapAttrsToList (attr: value: "                    <${attr}>${toString value}</${attr}>") attrs);
@@ -169,6 +214,10 @@ let
     keyboard = {
       label = "Keyboard";
       slots = keyboardSlots cfg.onScreenKeyboard.keyCodes;
+    };
+    openKodi = {
+      label = "Open Kodi";
+      slots = keyboardSlots cfg.openKodi.keyCodes;
     };
     openDolphin = {
       label = "Open Dolphin";
@@ -206,9 +255,14 @@ let
 
   configuredButtonNames = builtins.attrNames cfg.buttonActions;
   mappedButtonNames = lib.filter (buttonName: lib.hasAttr buttonName cfg.buttonActions) controllerButtonOrder;
-  unknownConfiguredButtons = lib.filter (buttonName: !(lib.hasAttr buttonName controllerButtonIndexes)) configuredButtonNames;
+  mappedTriggerNames = lib.filter (triggerName: lib.hasAttr triggerName cfg.buttonActions) controllerTriggerOrder;
+  unknownConfiguredButtons = lib.filter (buttonName: !(lib.hasAttr buttonName controllerInputIndexes)) configuredButtonNames;
+  configuredActions = builtins.attrValues cfg.buttonActions;
 
-  usesAction = actionName: lib.any (configuredAction: configuredAction == actionName) (builtins.attrValues cfg.buttonActions);
+  usesAction = actionName: lib.any (configuredAction: configuredAction == actionName) configuredActions;
+  usesOpenKodi = usesAction "openKodi";
+  usesOpenDolphin = usesAction "openDolphin";
+  usesOpenThunar = usesAction "openThunar";
 
   controllerButtonNames =
     map
@@ -220,6 +274,18 @@ let
         buttonNameXml controllerButtonIndexes.${mappedButtonName} action.label)
       mappedButtonNames;
 
+  controllerTriggerNames =
+    map
+      (mappedTriggerName:
+        let
+          actionName = cfg.buttonActions.${mappedTriggerName};
+          action = actionDefinitions.${actionName};
+        in
+        ''
+            <axisbuttonname index="${toString (controllerTriggerIndexes.${mappedTriggerName})}" button="2">${action.label}</axisbuttonname>
+        '')
+      mappedTriggerNames;
+
   controllerButtons =
     map
       (mappedButtonName:
@@ -229,6 +295,16 @@ let
         in
         button controllerButtonIndexes.${mappedButtonName} action.slots)
       mappedButtonNames;
+
+  controllerTriggers =
+    map
+      (mappedTriggerName:
+        let
+          actionName = cfg.buttonActions.${mappedTriggerName};
+          action = actionDefinitions.${actionName};
+        in
+        trigger controllerTriggerIndexes.${mappedTriggerName} action.slots)
+      mappedTriggerNames;
 
   makeMouseStickButtons = speedX: speedY: [
     (stickButton 1 { mousespeedx = speedX; mousespeedy = speedY; } [ (mouseMovementSlot mouseMovement.up) ])
@@ -267,7 +343,7 @@ let
   ${lib.concatStrings scrollStickButtons}                </stick>
                   <dpad index="1">
   ${lib.concatStrings dpadButtons}                </dpad>
-  ${lib.concatStrings controllerButtons}${precisionButtonXml switchToSet}          </set>
+  ${lib.concatStrings controllerButtons}${lib.concatStrings controllerTriggers}${precisionButtonXml switchToSet}          </set>
   '';
 
   hasPrecisionMode = cfg.mouse.precisionButton != null;
@@ -278,11 +354,14 @@ let
     lib.optionalAttrs cfg.onScreenKeyboard.enable {
       "${cfg.onScreenKeyboard.keybinding}" = "exec ${keyboardToggleCommand}";
     }
-    // lib.optionalAttrs cfg.openDolphin.enable {
-      "${cfg.openDolphin.keybinding}" = "exec ${lib.getExe cfg.openDolphin.package}";
+    // lib.optionalAttrs usesOpenKodi {
+      "${cfg.openKodi.keybinding}" = "exec ${pauseAntimicroxCommand "open-kodi" cfg.openKodi.command}";
     }
-    // lib.optionalAttrs cfg.openThunar.enable {
-      "${cfg.openThunar.keybinding}" = "exec ${lib.getExe cfg.openThunar.package} ${lib.escapeShellArg cfg.openThunar.path}";
+    // lib.optionalAttrs usesOpenDolphin {
+      "${cfg.openDolphin.keybinding}" = "exec ${cfg.openDolphin.command}";
+    }
+    // lib.optionalAttrs usesOpenThunar {
+      "${cfg.openThunar.keybinding}" = "exec ${openThunarCommand}";
     };
 
   profile = ''<?xml version="1.0" encoding="UTF-8"?>
@@ -291,7 +370,7 @@ let
         <guid>sdlgamecontroller</guid>
         <profilename>${cfg.profile.name}</profilename>
         <names>
-  ${lib.concatStrings controllerButtonNames}            <controlstickname index="1">Mouse</controlstickname>
+  ${lib.concatStrings controllerButtonNames}${lib.concatStrings controllerTriggerNames}            <controlstickname index="1">Mouse</controlstickname>
             <controlstickname index="2">Scroll</controlstickname>
         </names>
         <sets>
@@ -492,19 +571,27 @@ in
       };
     };
 
+    openKodi = {
+      keybinding = lib.mkOption {
+        type = types.str;
+        default = "Mod4+k";
+        description = "Sway keybinding used to open Kodi.";
+      };
+
+      keyCodes = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ key.super key.k ];
+        description = "AntiMicroX key codes to send for the open Kodi shortcut.";
+      };
+
+      command = lib.mkOption {
+        type = types.str;
+        default = "kodi";
+        description = "Command run by the Kodi keybinding. AntiMicroX is stopped while this command runs.";
+      };
+    };
+
     openDolphin = {
-      enable = lib.mkOption {
-        type = types.bool;
-        default = false;
-        description = "Install dolphin and register a Sway keybinding to open it.";
-      };
-
-      package = lib.mkOption {
-        type = types.package;
-        default = pkgs-unstable.dolphin-emu;
-        description = "Dolphin emulator package to install.";
-      };
-
       keybinding = lib.mkOption {
         type = types.str;
         default = "Mod4+o";
@@ -517,15 +604,14 @@ in
         description = "AntiMicroX key codes to send for the open Dolphin shortcut.";
       };
 
+      command = lib.mkOption {
+        type = types.str;
+        default = "dolphin-emu";
+        description = "Command run by the Dolphin keybinding.";
+      };
     };
 
     openThunar = {
-      enable = lib.mkOption {
-        type = types.bool;
-        default = false;
-        description = "Install Thunar and register a Sway keybinding to open it at a configured path.";
-      };
-
       package = lib.mkOption {
         type = types.package;
         default = pkgs.xfce.thunar;
@@ -545,9 +631,9 @@ in
       };
 
       path = lib.mkOption {
-        type = types.str;
-        default = "${config.home.directory}/Syncthing/media";
-        description = "Path Thunar opens to.";
+        type = types.nullOr types.str;
+        default = null;
+        description = "Optional path Thunar opens to. When null, Thunar uses its default location.";
       };
     };
 
@@ -568,7 +654,7 @@ in
         start = "enter";
         lb = "launcher";
       };
-      description = "Mapping from SDL gamecontroller button names to named controller actions.";
+      description = "Mapping from SDL gamecontroller button and trigger names to named controller actions.";
     };
   };
 
@@ -584,7 +670,7 @@ in
       }
       {
         assertion = unknownConfiguredButtons == [ ];
-        message = "alanix.users.accounts.${name}.antimicrox.buttonActions contains unsupported buttons: ${lib.concatStringsSep ", " unknownConfiguredButtons}.";
+        message = "alanix.users.accounts.${name}.antimicrox.buttonActions contains unsupported inputs: ${lib.concatStringsSep ", " unknownConfiguredButtons}.";
       }
       {
         assertion = cfg.launcher.enable || !(usesAction "launcher");
@@ -593,14 +679,6 @@ in
       {
         assertion = cfg.onScreenKeyboard.enable || !(usesAction "keyboard");
         message = "alanix.users.accounts.${name}.antimicrox.buttonActions uses keyboard, but antimicrox.onScreenKeyboard.enable is false.";
-      }
-      {
-        assertion = cfg.openDolphin.enable || !(usesAction "openDolphin");
-        message = "alanix.users.accounts.${name}.antimicrox.buttonActions uses openDolphin, but antimicrox.openDolphin.enable is false.";
-      }
-      {
-        assertion = cfg.openThunar.enable || !(usesAction "openThunar");
-        message = "alanix.users.accounts.${name}.antimicrox.buttonActions uses openThunar, but antimicrox.openThunar.enable is false.";
       }
       {
         assertion = cfg.mouse.precisionButton == null || !(lib.hasAttr cfg.mouse.precisionButton cfg.buttonActions);
@@ -614,8 +692,7 @@ in
           [ cfg.package ]
           ++ lib.optionals cfg.launcher.enable [ cfg.launcher.package ]
           ++ lib.optionals cfg.onScreenKeyboard.enable [ cfg.onScreenKeyboard.package ]
-          ++ lib.optionals cfg.openDolphin.enable [ cfg.openDolphin.package ]
-          ++ lib.optionals cfg.openThunar.enable [ cfg.openThunar.package ];
+          ++ lib.optionals usesOpenThunar [ cfg.openThunar.package ];
 
         xdg.configFile."antimicrox/profiles/${cfg.profile.fileName}".text = profile;
 
@@ -623,24 +700,22 @@ in
           let
             pauseAppIds = cfg.pauseForApps;
             watcherScript = pkgs.writeShellScript "antimicrox-focus-watcher" ''
-              pause_apps=${lib.escapeShellArg (lib.concatStringsSep "|" pauseAppIds)}
+              pause_apps=${lib.escapeShellArg (lib.concatStringsSep "\n" pauseAppIds)}
               while true; do
                 ${pkgs.sway}/bin/swaymsg -t subscribe '["window"]' | while IFS= read -r event; do
                   change=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.change // ""')
                   app_id=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.app_id // .container.window_properties.class // ""')
                   title=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.name // ""')
-                  is_game=$(printf '%s' "$app_id" | ${pkgs.gnugrep}/bin/grep -qE "^($pause_apps)$" \
-                    && printf '%s' "$title" | ${pkgs.gnugrep}/bin/grep -qF " | " && echo yes || echo no)
-                  is_pause_app=$(printf '%s' "$app_id" | ${pkgs.gnugrep}/bin/grep -qE "^($pause_apps)$" && echo yes || echo no)
-                  echo "change=$change app=$app_id is_game=$is_game title=$title"
+                  is_pause_app=$(printf '%s\n' "$pause_apps" | ${pkgs.gnugrep}/bin/grep -Fxq -- "$app_id" && echo yes || echo no)
+                  echo "change=$change app=$app_id is_pause_app=$is_pause_app title=$title"
                   if [ "$change" = "title" ] || [ "$change" = "focus" ] || [ "$change" = "fullscreen_mode" ]; then
-                    if [ "$is_game" = "yes" ]; then
-                      /run/current-system/sw/bin/systemctl --user stop antimicrox
+                    if [ "$is_pause_app" = "yes" ]; then
+                      ${systemctl} --user stop antimicrox
                     elif [ "$change" = "focus" ]; then
-                      /run/current-system/sw/bin/systemctl --user start antimicrox
+                      ${systemctl} --user start antimicrox
                     fi
                   elif [ "$change" = "close" ] && [ "$is_pause_app" = "yes" ]; then
-                    /run/current-system/sw/bin/systemctl --user start antimicrox
+                    ${systemctl} --user start antimicrox
                   fi
                 done
                 ${pkgs.coreutils}/bin/sleep 1
@@ -649,7 +724,7 @@ in
           in
           {
             Unit = {
-              Description = "Pause AntiMicroX when a game has focus";
+              Description = "Pause AntiMicroX when listed apps have focus";
               After = [ "graphical-session.target" "antimicrox.service" ];
               PartOf = [ "graphical-session.target" ];
             };
