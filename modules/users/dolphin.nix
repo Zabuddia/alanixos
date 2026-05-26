@@ -2,6 +2,10 @@
 
 let
   cfg = config.dolphin;
+  mkDolphinConfig = text: {
+    inherit text;
+    force = true;
+  };
 in
 {
   options.dolphin.enable = lib.mkEnableOption "Dolphin Emulator for this user";
@@ -10,7 +14,7 @@ in
     {
       home.packages = [ pkgs-unstable.dolphin-emu ];
 
-      xdg.configFile."dolphin-emu/Dolphin.ini".text = ''
+      xdg.configFile."dolphin-emu/Dolphin.ini" = mkDolphinConfig ''
         [Analytics]
         ID = 90cbd37d329edfd4a24683f5c5e53d6f
         PermissionAsked = True
@@ -44,13 +48,13 @@ in
         HideCursor = True
       '';
 
-      xdg.configFile."dolphin-emu/Hotkeys.ini".text = ''
+      xdg.configFile."dolphin-emu/Hotkeys.ini" = mkDolphinConfig ''
         [Hotkeys]
         Device = SDL/0/Xbox 360 Controller
         General/Stop = Guide
       '';
 
-      xdg.configFile."dolphin-emu/Profiles/Wiimote/MarioKartX360.ini".text = ''
+      xdg.configFile."dolphin-emu/Profiles/Wiimote/MarioKartX360.ini" = mkDolphinConfig ''
         [Profile]
         Device = SDL/0/Xbox 360 Controller
         Buttons/A = `Button E`
@@ -108,7 +112,7 @@ in
         Nunchuk/Shake/Z = `Click 2`
       '';
 
-      xdg.configFile."dolphin-emu/Profiles/Wiimote/MarioKartKeyboard.ini".text = ''
+      xdg.configFile."dolphin-emu/Profiles/Wiimote/MarioKartKeyboard.ini" = mkDolphinConfig ''
         [Profile]
         Device = XInput2/0/Virtual core pointer
         Buttons/A = W
@@ -169,7 +173,7 @@ in
         Options/Sideways Wiimote = True
       '';
 
-      xdg.configFile."dolphin-emu/Profiles/Wiimote/DSU-AlaniPhone.ini".text = ''
+      xdg.configFile."dolphin-emu/Profiles/Wiimote/DSU-AlaniPhone.ini" = mkDolphinConfig ''
         [Profile]
         Device = DSUClient/0/AlaniPhone
         Buttons/A = Cross
@@ -226,7 +230,7 @@ in
         Nunchuk/Shake/Z = `Click 2`
       '';
 
-      xdg.configFile."dolphin-emu/Profiles/Wiimote/NSMBWKeyboard.ini".text = ''
+      xdg.configFile."dolphin-emu/Profiles/Wiimote/NSMBWKeyboard.ini" = mkDolphinConfig ''
         [Profile]
         Device = XInput2/0/Virtual core pointer
         Buttons/A = A
