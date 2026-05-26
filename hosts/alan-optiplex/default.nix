@@ -95,9 +95,8 @@
         antimicrox = {
           enable = true;
           mouse.precisionButton = "rb";
-          pauseForApps = [ "dolphin-emu" ];
-          openDolphin.enable = true;
-          openThunar.enable = true;
+          openThunar.path = "${config.alanix.users.accounts.buddia.home.directory}/Syncthing/media";
+          pauseForApps = [ "dolphin-emu" "kodi" ];
           buttonActions = {
             a = "leftClick";
             b = "rightClick";
@@ -109,13 +108,15 @@
             lb = "closeWindow";
             leftStick = "altTab";
             rightStick = "middleClick";
+            leftTrigger = "openThunar";
+            rightTrigger = "openKodi";
           };
         };
         chromium.enable = true;
         kodi = {
           enable = true;
           tvheadend.servers = [
-            { name = "alan-big-nixos"; host = "alan-big-nixos"; }
+            { name = "alan-big-nixos"; host = "alan-big-nixos"; htspPort = 19982; httpPort = 19981; }
           ];
         };
         dolphin.enable = true;
