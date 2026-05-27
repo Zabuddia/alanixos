@@ -113,6 +113,68 @@ in
         Nunchuk/Shake/Z = `Click 2`
       '';
 
+      xdg.configFile."dolphin-emu/Profiles/Wiimote/LegoX360.ini" = mkDolphinConfig ''
+        [Profile]
+        Device = SDL/0/Xbox 360 Controller
+        Buttons/A = `Button S`
+        Buttons/B = `Button W`
+        Buttons/1 = `Shoulder L`
+        Buttons/2 = `Shoulder R`
+        Buttons/- = Back
+        Buttons/+ = Start
+        Buttons/Home = Guide
+        D-Pad/Up = `Pad N`
+        D-Pad/Down = `Pad S`
+        D-Pad/Left = `Pad W`
+        D-Pad/Right = `Pad E`
+        IR/Up = `Right Y+`
+        IR/Down = `Right Y-`
+        IR/Left = `Right X-`
+        IR/Right = `Right X+`
+        Shake/X = `Click 2`
+        Shake/Y = `Click 2`
+        Shake/Z = `Click 2`
+        Swing/Up = `Click 2`
+        Swing/Down = `Click 2`
+        Swing/Left = `Click 2`
+        Swing/Right = `Click 2`
+        IRPassthrough/Object 1 X = `IR Object 1 X`
+        IRPassthrough/Object 1 Y = `IR Object 1 Y`
+        IRPassthrough/Object 1 Size = `IR Object 1 Size`
+        IRPassthrough/Object 2 X = `IR Object 2 X`
+        IRPassthrough/Object 2 Y = `IR Object 2 Y`
+        IRPassthrough/Object 2 Size = `IR Object 2 Size`
+        IRPassthrough/Object 3 X = `IR Object 3 X`
+        IRPassthrough/Object 3 Y = `IR Object 3 Y`
+        IRPassthrough/Object 3 Size = `IR Object 3 Size`
+        IRPassthrough/Object 4 X = `IR Object 4 X`
+        IRPassthrough/Object 4 Y = `IR Object 4 Y`
+        IRPassthrough/Object 4 Size = `IR Object 4 Size`
+        IMUAccelerometer/Up = `Accel Up`
+        IMUAccelerometer/Down = `Accel Down`
+        IMUAccelerometer/Left = `Accel Left`
+        IMUAccelerometer/Right = `Accel Right`
+        IMUAccelerometer/Forward = `Accel Forward`
+        IMUAccelerometer/Backward = `Accel Backward`
+        IMUGyroscope/Pitch Up = `Gyro Pitch Up`
+        IMUGyroscope/Pitch Down = `Gyro Pitch Down`
+        IMUGyroscope/Roll Left = `Gyro Roll Left`
+        IMUGyroscope/Roll Right = `Gyro Roll Right`
+        IMUGyroscope/Yaw Left = `Gyro Yaw Left`
+        IMUGyroscope/Yaw Right = `Gyro Yaw Right`
+        Extension = Nunchuk
+        Nunchuk/Buttons/C = `Button N` | `Trigger L` | `Trigger R`
+        Nunchuk/Buttons/Z = `Button E`
+        Nunchuk/Stick/Up = `Left Y+`
+        Nunchuk/Stick/Down = `Left Y-`
+        Nunchuk/Stick/Left = `Left X-`
+        Nunchuk/Stick/Right = `Left X+`
+        Nunchuk/Stick/Calibration = 100.00 141.42 100.00 141.42 100.00 141.42 100.00 141.42
+        Nunchuk/Shake/X = `Click 2`
+        Nunchuk/Shake/Y = `Click 2`
+        Nunchuk/Shake/Z = `Click 2`
+      '';
+
       xdg.configFile."dolphin-emu/Profiles/Wiimote/MarioKartKeyboard.ini" = mkDolphinConfig ''
         [Profile]
         Device = XInput2/0/Virtual core pointer
