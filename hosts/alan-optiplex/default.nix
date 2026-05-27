@@ -9,6 +9,8 @@
       ./secrets.nix
     ];
 
+    hardware.alsa.enablePersistence = true;
+
     alanix.system = {
       stateVersion = "25.11";
       timeZone = "America/Chicago";
@@ -95,6 +97,7 @@
         antimicrox = {
           enable = true;
           mouse.precisionButton = "rb";
+          workspaceSwitching.enable = true;
           openThunar.path = "${config.alanix.users.accounts.buddia.home.directory}/Syncthing/media";
           pauseForApps = [ "kodi" ];
           pauseForGameApps = [ "dolphin-emu" ];
@@ -144,10 +147,6 @@
           enable = true;
           user = "buddia";
         };
-        createHeadlessOutput = true;
-        outputRules = [
-          "output HEADLESS-1 resolution 1920x1080"
-        ];
         idle = {
           lockSeconds = null;
           displayOffSeconds = null;
@@ -231,13 +230,6 @@
           "emulation-melonds"
         ];
       };
-    };
-
-    alanix.remote-desktop = {
-      enable = true;
-      autoStart = true;
-      port = 5900;
-      output = "HEADLESS-1";
     };
 
     alanix.sunshine = {
