@@ -774,30 +774,53 @@ in
 
               contains_app() {
                 [ -n "$1" ] && [ -n "$2" ] || return 1
-                printf '%s\n' "$1" | ${pkgs.gnugrep}/bin/grep -Fxq -- "$2"
+                printf '%s\n' "$1" | ${pkgs.gnugrep}/bin/grep -Fixq -- "$2"
               }
+
+              is_game_title() {
+                [ -n "$1" ] || return 1
+                printf '%s' "$1" | ${pkgs.gnugrep}/bin/grep -qF " | "
+              }
+
+              focused_container() {
+                ${pkgs.sway}/bin/swaymsg -t get_tree | ${pkgs.jq}/bin/jq -c '
+                  [
+                    .. | objects | select(.focused? == true) |
+                    {
+                      app_id: (.app_id // .window_properties.class // ""),
+                      title: (.name // "")
+                    }
+                  ][0] // { app_id: "", title: "" }
+                '
+              }
+
+              reconcile_focus() {
+                change="$1"
+                focused=$(focused_container 2>/dev/null || printf '%s\n' '{ "app_id": "", "title": "" }')
+                app_id=$(printf '%s' "$focused" | ${pkgs.jq}/bin/jq -r '.app_id // ""')
+                title=$(printf '%s' "$focused" | ${pkgs.jq}/bin/jq -r '.title // ""')
+                is_pause_app=$(contains_app "$pause_apps" "$app_id" && echo yes || echo no)
+                is_game_app=$(contains_app "$pause_game_apps" "$app_id" && echo yes || echo no)
+                is_game_session=$([ "$is_game_app" = "yes" ] && is_game_title "$title" && echo yes || echo no)
+                should_pause=$([ "$is_pause_app" = "yes" ] || [ "$is_game_session" = "yes" ] && echo yes || echo no)
+
+                echo "change=$change focused_app=$app_id is_pause_app=$is_pause_app is_game_session=$is_game_session title=$title"
+                if [ "$should_pause" = "yes" ]; then
+                  ${systemctl} --user stop antimicrox
+                else
+                  ${systemctl} --user start antimicrox
+                fi
+              }
+
+              reconcile_focus startup
 
               while true; do
                 ${pkgs.sway}/bin/swaymsg -t subscribe '["window"]' | while IFS= read -r event; do
                   change=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.change // ""')
-                  app_id=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.app_id // .container.window_properties.class // ""')
-                  title=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.name // ""')
-                  is_pause_app=$(contains_app "$pause_apps" "$app_id" && echo yes || echo no)
-                  is_game_app=$(contains_app "$pause_game_apps" "$app_id" && echo yes || echo no)
-                  is_game_session=$([ "$is_game_app" = "yes" ] && printf '%s' "$title" | ${pkgs.gnugrep}/bin/grep -qF " | " && echo yes || echo no)
-                  should_pause=$([ "$is_pause_app" = "yes" ] || [ "$is_game_session" = "yes" ] && echo yes || echo no)
-                  echo "change=$change app=$app_id is_pause_app=$is_pause_app is_game_session=$is_game_session title=$title"
-                  if [ "$change" = "title" ] || [ "$change" = "focus" ] || [ "$change" = "fullscreen_mode" ]; then
-                    if [ "$should_pause" = "yes" ]; then
-                      ${systemctl} --user stop antimicrox
-                    elif [ "$change" = "focus" ] || [ "$is_game_app" = "yes" ]; then
-                      ${systemctl} --user start antimicrox
-                    fi
-                  elif [ "$change" = "close" ] && { [ "$is_pause_app" = "yes" ] || [ "$is_game_app" = "yes" ]; }; then
-                    ${systemctl} --user start antimicrox
-                  fi
+                  reconcile_focus "$change"
                 done
                 ${pkgs.coreutils}/bin/sleep 1
+                reconcile_focus resubscribe
               done
             '';
           in
