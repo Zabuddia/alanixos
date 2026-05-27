@@ -95,6 +95,7 @@
         antimicrox = {
           enable = true;
           mouse.precisionButton = "rb";
+          workspaceSwitching.enable = true;
           openThunar.path = "${config.alanix.users.accounts.buddia.home.directory}/Syncthing/media";
           pauseForApps = [ "kodi" ];
           pauseForGameApps = [ "dolphin-emu" ];

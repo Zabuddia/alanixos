@@ -339,6 +339,11 @@ let
     (stickButton 5 { wheelspeedy = cfg.scroll.speed; } [ (mouseButtonSlot mouseButton.wheelDown) ])
   ];
 
+  workspaceSwitchStickButtons = lib.optionals cfg.workspaceSwitching.enable [
+    (stickButton 3 { } (keyboardSlots cfg.workspaceSwitching.nextKeyCodes))
+    (stickButton 7 { } (keyboardSlots cfg.workspaceSwitching.previousKeyCodes))
+  ];
+
   dpadButtons = [
     (dpadButton 1 (map keyboardSlot cfg.dpad.up))
     (dpadButton 2 (map keyboardSlot cfg.dpad.right))
@@ -361,7 +366,7 @@ let
                       <deadZone>${toString cfg.scroll.deadZone}</deadZone>
                       <maxZone>${toString cfg.scroll.maxZone}</maxZone>
                       <mode>four-way</mode>
-  ${lib.concatStrings scrollStickButtons}                </stick>
+  ${lib.concatStrings (scrollStickButtons ++ workspaceSwitchStickButtons)}                </stick>
                   <dpad index="1">
   ${lib.concatStrings dpadButtons}                </dpad>
   ${lib.concatStrings controllerButtons}${lib.concatStrings controllerTriggers}${precisionButtonXml switchToSet}          </set>
@@ -383,6 +388,10 @@ let
     }
     // lib.optionalAttrs usesOpenThunar {
       "${cfg.openThunar.keybinding}" = "exec ${openThunarCommand}";
+    }
+    // lib.optionalAttrs cfg.workspaceSwitching.enable {
+      "${cfg.workspaceSwitching.nextKeybinding}" = "workspace next";
+      "${cfg.workspaceSwitching.previousKeybinding}" = "workspace prev";
     };
 
   profile = ''<?xml version="1.0" encoding="UTF-8"?>
@@ -392,7 +401,7 @@ let
         <profilename>${cfg.profile.name}</profilename>
         <names>
   ${lib.concatStrings controllerButtonNames}${lib.concatStrings controllerTriggerNames}            <controlstickname index="1">Mouse</controlstickname>
-            <controlstickname index="2">Scroll</controlstickname>
+            <controlstickname index="2">${if cfg.workspaceSwitching.enable then "Scroll / Workspaces" else "Scroll"}</controlstickname>
         </names>
         <sets>
   ${makeSet 1 cfg.mouse.speedX cfg.mouse.speedY 2}${lib.optionalString hasPrecisionMode (makeSet 2 cfg.mouse.precisionSpeedX cfg.mouse.precisionSpeedY 1)}    </sets>
@@ -655,6 +664,38 @@ in
         type = types.nullOr types.str;
         default = null;
         description = "Optional path Thunar opens to. When null, Thunar uses its default location.";
+      };
+    };
+
+    workspaceSwitching = {
+      enable = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether right-stick horizontal movement switches Sway workspaces.";
+      };
+
+      previousKeybinding = lib.mkOption {
+        type = types.str;
+        default = "Mod4+Ctrl+Left";
+        description = "Sway keybinding used to focus the previous workspace.";
+      };
+
+      previousKeyCodes = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ key.super key.control key.left ];
+        description = "AntiMicroX key codes to send for focusing the previous workspace.";
+      };
+
+      nextKeybinding = lib.mkOption {
+        type = types.str;
+        default = "Mod4+Ctrl+Right";
+        description = "Sway keybinding used to focus the next workspace.";
+      };
+
+      nextKeyCodes = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ key.super key.control key.right ];
+        description = "AntiMicroX key codes to send for focusing the next workspace.";
       };
     };
 
