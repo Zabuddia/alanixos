@@ -166,6 +166,9 @@ in
       enable = true;
       transport = "tailscale";
       listenPort = 22000;
+      # File Browser relies on group-writable synced directories so the
+      # filebrowser service can create files inside newly received folders.
+      umask = "0002";
       syncRoot = "/srv/syncthing";
       folderSets = [ "jellyfin-media" "navidrome-media" "audiobookshelf-media" "kavita-media" "filebrowser-files" ];
       externalDevices.pixel-fold = {

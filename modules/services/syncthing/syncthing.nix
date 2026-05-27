@@ -597,6 +597,12 @@ in
       description = "TCP listen port used by Syncthing for the selected transport.";
     };
 
+    umask = lib.mkOption {
+      type = lib.types.strMatching "[0-7]{4}";
+      default = "0022";
+      description = "UMask applied to the Syncthing systemd service when it creates local files and directories.";
+    };
+
     transport = lib.mkOption {
       type = lib.types.nullOr (lib.types.enum [ "wireguard" "tailscale" ]);
       default = null;
@@ -814,6 +820,8 @@ in
           };
         };
       };
+
+      systemd.services.syncthing.serviceConfig.UMask = cfg.umask;
 
       systemd.services.syncthing-init = {
         # Syncthing's config reconciler talks to the local GUI API. During
