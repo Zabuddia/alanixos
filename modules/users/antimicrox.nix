@@ -339,6 +339,11 @@ let
     (stickButton 5 { wheelspeedy = cfg.scroll.speed; } [ (mouseButtonSlot mouseButton.wheelDown) ])
   ];
 
+  workspaceSwitchStickButtons = lib.optionals cfg.workspaceSwitching.enable [
+    (stickButton 3 { } (keyboardSlots cfg.workspaceSwitching.nextKeyCodes))
+    (stickButton 7 { } (keyboardSlots cfg.workspaceSwitching.previousKeyCodes))
+  ];
+
   dpadButtons = [
     (dpadButton 1 (map keyboardSlot cfg.dpad.up))
     (dpadButton 2 (map keyboardSlot cfg.dpad.right))
@@ -361,7 +366,7 @@ let
                       <deadZone>${toString cfg.scroll.deadZone}</deadZone>
                       <maxZone>${toString cfg.scroll.maxZone}</maxZone>
                       <mode>four-way</mode>
-  ${lib.concatStrings scrollStickButtons}                </stick>
+  ${lib.concatStrings (scrollStickButtons ++ workspaceSwitchStickButtons)}                </stick>
                   <dpad index="1">
   ${lib.concatStrings dpadButtons}                </dpad>
   ${lib.concatStrings controllerButtons}${lib.concatStrings controllerTriggers}${precisionButtonXml switchToSet}          </set>
@@ -383,6 +388,10 @@ let
     }
     // lib.optionalAttrs usesOpenThunar {
       "${cfg.openThunar.keybinding}" = "exec ${openThunarCommand}";
+    }
+    // lib.optionalAttrs cfg.workspaceSwitching.enable {
+      "${cfg.workspaceSwitching.nextKeybinding}" = "workspace next";
+      "${cfg.workspaceSwitching.previousKeybinding}" = "workspace prev";
     };
 
   profile = ''<?xml version="1.0" encoding="UTF-8"?>
@@ -392,7 +401,7 @@ let
         <profilename>${cfg.profile.name}</profilename>
         <names>
   ${lib.concatStrings controllerButtonNames}${lib.concatStrings controllerTriggerNames}            <controlstickname index="1">Mouse</controlstickname>
-            <controlstickname index="2">Scroll</controlstickname>
+            <controlstickname index="2">${if cfg.workspaceSwitching.enable then "Scroll / Workspaces" else "Scroll"}</controlstickname>
         </names>
         <sets>
   ${makeSet 1 cfg.mouse.speedX cfg.mouse.speedY 2}${lib.optionalString hasPrecisionMode (makeSet 2 cfg.mouse.precisionSpeedX cfg.mouse.precisionSpeedY 1)}    </sets>
@@ -658,6 +667,38 @@ in
       };
     };
 
+    workspaceSwitching = {
+      enable = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether right-stick horizontal movement switches Sway workspaces.";
+      };
+
+      previousKeybinding = lib.mkOption {
+        type = types.str;
+        default = "Mod4+Ctrl+Left";
+        description = "Sway keybinding used to focus the previous workspace.";
+      };
+
+      previousKeyCodes = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ key.super key.control key.left ];
+        description = "AntiMicroX key codes to send for focusing the previous workspace.";
+      };
+
+      nextKeybinding = lib.mkOption {
+        type = types.str;
+        default = "Mod4+Ctrl+Right";
+        description = "Sway keybinding used to focus the next workspace.";
+      };
+
+      nextKeyCodes = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ key.super key.control key.right ];
+        description = "AntiMicroX key codes to send for focusing the next workspace.";
+      };
+    };
+
     pauseForApps = lib.mkOption {
       type = types.listOf types.str;
       default = [ ];
@@ -733,30 +774,53 @@ in
 
               contains_app() {
                 [ -n "$1" ] && [ -n "$2" ] || return 1
-                printf '%s\n' "$1" | ${pkgs.gnugrep}/bin/grep -Fxq -- "$2"
+                printf '%s\n' "$1" | ${pkgs.gnugrep}/bin/grep -Fixq -- "$2"
               }
+
+              is_game_title() {
+                [ -n "$1" ] || return 1
+                printf '%s' "$1" | ${pkgs.gnugrep}/bin/grep -qF " | "
+              }
+
+              focused_container() {
+                ${pkgs.sway}/bin/swaymsg -t get_tree | ${pkgs.jq}/bin/jq -c '
+                  [
+                    .. | objects | select(.focused? == true) |
+                    {
+                      app_id: (.app_id // .window_properties.class // ""),
+                      title: (.name // "")
+                    }
+                  ][0] // { app_id: "", title: "" }
+                '
+              }
+
+              reconcile_focus() {
+                change="$1"
+                focused=$(focused_container 2>/dev/null || printf '%s\n' '{ "app_id": "", "title": "" }')
+                app_id=$(printf '%s' "$focused" | ${pkgs.jq}/bin/jq -r '.app_id // ""')
+                title=$(printf '%s' "$focused" | ${pkgs.jq}/bin/jq -r '.title // ""')
+                is_pause_app=$(contains_app "$pause_apps" "$app_id" && echo yes || echo no)
+                is_game_app=$(contains_app "$pause_game_apps" "$app_id" && echo yes || echo no)
+                is_game_session=$([ "$is_game_app" = "yes" ] && is_game_title "$title" && echo yes || echo no)
+                should_pause=$([ "$is_pause_app" = "yes" ] || [ "$is_game_session" = "yes" ] && echo yes || echo no)
+
+                echo "change=$change focused_app=$app_id is_pause_app=$is_pause_app is_game_session=$is_game_session title=$title"
+                if [ "$should_pause" = "yes" ]; then
+                  ${systemctl} --user stop antimicrox
+                else
+                  ${systemctl} --user start antimicrox
+                fi
+              }
+
+              reconcile_focus startup
 
               while true; do
                 ${pkgs.sway}/bin/swaymsg -t subscribe '["window"]' | while IFS= read -r event; do
                   change=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.change // ""')
-                  app_id=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.app_id // .container.window_properties.class // ""')
-                  title=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.container.name // ""')
-                  is_pause_app=$(contains_app "$pause_apps" "$app_id" && echo yes || echo no)
-                  is_game_app=$(contains_app "$pause_game_apps" "$app_id" && echo yes || echo no)
-                  is_game_session=$([ "$is_game_app" = "yes" ] && printf '%s' "$title" | ${pkgs.gnugrep}/bin/grep -qF " | " && echo yes || echo no)
-                  should_pause=$([ "$is_pause_app" = "yes" ] || [ "$is_game_session" = "yes" ] && echo yes || echo no)
-                  echo "change=$change app=$app_id is_pause_app=$is_pause_app is_game_session=$is_game_session title=$title"
-                  if [ "$change" = "title" ] || [ "$change" = "focus" ] || [ "$change" = "fullscreen_mode" ]; then
-                    if [ "$should_pause" = "yes" ]; then
-                      ${systemctl} --user stop antimicrox
-                    elif [ "$change" = "focus" ] || [ "$is_game_app" = "yes" ]; then
-                      ${systemctl} --user start antimicrox
-                    fi
-                  elif [ "$change" = "close" ] && { [ "$is_pause_app" = "yes" ] || [ "$is_game_app" = "yes" ]; }; then
-                    ${systemctl} --user start antimicrox
-                  fi
+                  reconcile_focus "$change"
                 done
                 ${pkgs.coreutils}/bin/sleep 1
+                reconcile_focus resubscribe
               done
             '';
           in
