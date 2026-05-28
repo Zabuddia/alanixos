@@ -38,6 +38,9 @@
 
   systemd.services.${name} = {
     inherit description;
+    # Skip (not fail) when started without socket FDs — i.e. direct starts
+    # from nixos-rebuild switch. Socket activation always sets LISTEN_FDS.
+    unitConfig.ConditionEnvironment = "LISTEN_FDS";
     serviceConfig = {
       ExecStart = "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd ${upstreamAddress}:${toString upstreamPort}";
       DynamicUser = true;
