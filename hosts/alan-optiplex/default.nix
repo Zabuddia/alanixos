@@ -11,6 +11,31 @@
 
     hardware.alsa.enablePersistence = true;
 
+    system.activationScripts.alanixOptiplexHdmiAudio.text = ''
+      # The Sceptre HDMI output maps to IEC958,0 and boots muted without seeded ALSA state.
+      ${pkgs.alsa-utils}/bin/amixer -q -c PCH set 'IEC958',0 on || true
+      ${pkgs.alsa-utils}/bin/amixer -q -c PCH set 'IEC958',1 on || true
+      ${pkgs.alsa-utils}/bin/amixer -q -c PCH set 'IEC958',2 on || true
+      ${pkgs.coreutils}/bin/install -d -m 0755 /var/lib/alsa
+      ${pkgs.alsa-utils}/bin/alsactl store -gU || true
+    '';
+
+    systemd.services.alanix-optiplex-hdmi-audio = {
+      description = "Enable OptiPlex HDMI audio";
+      wantedBy = [ "multi-user.target" ];
+      wants = [ "sound.target" ];
+      after = [ "sound.target" "alsa-store.service" ];
+      serviceConfig.Type = "oneshot";
+      script = ''
+        # The Sceptre HDMI output maps to IEC958,0 and boots muted without seeded ALSA state.
+        ${pkgs.alsa-utils}/bin/amixer -q -c PCH set 'IEC958',0 on || true
+        ${pkgs.alsa-utils}/bin/amixer -q -c PCH set 'IEC958',1 on || true
+        ${pkgs.alsa-utils}/bin/amixer -q -c PCH set 'IEC958',2 on || true
+        ${pkgs.coreutils}/bin/install -d -m 0755 /var/lib/alsa
+        ${pkgs.alsa-utils}/bin/alsactl store -gU || true
+      '';
+    };
+
     alanix.system = {
       stateVersion = "25.11";
       timeZone = "America/Chicago";
@@ -71,7 +96,7 @@
             tmux
             vlc
           ];
-          unstablePackages = with pkgs-unstable; [ 
+          unstablePackages = with pkgs-unstable; [
             yt-dlp
             moonlight-qt
           ];
@@ -119,6 +144,10 @@
         chromium.enable = true;
         kodi = {
           enable = true;
+          invidious = {
+            enable = true;
+            instanceUrl = "http://alan-big-nixos:13001";
+          };
           mediaSources = {
             video = [
               { name = "Movies"; path = "${config.alanix.syncthing.syncRoot}/media/movies"; }
