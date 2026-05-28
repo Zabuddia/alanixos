@@ -9,6 +9,17 @@
   bindToDevice ? null,
   freeBind ? false,
 }:
+let
+  proxyd = "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd";
+  # systemd-socket-proxyd exits with error when started without socket FDs
+  # (i.e. when nixos-rebuild switch restarts the unit directly instead of via
+  # socket activation). Exit 0 in that case so the rebuild doesn't report a
+  # failure; the socket unit will activate us normally on the next connection.
+  guardedProxyd = pkgs.writeShellScript "socket-proxyd-guard" ''
+    if [ "''${LISTEN_FDS:-0}" -eq 0 ]; then exit 0; fi
+    exec ${proxyd} "$@"
+  '';
+in
 {
   systemd.sockets.${name} = {
     inherit description;
@@ -38,11 +49,8 @@
 
   systemd.services.${name} = {
     inherit description;
-    # Skip (not fail) when started without socket FDs — i.e. direct starts
-    # from nixos-rebuild switch. Socket activation always sets LISTEN_FDS.
-    unitConfig.ConditionEnvironment = "LISTEN_FDS";
     serviceConfig = {
-      ExecStart = "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd ${upstreamAddress}:${toString upstreamPort}";
+      ExecStart = "${guardedProxyd} ${upstreamAddress}:${toString upstreamPort}";
       DynamicUser = true;
       PrivateTmp = true;
       NoNewPrivileges = true;
