@@ -226,7 +226,8 @@ in
 
       verifyRequests = lib.mkOption {
         type = lib.types.bool;
-        default = true;
+        default = false;
+        description = "Whether invidious-companion should require signed check IDs on companion requests.";
       };
 
       encryptQueryParams = lib.mkOption {
