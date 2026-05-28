@@ -146,7 +146,7 @@
           enable = true;
           invidious = {
             enable = true;
-            instanceUrl = "http://alan-big-nixos:13001";
+            instanceUrl = "https://invidious.fifefin.com";
           };
           mediaSources = {
             video = [
