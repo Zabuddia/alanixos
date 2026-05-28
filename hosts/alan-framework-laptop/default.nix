@@ -151,6 +151,9 @@
           invidious = {
             enable = true;
             instanceUrl = "https://invidious.fifefin.com";
+            username = "buddia";
+            passwordFile = config.sops.secrets."invidious-passwords/buddia".path;
+            markItemsWatched = true;
           };
           inputstreamAdaptive = {
             enable = true;
