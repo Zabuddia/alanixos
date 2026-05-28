@@ -6,10 +6,12 @@ let
   cfg = config.kodi;
 
   hasTvheadend = cfg.tvheadend.servers != [ ];
+  hasInvidious = cfg.invidious.enable;
 
   kodiPackage = cfg.package.withPackages (p:
     [ p.joystick ]
-    ++ lib.optionals hasTvheadend [ p.pvr-hts ]);
+    ++ lib.optionals hasTvheadend [ p.pvr-hts ]
+    ++ lib.optionals hasInvidious [ p.invidious ]);
 
   tvheadendSettingsXml = server: ''
     <settings version="2">
@@ -29,16 +31,27 @@ let
     })
     cfg.tvheadend.servers);
 
+  invidiousSettingsXml = ''
+    <settings version="2">
+        <setting id="auto_instance">false</setting>
+        <setting id="instance_url">${lib.escapeXML cfg.invidious.instanceUrl}</setting>
+    </settings>
+  '';
+
   hasMediaSources = cfg.mediaSources.video != [ ] || cfg.mediaSources.music != [ ];
+  enabledAddonIds =
+    lib.optionals hasTvheadend [ "pvr.hts" ]
+    ++ lib.optionals hasInvidious [ "plugin.video.invidious" ];
+
   withTrailingSlash = path:
     if lib.hasSuffix "/" path then path else "${path}/";
 
   sourceXml = source: ''
-          <source>
-              <name>${lib.escapeXML source.name}</name>
-              <path pathversion="1">${lib.escapeXML (withTrailingSlash source.path)}</path>
-              <allowsharing>true</allowsharing>
-          </source>
+    <source>
+        <name>${lib.escapeXML source.name}</name>
+        <path pathversion="1">${lib.escapeXML (withTrailingSlash source.path)}</path>
+        <allowsharing>true</allowsharing>
+    </source>
   '';
 
   sourcesXml = ''
@@ -119,6 +132,16 @@ in
       };
     };
 
+    invidious = {
+      enable = lib.mkEnableOption "Invidious Kodi add-on";
+
+      instanceUrl = lib.mkOption {
+        type = types.str;
+        default = "https://invidious.fifefin.com";
+        description = "Invidious instance URL used by the Kodi add-on.";
+      };
+    };
+
     mediaSources = {
       video = lib.mkOption {
         type = types.listOf mediaSourceType;
@@ -139,6 +162,12 @@ in
       home.packages = [ kodiPackage ];
       home.file =
         lib.optionalAttrs hasTvheadend tvheadendFiles
+        // lib.optionalAttrs hasInvidious {
+          ".kodi/userdata/addon_data/plugin.video.invidious/settings.xml" = {
+            text = invidiousSettingsXml;
+            force = true;
+          };
+        }
         // lib.optionalAttrs hasMediaSources {
           ".kodi/userdata/sources.xml" = {
             text = sourcesXml;
@@ -146,12 +175,14 @@ in
           };
         };
 
-      home.activation.enableKodiTvheadendPvr = lib.mkIf hasTvheadend (lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+      home.activation.enableKodiAddons = lib.mkIf (enabledAddonIds != [ ]) (lib.hm.dag.entryAfter [ "linkGeneration" ] ''
         db="${config.home.homeDirectory}/.kodi/userdata/Database/Addons33.db"
         if [ -f "$db" ] && [ "$(${pkgs.sqlite}/bin/sqlite3 "$db" "select count(*) from sqlite_master where type = 'table' and name = 'installed';")" = "1" ]; then
-          if ! ${pkgs.sqlite}/bin/sqlite3 "$db" "update installed set enabled = 1, disabledReason = 0 where addonID = 'pvr.hts';"; then
-            echo "warning: could not enable Kodi pvr.hts in $db; Kodi may be running" >&2
-          fi
+          for addon_id in ${lib.escapeShellArgs enabledAddonIds}; do
+            if ! ${pkgs.sqlite}/bin/sqlite3 "$db" "insert into installed (addonID, enabled, installDate, disabledReason) values ('$addon_id', 1, datetime('now'), 0) on conflict(addonID) do update set enabled = 1, disabledReason = 0;"; then
+              echo "warning: could not enable Kodi add-on $addon_id in $db; Kodi may be running" >&2
+            fi
+          done
         fi
       '');
     })
