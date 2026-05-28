@@ -148,6 +148,10 @@ in
                 wants = [ "alanix-tailscale-ready.service" ];
                 after = [ "alanix-tailscale-ready.service" deviceUnit ];
                 bindsTo = [ deviceUnit ];
+                # DefaultDependencies=yes would add Before=sockets.target, creating a cycle:
+                # socket → Before → sockets.target → Before → basic.target → Before →
+                # tailscale-ready (After=basic.target) ← After ← socket.
+                unitConfig.DefaultDependencies = "no";
               };
               systemd.services.${socketProxyName} = {
                 after = [ "alanix-tailscale-ready.service" ];
