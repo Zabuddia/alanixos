@@ -148,6 +148,11 @@
         chromium.enable = true;
         kodi = {
           enable = true;
+          invidious = {
+            enable = true;
+            instanceUrl = "https://invidious.fifefin.com";
+            disableDash = true;
+          };
           tvheadend.servers = [
             { name = "alan-big-nixos"; host = "alan-big-nixos"; htspPort = 19982; httpPort = 19981; }
           ];

@@ -35,6 +35,7 @@ let
     <settings version="2">
         <setting id="auto_instance">false</setting>
         <setting id="instance_url">${lib.escapeXML cfg.invidious.instanceUrl}</setting>
+        <setting id="disable_dash">${lib.boolToString cfg.invidious.disableDash}</setting>
     </settings>
   '';
 
@@ -139,6 +140,12 @@ in
         type = types.str;
         default = "https://invidious.fifefin.com";
         description = "Invidious instance URL used by the Kodi add-on.";
+      };
+
+      disableDash = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether the Kodi Invidious add-on should avoid DASH playback and use progressive streams.";
       };
     };
 
