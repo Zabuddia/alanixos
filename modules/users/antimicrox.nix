@@ -45,6 +45,7 @@ let
     k = "0x4b";
     o = "0x4f";
     q = "0x51";
+    s = "0x53";
     t = "0x54";
     volumeDown = "0x1008ff11";
     volumeMute = "0x1008ff12";
@@ -122,6 +123,14 @@ let
     [ (lib.getExe cfg.openThunar.package) ]
     ++ lib.optional (cfg.openThunar.path != null) cfg.openThunar.path
   );
+  scrcpyLaunchCommand = pkgs.writeShellScript "alanix-scrcpy-launch" ''
+    if ! ${pkgs.android-tools}/bin/adb devices 2>/dev/null | grep -q $'\tdevice$'; then
+      ${lib.optionalString (cfg.openScrcpy.wirelessTarget != null) ''
+        ${pkgs.android-tools}/bin/adb connect ${lib.escapeShellArg cfg.openScrcpy.wirelessTarget} >/dev/null 2>&1 || true
+      ''}
+    fi
+    exec ${lib.getExe cfg.openScrcpy.package}
+  '';
   pauseAntimicroxCommand = name: command: pkgs.writeShellScript "alanix-${name}" ''
     was_active=0
     if ${systemctl} --user --quiet is-active antimicrox; then
@@ -248,6 +257,10 @@ let
       label = "Open Thunar";
       slots = keyboardSlots cfg.openThunar.keyCodes;
     };
+    openScrcpy = {
+      label = "Open Scrcpy";
+      slots = keyboardSlots cfg.openScrcpy.keyCodes;
+    };
     volumeUp = {
       label = "Volume Up";
       slots = keyboardSlots [ key.volumeUp ];
@@ -284,6 +297,7 @@ let
   usesOpenKodi = usesAction "openKodi";
   usesOpenDolphin = usesAction "openDolphin";
   usesOpenThunar = usesAction "openThunar";
+  usesOpenScrcpy = usesAction "openScrcpy";
 
   controllerButtonNames =
     map
@@ -388,6 +402,9 @@ let
     }
     // lib.optionalAttrs usesOpenThunar {
       "${cfg.openThunar.keybinding}" = "exec ${openThunarCommand}";
+    }
+    // lib.optionalAttrs usesOpenScrcpy {
+      "${cfg.openScrcpy.keybinding}" = "exec ${scrcpyLaunchCommand}";
     }
     // lib.optionalAttrs cfg.workspaceSwitching.enable {
       "${cfg.workspaceSwitching.nextKeybinding}" = "workspace next";
@@ -667,6 +684,36 @@ in
       };
     };
 
+    openScrcpy = {
+      package = lib.mkOption {
+        type = types.package;
+        default = pkgs.scrcpy;
+        description = "scrcpy package to install.";
+      };
+
+      keybinding = lib.mkOption {
+        type = types.str;
+        default = "Mod4+Ctrl+s";
+        description = "Sway keybinding used to launch scrcpy.";
+      };
+
+      keyCodes = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ key.super key.control key.s ];
+        description = "AntiMicroX key codes to send for the scrcpy shortcut.";
+      };
+
+      wirelessTarget = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = ''
+          ADB target for wireless fallback (e.g. "pixel-fold:38001").
+          When set, scrcpy attempts adb connect to this address if no USB device is detected.
+          Find the port in Developer Options → Wireless Debugging on the phone.
+        '';
+      };
+    };
+
     workspaceSwitching = {
       enable = lib.mkOption {
         type = types.bool;
@@ -760,7 +807,8 @@ in
           [ cfg.package ]
           ++ lib.optionals cfg.launcher.enable [ cfg.launcher.package ]
           ++ lib.optionals cfg.onScreenKeyboard.enable [ cfg.onScreenKeyboard.package ]
-          ++ lib.optionals usesOpenThunar [ cfg.openThunar.package ];
+          ++ lib.optionals usesOpenThunar [ cfg.openThunar.package ]
+          ++ lib.optionals usesOpenScrcpy [ cfg.openScrcpy.package ];
 
         xdg.configFile."antimicrox/profiles/${cfg.profile.fileName}".text = profile;
 
