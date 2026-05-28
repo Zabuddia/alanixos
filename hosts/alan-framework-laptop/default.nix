@@ -152,6 +152,16 @@
             enable = true;
             instanceUrl = "https://invidious.fifefin.com";
           };
+          inputstreamAdaptive = {
+            enable = true;
+            streamSelectionType = "fixed-res";
+            maxResolution = "1080p";
+            secureMaxResolution = "1080p";
+            autoInitialBandwidth = false;
+            initialBandwidthKbps = 25000;
+            ignoreScreenResolution = true;
+            ignoreScreenResolutionChanges = true;
+          };
           tvheadend.servers = [
             { name = "alan-big-nixos"; host = "alan-big-nixos"; htspPort = 19982; httpPort = 19981; }
           ];

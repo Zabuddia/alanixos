@@ -148,6 +148,16 @@
             enable = true;
             instanceUrl = "https://invidious.fifefin.com";
           };
+          inputstreamAdaptive = {
+            enable = true;
+            streamSelectionType = "fixed-res";
+            maxResolution = "1080p";
+            secureMaxResolution = "1080p";
+            autoInitialBandwidth = false;
+            initialBandwidthKbps = 25000;
+            ignoreScreenResolution = true;
+            ignoreScreenResolutionChanges = true;
+          };
           mediaSources = {
             video = [
               { name = "Movies"; path = "${config.alanix.syncthing.syncRoot}/media/movies"; }
