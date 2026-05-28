@@ -124,7 +124,7 @@
           mouse.precisionButton = "rb";
           workspaceSwitching.enable = true;
           openThunar.path = "${config.alanix.users.accounts.buddia.home.directory}/Syncthing/media";
-          openScrcpy.wirelessTarget = "pixel-fold:34721";
+          openScrcpy.wirelessTarget = "pixel-fold:41433";
           openScrcpy.extraArgs = [ "--fullscreen" ];
           pauseForApps = [ "kodi" ];
           pauseForGameApps = [ "dolphin-emu" ];
