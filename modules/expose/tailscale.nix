@@ -154,8 +154,13 @@ in
                 unitConfig.DefaultDependencies = "no";
               };
               systemd.services.${socketProxyName} = {
-                after = [ "alanix-tailscale-ready.service" ];
+                after = [ "alanix-tailscale-ready.service" deviceUnit ];
                 wants = [ "alanix-tailscale-ready.service" ];
+                # Stop the proxy when tailscale0 goes down so the socket unit can
+                # cleanly rebind when the interface comes back up. Without this,
+                # the service holds the port FD while the socket unit is dead,
+                # preventing rebind and leaving the proxy silently broken.
+                bindsTo = [ deviceUnit ];
               };
             }
           ]
