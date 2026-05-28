@@ -7,6 +7,9 @@ let
 
   hasTvheadend = cfg.tvheadend.servers != [ ];
   hasInvidious = cfg.invidious.enable;
+  hasInvidiousUsername = hasInvidious && cfg.invidious.username != null;
+  hasInvidiousAuth = hasInvidious && cfg.invidious.passwordFile != null;
+  invidiousUsername = lib.escapeXML (lib.optionalString (cfg.invidious.username != null) cfg.invidious.username);
   hasInputstreamAdaptive = cfg.inputstreamAdaptive.enable;
 
   kodiPackage = cfg.package.withPackages (p:
@@ -38,6 +41,10 @@ let
         <setting id="auto_instance">false</setting>
         <setting id="instance_url">${lib.escapeXML cfg.invidious.instanceUrl}</setting>
         <setting id="disable_dash">${lib.boolToString cfg.invidious.disableDash}</setting>
+    ${lib.optionalString hasInvidiousUsername ''
+        <setting id="instance_username">${invidiousUsername}</setting>
+        <setting id="mark_items_watched">${lib.boolToString cfg.invidious.markItemsWatched}</setting>
+    ''}
     </settings>
   '';
 
@@ -164,6 +171,24 @@ in
         default = false;
         description = "Whether the Kodi Invidious add-on should avoid DASH playback and use progressive streams.";
       };
+
+      username = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Invidious account username. When set, the add-on will show Feed and Subscriptions.";
+      };
+
+      passwordFile = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Path to a file containing the Invidious account password. Read at activation time; never stored in the Nix store.";
+      };
+
+      markItemsWatched = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether the Kodi Invidious add-on should mark items as watched on the Invidious instance.";
+      };
     };
 
     inputstreamAdaptive = {
@@ -239,12 +264,19 @@ in
     };
   };
 
+  config._assertions = lib.optionals cfg.enable [
+    {
+      assertion = !(hasInvidiousAuth && cfg.invidious.username == null);
+      message = "kodi.invidious.username must be set when kodi.invidious.passwordFile is set";
+    }
+  ];
+
   config.home.modules = lib.optionals cfg.enable [
     ({ config, lib, ... }: {
       home.packages = [ kodiPackage ];
       home.file =
         lib.optionalAttrs hasTvheadend tvheadendFiles
-        // lib.optionalAttrs hasInvidious {
+        // lib.optionalAttrs (hasInvidious && !hasInvidiousAuth) {
           ".kodi/userdata/addon_data/plugin.video.invidious/settings.xml" = {
             text = invidiousSettingsXml;
             force = true;
@@ -272,6 +304,25 @@ in
             fi
           done
         fi
+      '');
+
+      home.activation.writeInvidiousSettings = lib.mkIf hasInvidiousAuth (lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+        settingsFile="${config.home.homeDirectory}/.kodi/userdata/addon_data/plugin.video.invidious/settings.xml"
+        mkdir -p "$(dirname "$settingsFile")"
+        rm -f "$settingsFile"
+        password=$(< "${cfg.invidious.passwordFile}")
+        escaped_password=$(printf '%s\n' "$password" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g')
+        {
+          printf '%s\n' '<settings version="2">'
+          printf '%s\n' '    <setting id="auto_instance">false</setting>'
+          printf '%s\n' '    <setting id="instance_url">${lib.escapeXML cfg.invidious.instanceUrl}</setting>'
+          printf '%s\n' '    <setting id="disable_dash">${lib.boolToString cfg.invidious.disableDash}</setting>'
+          printf '%s\n' '    <setting id="instance_username">${invidiousUsername}</setting>'
+          printf '    <setting id="instance_password">%s</setting>\n' "$escaped_password"
+          printf '%s\n' '    <setting id="mark_items_watched">${lib.boolToString cfg.invidious.markItemsWatched}</setting>'
+          printf '%s\n' '</settings>'
+        } > "$settingsFile"
+        chmod 600 "$settingsFile"
       '');
     })
   ];
