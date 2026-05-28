@@ -73,7 +73,7 @@
       accounts.buddia = {
         enable = true;
         isNormalUser = true;
-        extraGroups = [ "wheel" "networkmanager" "input" ];
+        extraGroups = [ "wheel" "networkmanager" "input" "adbusers" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
         sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJagVnL05ndecnIntQQbEUFs9EMxVP/27oGNuZGAjpbJ fife.alan@protonmail.com";
@@ -124,6 +124,7 @@
           mouse.precisionButton = "rb";
           workspaceSwitching.enable = true;
           openThunar.path = "${config.alanix.users.accounts.buddia.home.directory}/Syncthing/media";
+          openScrcpy.wirelessTarget = "pixel-fold:34721";
           pauseForApps = [ "kodi" ];
           pauseForGameApps = [ "dolphin-emu" ];
           buttonActions = {
@@ -137,7 +138,7 @@
             lb = "closeWindow";
             leftStick = "altTab";
             rightStick = "middleClick";
-            leftTrigger = "openThunar";
+            leftTrigger = "openScrcpy";
             rightTrigger = "openKodi";
           };
         };
@@ -236,6 +237,8 @@
     };
 
     alanix.wifi.radio.enable = false;
+
+    programs.adb.enable = true;
 
     alanix.syncthing = {
       enable = true;
