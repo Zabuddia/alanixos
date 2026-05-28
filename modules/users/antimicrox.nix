@@ -124,11 +124,15 @@ let
     ++ lib.optional (cfg.openThunar.path != null) cfg.openThunar.path
   );
   scrcpyLaunchCommand = pkgs.writeShellScript "alanix-scrcpy-launch" ''
-    if ! ${pkgs.android-tools}/bin/adb devices 2>/dev/null | grep -q $'\tdevice$'; then
-      ${lib.optionalString (cfg.openScrcpy.wirelessTarget != null) ''
-        ${pkgs.android-tools}/bin/adb connect ${lib.escapeShellArg cfg.openScrcpy.wirelessTarget} >/dev/null 2>&1 || true
-      ''}
+    adb="${pkgs.android-tools}/bin/adb"
+
+    if ! "$adb" devices 2>/dev/null | ${pkgs.gnugrep}/bin/grep -q $'\tdevice$'; then
+      # Auto-discover wireless debugging port via mDNS (Android 11+, requires avahi)
+      while IFS= read -r addr; do
+        "$adb" connect "$addr" >/dev/null 2>&1 || true
+      done < <("$adb" mdns services 2>/dev/null | ${pkgs.gnugrep}/bin/grep '_adb-tls-connect' | ${pkgs.gawk}/bin/awk '{print $NF}')
     fi
+
     exec ${lib.getExe cfg.openScrcpy.package} ${lib.escapeShellArgs cfg.openScrcpy.extraArgs}
   '';
   pauseAntimicroxCommand = name: command: pkgs.writeShellScript "alanix-${name}" ''
@@ -703,15 +707,6 @@ in
         description = "AntiMicroX key codes to send for the scrcpy shortcut.";
       };
 
-      wirelessTarget = lib.mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = ''
-          ADB target for wireless fallback (e.g. "pixel-fold:38001").
-          When set, scrcpy attempts adb connect to this address if no USB device is detected.
-          Find the port in Developer Options → Wireless Debugging on the phone.
-        '';
-      };
 
       extraArgs = lib.mkOption {
         type = types.listOf types.str;
