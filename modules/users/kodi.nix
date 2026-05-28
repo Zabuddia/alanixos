@@ -7,11 +7,13 @@ let
 
   hasTvheadend = cfg.tvheadend.servers != [ ];
   hasInvidious = cfg.invidious.enable;
+  hasInputstreamAdaptive = cfg.inputstreamAdaptive.enable;
 
   kodiPackage = cfg.package.withPackages (p:
     [ p.joystick ]
     ++ lib.optionals hasTvheadend [ p.pvr-hts ]
-    ++ lib.optionals hasInvidious [ p.invidious ]);
+    ++ lib.optionals hasInvidious [ p.invidious ]
+    ++ lib.optionals hasInputstreamAdaptive [ p.inputstream-adaptive ]);
 
   tvheadendSettingsXml = server: ''
     <settings version="2">
@@ -39,10 +41,25 @@ let
     </settings>
   '';
 
+  inputstreamAdaptiveSettingsXml = ''
+    <settings version="2">
+        <setting id="adaptivestream.type">${lib.escapeXML cfg.inputstreamAdaptive.streamSelectionType}</setting>
+        <setting id="adaptivestream.res.max">${lib.escapeXML cfg.inputstreamAdaptive.maxResolution}</setting>
+        <setting id="adaptivestream.res.secure.max">${lib.escapeXML cfg.inputstreamAdaptive.secureMaxResolution}</setting>
+        <setting id="adaptivestream.bandwidth.init.auto">${lib.boolToString cfg.inputstreamAdaptive.autoInitialBandwidth}</setting>
+        <setting id="adaptivestream.bandwidth.init">${toString cfg.inputstreamAdaptive.initialBandwidthKbps}</setting>
+        <setting id="adaptivestream.bandwidth.min">${toString cfg.inputstreamAdaptive.minBandwidthKbps}</setting>
+        <setting id="adaptivestream.bandwidth.max">${toString cfg.inputstreamAdaptive.maxBandwidthKbps}</setting>
+        <setting id="overrides.ignore.screen.res.change">${lib.boolToString cfg.inputstreamAdaptive.ignoreScreenResolutionChanges}</setting>
+        <setting id="overrides.ignore.screen.res">${lib.boolToString cfg.inputstreamAdaptive.ignoreScreenResolution}</setting>
+    </settings>
+  '';
+
   hasMediaSources = cfg.mediaSources.video != [ ] || cfg.mediaSources.music != [ ];
   enabledAddonIds =
     lib.optionals hasTvheadend [ "pvr.hts" ]
-    ++ lib.optionals hasInvidious [ "plugin.video.invidious" ];
+    ++ lib.optionals hasInvidious [ "plugin.video.invidious" ]
+    ++ lib.optionals hasInputstreamAdaptive [ "inputstream.adaptive" ];
 
   withTrailingSlash = path:
     if lib.hasSuffix "/" path then path else "${path}/";
@@ -149,6 +166,64 @@ in
       };
     };
 
+    inputstreamAdaptive = {
+      enable = lib.mkEnableOption "Kodi InputStream Adaptive settings";
+
+      streamSelectionType = lib.mkOption {
+        type = types.enum [ "default" "fixed-res" "ask-quality" "manual-osd" "test" ];
+        default = "default";
+        description = "Stream selection mode used by inputstream.adaptive.";
+      };
+
+      maxResolution = lib.mkOption {
+        type = types.enum [ "auto" "480p" "640p" "720p" "1080p" "2K" "1440p" "4K" ];
+        default = "auto";
+        description = "Maximum video resolution inputstream.adaptive should choose.";
+      };
+
+      secureMaxResolution = lib.mkOption {
+        type = types.enum [ "auto" "480p" "640p" "720p" "1080p" "2K" "1440p" "4K" ];
+        default = "auto";
+        description = "Maximum secure-stream video resolution inputstream.adaptive should choose.";
+      };
+
+      autoInitialBandwidth = lib.mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether inputstream.adaptive should estimate its initial bandwidth automatically.";
+      };
+
+      initialBandwidthKbps = lib.mkOption {
+        type = types.int;
+        default = 4000;
+        description = "Initial bandwidth estimate in Kbps for inputstream.adaptive.";
+      };
+
+      minBandwidthKbps = lib.mkOption {
+        type = types.int;
+        default = 0;
+        description = "Minimum stream bandwidth in Kbps for inputstream.adaptive; 0 leaves it unset.";
+      };
+
+      maxBandwidthKbps = lib.mkOption {
+        type = types.int;
+        default = 0;
+        description = "Maximum stream bandwidth in Kbps for inputstream.adaptive; 0 leaves it unset.";
+      };
+
+      ignoreScreenResolution = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether inputstream.adaptive should ignore Kodi's current screen resolution when choosing quality.";
+      };
+
+      ignoreScreenResolutionChanges = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether inputstream.adaptive should ignore screen resolution changes while playing.";
+      };
+    };
+
     mediaSources = {
       video = lib.mkOption {
         type = types.listOf mediaSourceType;
@@ -172,6 +247,12 @@ in
         // lib.optionalAttrs hasInvidious {
           ".kodi/userdata/addon_data/plugin.video.invidious/settings.xml" = {
             text = invidiousSettingsXml;
+            force = true;
+          };
+        }
+        // lib.optionalAttrs hasInputstreamAdaptive {
+          ".kodi/userdata/addon_data/inputstream.adaptive/settings.xml" = {
+            text = inputstreamAdaptiveSettingsXml;
             force = true;
           };
         }
