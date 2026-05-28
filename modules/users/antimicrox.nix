@@ -129,7 +129,7 @@ let
         ${pkgs.android-tools}/bin/adb connect ${lib.escapeShellArg cfg.openScrcpy.wirelessTarget} >/dev/null 2>&1 || true
       ''}
     fi
-    exec ${lib.getExe cfg.openScrcpy.package}
+    exec ${lib.getExe cfg.openScrcpy.package} ${lib.escapeShellArgs cfg.openScrcpy.extraArgs}
   '';
   pauseAntimicroxCommand = name: command: pkgs.writeShellScript "alanix-${name}" ''
     was_active=0
@@ -711,6 +711,12 @@ in
           When set, scrcpy attempts adb connect to this address if no USB device is detected.
           Find the port in Developer Options → Wireless Debugging on the phone.
         '';
+      };
+
+      extraArgs = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "Extra arguments passed to scrcpy (e.g. [ \"--fullscreen\" ]).";
       };
     };
 
