@@ -152,6 +152,12 @@
             passwordFile = config.sops.secrets."invidious-passwords/buddia".path;
             markItemsWatched = true;
           };
+          jellyfin = {
+            enable = true;
+            serverUrl = "http://alan-big-nixos:18096";
+            username = "buddia";
+            passwordFile = config.sops.secrets."jellyfin-passwords/buddia".path;
+          };
           inputstreamAdaptive = {
             enable = true;
             streamSelectionType = "fixed-res";
@@ -162,15 +168,9 @@
             ignoreScreenResolution = true;
             ignoreScreenResolutionChanges = true;
           };
-          mediaSources = {
-            video = [
-              { name = "Movies"; path = "${config.alanix.syncthing.syncRoot}/media/movies"; }
-              { name = "TV Shows"; path = "${config.alanix.syncthing.syncRoot}/media/shows"; }
-            ];
-            music = [
-              { name = "Music"; path = "${config.alanix.syncthing.syncRoot}/media/music"; }
-            ];
-          };
+          mediaSources.music = [
+            { name = "Music"; path = "${config.alanix.syncthing.syncRoot}/media/music"; }
+          ];
           tvheadend.servers = [
             { name = "alan-big-nixos"; host = "alan-big-nixos"; htspPort = 19982; httpPort = 19981; }
           ];

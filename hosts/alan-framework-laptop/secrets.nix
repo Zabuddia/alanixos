@@ -39,6 +39,13 @@
         mode = "0400";
       };
 
+      "jellyfin-passwords/buddia" = {
+        sopsFile = (import ../../secrets/files.nix).servicePasswords;
+        owner = "buddia";
+        group = "users";
+        mode = "0400";
+      };
+
       "wireguard-private-keys/alan-framework-laptop" = {
         sopsFile = (import ../../secrets/files.nix).network;
         owner = "root";

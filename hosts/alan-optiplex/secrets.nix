@@ -78,4 +78,11 @@
     mode = "0400";
   };
 
+  sops.secrets."jellyfin-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "buddia";
+    group = "users";
+    mode = "0400";
+  };
+
 }

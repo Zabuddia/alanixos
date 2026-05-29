@@ -7,15 +7,24 @@ let
 
   hasTvheadend = cfg.tvheadend.servers != [ ];
   hasInvidious = cfg.invidious.enable;
+  hasInvidiousUrl = hasInvidious && cfg.invidious.instanceUrl != null;
   hasInvidiousUsername = hasInvidious && cfg.invidious.username != null;
   hasInvidiousAuth = hasInvidious && cfg.invidious.passwordFile != null;
+  invidiousInstanceUrl = if cfg.invidious.instanceUrl != null then cfg.invidious.instanceUrl else "";
   invidiousUsername = lib.escapeXML (lib.optionalString (cfg.invidious.username != null) cfg.invidious.username);
   hasInputstreamAdaptive = cfg.inputstreamAdaptive.enable;
+  hasJellyfin = cfg.jellyfin.enable;
+  hasJellyfinServerUrl = hasJellyfin && cfg.jellyfin.serverUrl != null;
+  hasJellyfinUsername = hasJellyfin && cfg.jellyfin.username != null;
+  hasJellyfinAuth = hasJellyfin && cfg.jellyfin.passwordFile != null;
+  jellyfinServerUrl = if cfg.jellyfin.serverUrl != null then cfg.jellyfin.serverUrl else "";
+  jellyfinUsername = if cfg.jellyfin.username != null then cfg.jellyfin.username else "";
 
   kodiPackage = cfg.package.withPackages (p:
     [ p.joystick ]
     ++ lib.optionals hasTvheadend [ p.pvr-hts ]
     ++ lib.optionals hasInvidious [ p.invidious ]
+    ++ lib.optionals hasJellyfin [ p.jellyfin ]
     ++ lib.optionals hasInputstreamAdaptive [ p.inputstream-adaptive ]);
 
   tvheadendSettingsXml = server: ''
@@ -39,7 +48,9 @@ let
   invidiousSettingsXml = ''
     <settings version="2">
         <setting id="auto_instance">false</setting>
-        <setting id="instance_url">${lib.escapeXML cfg.invidious.instanceUrl}</setting>
+    ${lib.optionalString hasInvidiousUrl ''
+        <setting id="instance_url">${lib.escapeXML invidiousInstanceUrl}</setting>
+    ''}
         <setting id="disable_dash">${lib.boolToString cfg.invidious.disableDash}</setting>
     ${lib.optionalString hasInvidiousUsername ''
         <setting id="instance_username">${invidiousUsername}</setting>
@@ -47,6 +58,20 @@ let
     ''}
     </settings>
   '';
+
+  jellyfinSettingsXml = ''
+    <settings version="2">
+        <setting id="kodiCompanion">${lib.boolToString cfg.jellyfin.kodiCompanion}</setting>
+    ${lib.optionalString hasJellyfinServerUrl ''
+        <setting id="server">${lib.escapeXML jellyfinServerUrl}</setting>
+        <setting id="serverName">Jellyfin</setting>
+    ''}${lib.optionalString hasJellyfinUsername ''
+        <setting id="username">${lib.escapeXML jellyfinUsername}</setting>
+    ''}
+    </settings>
+  '';
+
+  jellyfinSettingsFile = pkgs.writeText "jellyfin-kodi-settings.xml" jellyfinSettingsXml;
 
   inputstreamAdaptiveSettingsXml = ''
     <settings version="2">
@@ -66,6 +91,7 @@ let
   enabledAddonIds =
     lib.optionals hasTvheadend [ "pvr.hts" ]
     ++ lib.optionals hasInvidious [ "plugin.video.invidious" ]
+    ++ lib.optionals hasJellyfin [ "plugin.video.jellyfin" ]
     ++ lib.optionals hasInputstreamAdaptive [ "inputstream.adaptive" ];
 
   withTrailingSlash = path:
@@ -161,8 +187,8 @@ in
       enable = lib.mkEnableOption "Invidious Kodi add-on";
 
       instanceUrl = lib.mkOption {
-        type = types.str;
-        default = "https://invidious.fifefin.com";
+        type = types.nullOr types.str;
+        default = null;
         description = "Invidious instance URL used by the Kodi add-on.";
       };
 
@@ -188,6 +214,34 @@ in
         type = types.bool;
         default = false;
         description = "Whether the Kodi Invidious add-on should mark items as watched on the Invidious instance.";
+      };
+    };
+
+    jellyfin = {
+      enable = lib.mkEnableOption "Jellyfin Kodi add-on";
+
+      serverUrl = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Jellyfin server URL pre-filled in the add-on settings.";
+      };
+
+      username = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Jellyfin username pre-filled in the add-on settings.";
+      };
+
+      passwordFile = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Path to a file containing the Jellyfin password. When set along with serverUrl and username, authenticates at activation time and writes data.json. Never stored in the Nix store.";
+      };
+
+      kodiCompanion = lib.mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether the Jellyfin add-on should use Kodi Companion for library sync.";
       };
     };
 
@@ -266,8 +320,20 @@ in
 
   config._assertions = lib.optionals cfg.enable [
     {
+      assertion = !(hasInvidiousAuth && cfg.invidious.instanceUrl == null);
+      message = "kodi.invidious.instanceUrl must be set when kodi.invidious.passwordFile is set";
+    }
+    {
       assertion = !(hasInvidiousAuth && cfg.invidious.username == null);
       message = "kodi.invidious.username must be set when kodi.invidious.passwordFile is set";
+    }
+    {
+      assertion = !(hasJellyfinAuth && cfg.jellyfin.serverUrl == null);
+      message = "kodi.jellyfin.serverUrl must be set when kodi.jellyfin.passwordFile is set";
+    }
+    {
+      assertion = !(hasJellyfinAuth && cfg.jellyfin.username == null);
+      message = "kodi.jellyfin.username must be set when kodi.jellyfin.passwordFile is set";
     }
   ];
 
@@ -306,6 +372,44 @@ in
         fi
       '');
 
+      home.activation.writeJellyfinSettings = lib.mkIf hasJellyfin (lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+        settingsFile="${config.home.homeDirectory}/.kodi/userdata/addon_data/plugin.video.jellyfin/settings.xml"
+        mkdir -p "$(dirname "$settingsFile")"
+        cp ${jellyfinSettingsFile} "$settingsFile"
+      '');
+
+      home.activation.writeJellyfinCredentials = lib.mkIf hasJellyfinAuth (lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+        dataFile="${config.home.homeDirectory}/.kodi/userdata/addon_data/plugin.video.jellyfin/data.json"
+        mkdir -p "$(dirname "$dataFile")"
+        password=$(< ${lib.escapeShellArg cfg.jellyfin.passwordFile})
+        auth_response=$(${pkgs.jq}/bin/jq -n \
+          --arg username ${lib.escapeShellArg jellyfinUsername} \
+          --arg pw "$password" \
+          '{Username: $username, Pw: $pw}' \
+          | ${pkgs.curl}/bin/curl -sf --max-time 10 \
+              -X POST \
+              -H 'Content-Type: application/json' \
+              -H 'X-Emby-Authorization: MediaBrowser Client="Kodi", Device="NixOS", DeviceId="nixos-kodi", Version="1.1.1"' \
+              --data-binary @- \
+              ${lib.escapeShellArg jellyfinServerUrl}/Users/AuthenticateByName 2>/dev/null) || true
+        access_token=$(printf '%s' "$auth_response" | ${pkgs.jq}/bin/jq -r '.AccessToken // empty' 2>/dev/null)
+        if [ -z "$access_token" ]; then
+          echo "warning: Jellyfin authentication failed for ${jellyfinServerUrl}; data.json not written" >&2
+        else
+          user_id=$(printf '%s' "$auth_response" | ${pkgs.jq}/bin/jq -r '.User.Id')
+          server_id=$(printf '%s' "$auth_response" | ${pkgs.jq}/bin/jq -r '.ServerId')
+          rm -f "$dataFile"
+          ${pkgs.jq}/bin/jq -n \
+            --arg server_id "$server_id" \
+            --arg address ${lib.escapeShellArg jellyfinServerUrl} \
+            --arg token "$access_token" \
+            --arg user_id "$user_id" \
+            '{Servers: [{Id: $server_id, Name: "Jellyfin", address: $address, AccessToken: $token, UserId: $user_id, DateLastAccessed: "1970-01-01T00:00:00Z", Users: [{Id: $user_id, IsSignedInOffline: true}]}]}' \
+            > "$dataFile"
+          chmod 600 "$dataFile"
+        fi
+      '');
+
       home.activation.writeInvidiousSettings = lib.mkIf hasInvidiousAuth (lib.hm.dag.entryAfter [ "linkGeneration" ] ''
         settingsFile="${config.home.homeDirectory}/.kodi/userdata/addon_data/plugin.video.invidious/settings.xml"
         mkdir -p "$(dirname "$settingsFile")"
@@ -315,7 +419,7 @@ in
         {
           printf '%s\n' '<settings version="2">'
           printf '%s\n' '    <setting id="auto_instance">false</setting>'
-          printf '%s\n' '    <setting id="instance_url">${lib.escapeXML cfg.invidious.instanceUrl}</setting>'
+          ${lib.optionalString hasInvidiousUrl ''printf '    <setting id="instance_url">%s</setting>\n' "${lib.escapeXML invidiousInstanceUrl}"''}
           printf '%s\n' '    <setting id="disable_dash">${lib.boolToString cfg.invidious.disableDash}</setting>'
           printf '%s\n' '    <setting id="instance_username">${invidiousUsername}</setting>'
           printf '    <setting id="instance_password">%s</setting>\n' "$escaped_password"
