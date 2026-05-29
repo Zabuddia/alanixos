@@ -143,6 +143,10 @@
           };
         };
         chromium.enable = true;
+        makemkv = {
+          enable = true;
+          betaKey = "T-sJ5R5BKxhD671U9s0teXbyP19MhCkkkB7rmnNbb1aEHaqveiVqyI3RXGMHDXhoyNUC";
+        };
         kodi = {
           enable = true;
           invidious = {

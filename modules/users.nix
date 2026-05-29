@@ -14,6 +14,7 @@ let
     ./users/git.nix
     ./users/kodi.nix
     ./users/librewolf.nix
+    ./users/makemkv.nix
     ./users/melonds.nix
     ./users/nextcloud-client.nix
     ./users/ryubing.nix
