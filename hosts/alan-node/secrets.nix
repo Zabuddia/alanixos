@@ -120,6 +120,13 @@
     mode = "0400";
   };
 
+  sops.secrets."actual-passwords/server-password" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."filebrowser-passwords/admin" = {
     sopsFile = (import ../../secrets/files.nix).servicePasswords;
     owner = "filebrowser";
@@ -206,6 +213,13 @@
 
   sops.secrets."syncthing-keys/alan-node" = {
     sopsFile = (import ../../secrets/files.nix).syncthing;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/actual/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
     owner = "root";
     group = "root";
     mode = "0400";

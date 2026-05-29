@@ -121,6 +121,7 @@ in
           "searxng.fifefin.com"
           "roundcube.fifefin.com"
           "openwebui.fifefin.com"
+          "actual.fifefin.com"
         ];
       };
     };
@@ -220,6 +221,49 @@ in
         backupInterval = "1h";
         maxBackupAge = "6h";
         sameTorAddress = true;
+      };
+    };
+
+    alanix.actual = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 5006;
+      backupDir = "/var/backup/actual";
+      passwordSecret = "actual-passwords/server-password";
+
+      expose = {
+        wan = {
+          enable = true;
+          domain = "actual.fifefin.com";
+        };
+
+        tor = {
+          enable = true;
+          publicPort = 443;
+          tls = true;
+          secretKeyBase64Secret = "tor/actual/secret-key-base64";
+          hostname = "b2yp726tcvvlfbcmcfgnckor2ws6df3oem2brsd2yovlbmsdwnq3gsyd.onion";
+          tlsName = "b2yp726tcvvlfbcmcfgnckor2ws6df3oem2brsd2yovlbmsdwnq3gsyd.onion";
+        };
+
+        tailscale = {
+          enable = true;
+          port = 15006;
+          tls = true;
+          tlsName = config.alanix.tailscale.address;
+        };
+
+        wireguard = {
+          enable = true;
+          port = 5006;
+          tls = true;
+        };
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "1h";
+        maxBackupAge = "6h";
       };
     };
 
