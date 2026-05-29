@@ -156,12 +156,7 @@
             passwordFile = config.sops.secrets."invidious-passwords/buddia".path;
             markItemsWatched = true;
           };
-          jellyfin = {
-            enable = true;
-            serverUrl = "http://alan-big-nixos:18096";
-            username = "buddia";
-            passwordFile = config.sops.secrets."jellyfin-passwords/buddia".path;
-          };
+          jellyfin.enable = true;
           inputstreamAdaptive = {
             enable = true;
             streamSelectionType = "fixed-res";

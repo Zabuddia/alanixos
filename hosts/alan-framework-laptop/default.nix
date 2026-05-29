@@ -159,12 +159,7 @@
             passwordFile = config.sops.secrets."invidious-passwords/buddia".path;
             markItemsWatched = true;
           };
-          jellyfin = {
-            enable = true;
-            serverUrl = "https://jellyfin.fifefin.com";
-            username = "buddia";
-            passwordFile = config.sops.secrets."jellyfin-passwords/buddia".path;
-          };
+          jellyfin.enable = true;
           inputstreamAdaptive = {
             enable = true;
             streamSelectionType = "fixed-res";
