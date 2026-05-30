@@ -11,15 +11,6 @@
 
     hardware.alsa.enablePersistence = true;
 
-    system.activationScripts.alanixOptiplexHdmiAudio.text = ''
-      # The Sceptre HDMI output maps to IEC958,0 and boots muted without seeded ALSA state.
-      ${pkgs.alsa-utils}/bin/amixer -q -c PCH set 'IEC958',0 on || true
-      ${pkgs.alsa-utils}/bin/amixer -q -c PCH set 'IEC958',1 on || true
-      ${pkgs.alsa-utils}/bin/amixer -q -c PCH set 'IEC958',2 on || true
-      ${pkgs.coreutils}/bin/install -d -m 0755 /var/lib/alsa
-      ${pkgs.alsa-utils}/bin/alsactl store -gU || true
-    '';
-
     systemd.services.alanix-optiplex-hdmi-audio = {
       description = "Enable OptiPlex HDMI audio";
       wantedBy = [ "multi-user.target" ];
@@ -27,10 +18,10 @@
       after = [ "sound.target" "alsa-store.service" ];
       serviceConfig.Type = "oneshot";
       script = ''
-        # The Sceptre HDMI output maps to IEC958,0 and boots muted without seeded ALSA state.
-        ${pkgs.alsa-utils}/bin/amixer -q -c PCH set 'IEC958',0 on || true
-        ${pkgs.alsa-utils}/bin/amixer -q -c PCH set 'IEC958',1 on || true
-        ${pkgs.alsa-utils}/bin/amixer -q -c PCH set 'IEC958',2 on || true
+        # sset 'IEC958',0 silently no-ops sometimes; cset numid=35/41/47 is reliable.
+        ${pkgs.alsa-utils}/bin/amixer -c PCH cset numid=35 on || true
+        ${pkgs.alsa-utils}/bin/amixer -c PCH cset numid=41 on || true
+        ${pkgs.alsa-utils}/bin/amixer -c PCH cset numid=47 on || true
         ${pkgs.coreutils}/bin/install -d -m 0755 /var/lib/alsa
         ${pkgs.alsa-utils}/bin/alsactl store -gU || true
       '';
