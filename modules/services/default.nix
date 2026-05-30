@@ -1,6 +1,8 @@
 {
   imports = [
+    ./actual
     ./audiobookshelf
+    ./firefly-iii
     ./filebrowser
     ./forgejo
     ./grocy
