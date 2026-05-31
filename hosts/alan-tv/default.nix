@@ -9,24 +9,6 @@
       ./secrets.nix
     ];
 
-    hardware.alsa.enablePersistence = true;
-
-    systemd.services.alanix-optiplex-hdmi-audio = {
-      description = "Enable OptiPlex HDMI audio";
-      wantedBy = [ "multi-user.target" ];
-      wants = [ "sound.target" ];
-      after = [ "sound.target" "alsa-store.service" ];
-      serviceConfig.Type = "oneshot";
-      script = ''
-        # sset 'IEC958',0 silently no-ops sometimes; cset numid=35/41/47 is reliable.
-        ${pkgs.alsa-utils}/bin/amixer -c PCH cset numid=35 on || true
-        ${pkgs.alsa-utils}/bin/amixer -c PCH cset numid=41 on || true
-        ${pkgs.alsa-utils}/bin/amixer -c PCH cset numid=47 on || true
-        ${pkgs.coreutils}/bin/install -d -m 0755 /var/lib/alsa
-        ${pkgs.alsa-utils}/bin/alsactl store -gU || true
-      '';
-    };
-
     alanix.system = {
       stateVersion = "25.11";
       timeZone = "America/Chicago";
@@ -67,14 +49,14 @@
         extraGroups = [ "wheel" "networkmanager" "input" "adbusers" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
-        sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJagVnL05ndecnIntQQbEUFs9EMxVP/27oGNuZGAjpbJ fife.alan@protonmail.com";
+        sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJhIOpVi6T5JO3hzG/OOtKwZscOBBbwSD1WOoBh012RL fife.alan@protonmail.com";
         authorizedHosts = [
           "alan-big-nixos"
           "alan-framework"
           "alan-framework-laptop"
           "alan-laptop-nixos"
           "alan-node"
-          "alan-tv"
+          "alan-optiplex"
           "randy-big-nixos"
         ];
 
@@ -193,21 +175,21 @@
       enable = true;
       openFirewallOnWireguard = true;
       startAgent = true;
-      hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHtRq4i0HdUGbcB2XnUjnnvHbUp2tEu9TwQjUiKjmTbY";
+      hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGL6zUAG5IhWFdlcfxcOSAEzTTmf0nRwEh4gPg+/TrJM alan-tv";
     };
 
     alanix.ddns = {
       enable = true;
       provider = "cloudflare";
-      domains = [ "alan-optiplex-wg.fifefin.com" ];
+      domains = [ "alan-tv-wg.fifefin.com" ];
       credentialsFile = config.sops.templates."cloudflare-env".path;
     };
 
     alanix.wireguard = {
       enable = true;
-      vpnIP = "10.100.0.7";
-      endpoint = "alan-optiplex-wg.fifefin.com:51820";
-      publicKey = "DwCiEiQQEormDpKwx1YX9KADgp4BzPANL+LxAGUs6xc=";
+      vpnIP = "10.100.0.8";
+      endpoint = "alan-tv-wg.fifefin.com:51820";
+      publicKey = "M0siKbP6ZxgxNtftZ6Xs/dcMaKqpu94PGv3HetkkkQI=";
       privateKeyFile = config.sops.secrets."wireguard-private-keys/${hostname}".path;
       listenPort = 51820;
       peers = [
@@ -217,13 +199,13 @@
         "alan-framework-laptop"
         "alan-laptop-nixos"
         "alan-node"
-        "alan-tv"
+        "alan-optiplex"
       ];
     };
 
     alanix.tailscale = {
       enable = true;
-      address = "alan-optiplex";
+      address = "alan-tv";
       acceptRoutes = true;
       operator = "buddia";
     };
@@ -251,13 +233,13 @@
         "emulation-dolphin"
         "emulation-melonds"
       ];
-      deviceId = "2BGWQTB-75JJCIW-OEWFP4L-Y2BTROG-IYJ2ESY-IAQ5CIO-QGOXUYW-GBM5HA4";
+      deviceId = "OQE4RP7-C457Q5O-GYEPFIN-YNNEGWH-A7KFH3E-LYTMYOL-GJ6VLU4-EKTRLAP";
       peers = [
         "alan-big-nixos"
         "alan-framework"
         "alan-framework-laptop"
         "alan-node"
-        "alan-tv"
+        "alan-optiplex"
         "randy-big-nixos"
       ];
       externalDevices.pixel-fold = {
@@ -279,7 +261,7 @@
       webUi = {
         port = 47990;
         username = "buddia";
-        passwordFile = config.sops.secrets."sunshine-web-ui-passwords/alan-optiplex".path;
+        passwordFile = config.sops.secrets."sunshine-web-ui-passwords/alan-tv".path;
       };
     };
   };
