@@ -349,6 +349,34 @@ in
         Options/Sideways Wiimote = True
       '';
 
+      xdg.configFile."dolphin-emu/Profiles/Wiimote/MaddenX360.ini" = mkDolphinConfig ''
+        [Profile]
+        Device = SDL/0/Xbox 360 Controller
+        Buttons/A = `Button S`
+        Buttons/B = `Trigger R`
+        Buttons/- = Back
+        Buttons/+ = Start
+        D-Pad/Up = `Pad N`
+        D-Pad/Down = `Pad S`
+        D-Pad/Left = `Pad W`
+        D-Pad/Right = `Pad E`
+        IR/Up = `Right Y+`
+        IR/Down = `Right Y-`
+        IR/Left = `Right X-`
+        IR/Right = `Right X+`
+        Shake/X = `Shoulder R`
+        Shake/Y = `Shoulder R`
+        Shake/Z = `Shoulder R`
+        Extension = Nunchuk
+        Nunchuk/Buttons/C = `Shoulder L`
+        Nunchuk/Buttons/Z = `Trigger L`
+        Nunchuk/Stick/Up = `Left Y+`
+        Nunchuk/Stick/Down = `Left Y-`
+        Nunchuk/Stick/Left = `Left X-`
+        Nunchuk/Stick/Right = `Left X+`
+        Nunchuk/Stick/Calibration = 100.00 141.42 100.00 141.42 100.00 141.42 100.00 141.42
+      '';
+
       xdg.configFile."dolphin-emu/Profiles/Wiimote/NSMBWKeyboard.ini" = mkDolphinConfig ''
         [Profile]
         Device = XInput2/0/Virtual core pointer
