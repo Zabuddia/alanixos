@@ -35,13 +35,18 @@
       recipient = "age15dpyxhmqtehzkhatfg65yh7nwslhtdmnyz4yrrtkj2y9mdzrjdfqj9kuq5";
       description = "Root-only runtime key stored at /var/lib/sops-nix/key.txt.";
     };
+
+    alan-tv = {
+      recipient = "age15dpyxhmqtehzkhatfg65yh7nwslhtdmnyz4yrrtkj2y9mdzrjdfqj9kuq5";
+      description = "Shares the OptiPlex runtime key at /var/lib/sops-nix/key.txt.";
+    };
   };
 
   creationRules = [
     {
       pathRegex = "^secrets/.*\\.ya?ml$";
       editors = [ "alan-laptop-nixos" "alan-framework-laptop" ];
-      hosts = [ "randy-big-nixos" "alan-big-nixos" "alan-framework" "alan-node" "alan-optiplex" ];
+      hosts = [ "randy-big-nixos" "alan-big-nixos" "alan-framework" "alan-node" "alan-optiplex" "alan-tv" ];
     }
   ];
 }

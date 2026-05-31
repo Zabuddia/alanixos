@@ -57,7 +57,7 @@
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
         sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKpHeGMaMDqWna8I5fu0K2kaZ1GdOFIGw+8NsgH3aXE3 fife.alan@protonmail.com";
-        authorizedHosts = [ "alan-big-nixos" "alan-framework" "alan-framework-laptop" "alan-laptop-nixos" "alan-node" "alan-optiplex" ];
+        authorizedHosts = [ "alan-big-nixos" "alan-framework" "alan-framework-laptop" "alan-laptop-nixos" "alan-node" "alan-optiplex" "alan-tv" ];
 
         home = {
           enable = true;
@@ -147,6 +147,7 @@
         "alan-laptop-nixos"
         "alan-node"
         "alan-optiplex"
+        "alan-tv"
       ];
     };
 
@@ -187,6 +188,7 @@
         "alan-framework-laptop"
         "alan-node"
         "alan-optiplex"
+        "alan-tv"
       ];
     };
   };
