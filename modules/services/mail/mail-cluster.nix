@@ -169,7 +169,6 @@ in
         # nodes too.
         activeUnits =
           [
-            "activate-virtual-mail-users.service"
             "redis-rspamd.service"
             "rspamd.service"
             "dovecot.service"
@@ -191,7 +190,6 @@ in
       };
       targetUnits =
         [
-          "activate-virtual-mail-users.service"
           "redis-rspamd.service"
           "rspamd.service"
           "dovecot.service"
@@ -220,7 +218,6 @@ in
     };
     }
     (helpers.mkActiveTargetUnits [
-      "activate-virtual-mail-users.service"
       "redis-rspamd.service"
       "rspamd.service"
       "dovecot.service"

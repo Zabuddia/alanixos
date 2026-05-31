@@ -9,6 +9,7 @@ import os
 import pwd
 import secrets
 import shlex
+import shutil
 import stat
 import subprocess
 import sys
@@ -143,6 +144,24 @@ def format_bytes(value: int | float | None) -> str:
     return f"{size:.1f} {units[unit_index]}"
 
 
+def format_rate(value: int | float | None) -> str:
+    if value is None:
+        return "warming up"
+    return f"{format_bytes(value)}/s"
+
+
+def format_celsius(value: int | float | None) -> str:
+    if value is None:
+        return "unknown"
+    return f"{float(value):.0f} C"
+
+
+def format_percent(value: int | float | None, *, digits: int = 0) -> str:
+    if value is None:
+        return "warming up"
+    return f"{float(value):.{digits}f}%"
+
+
 def manifest_pin_id(manifest_path: str) -> str:
     return hashlib.sha256(manifest_path.encode("utf-8")).hexdigest()
 
@@ -230,6 +249,9 @@ class Dashboard:
         self.snapshot_size_probes_per_collect = 2
         self.snapshot_size_retry_seconds = 300.0
         self.snapshot_size_retry_at: dict[str, float] = {}
+        self._stats_lock = threading.Lock()
+        self._last_cpu_sample: tuple[int, int] | None = None
+        self._last_network_sample: dict[str, tuple[float, int, int]] = {}
 
         self._state_cond = threading.Condition()
         self._state_seq: int = 0
@@ -283,6 +305,7 @@ class Dashboard:
         timeout: float = 5.0,
         check: bool = True,
         input_text: str | None = None,
+        env: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         try:
             proc = subprocess.run(
@@ -292,6 +315,7 @@ class Dashboard:
                 input=input_text,
                 capture_output=True,
                 timeout=timeout,
+                env=None if env is None else {**os.environ, **env},
             )
         except subprocess.TimeoutExpired as exc:
             stdout = exc.stdout or ""
@@ -527,6 +551,388 @@ class Dashboard:
             key, value = line.split("=", 1)
             data[key] = value
         return data
+
+    def read_cpu_sample(self) -> tuple[int, int] | None:
+        try:
+            with open("/proc/stat", "r", encoding="utf-8") as handle:
+                first = handle.readline()
+        except OSError:
+            return None
+
+        parts = first.split()
+        if not parts or parts[0] != "cpu":
+            return None
+        try:
+            values = [int(part) for part in parts[1:]]
+        except ValueError:
+            return None
+        if len(values) < 4:
+            return None
+
+        idle = values[3] + (values[4] if len(values) > 4 else 0)
+        total = sum(values)
+        return idle, total
+
+    def cpu_stats(self) -> dict:
+        percent = None
+        sample = self.read_cpu_sample()
+        if sample is not None:
+            with self._stats_lock:
+                previous = self._last_cpu_sample
+                self._last_cpu_sample = sample
+            if previous is not None:
+                idle_delta = sample[0] - previous[0]
+                total_delta = sample[1] - previous[1]
+                if total_delta > 0:
+                    percent = max(0.0, min(100.0, 100.0 * (1.0 - (idle_delta / total_delta))))
+
+        try:
+            load1, load5, load15 = os.getloadavg()
+        except OSError:
+            load1 = load5 = load15 = None
+
+        return {
+            "percent": percent,
+            "cores": os.cpu_count() or 1,
+            "load1": load1,
+            "load5": load5,
+            "load15": load15,
+        }
+
+    def read_meminfo(self) -> dict[str, int]:
+        result = {}
+        try:
+            lines = Path("/proc/meminfo").read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return result
+
+        for line in lines:
+            if ":" not in line:
+                continue
+            key, rest = line.split(":", 1)
+            parts = rest.strip().split()
+            if not parts:
+                continue
+            try:
+                value = int(parts[0])
+            except ValueError:
+                continue
+            multiplier = 1024 if len(parts) > 1 and parts[1].lower() == "kb" else 1
+            result[key] = value * multiplier
+        return result
+
+    def memory_stats(self) -> tuple[dict, dict]:
+        meminfo = self.read_meminfo()
+        total = meminfo.get("MemTotal")
+        available = meminfo.get("MemAvailable")
+        free = meminfo.get("MemFree")
+        used = None
+        percent = None
+        if total is not None and (available is not None or free is not None):
+            used = total - (available if available is not None else free)
+            percent = 100.0 * used / total if total else None
+
+        swap_total = meminfo.get("SwapTotal")
+        swap_free = meminfo.get("SwapFree")
+        swap_used = None
+        swap_percent = None
+        if swap_total is not None and swap_free is not None:
+            swap_used = swap_total - swap_free
+            swap_percent = 100.0 * swap_used / swap_total if swap_total else 0.0
+
+        return (
+            {
+                "totalBytes": total,
+                "availableBytes": available,
+                "usedBytes": used,
+                "percent": percent,
+            },
+            {
+                "totalBytes": swap_total,
+                "freeBytes": swap_free,
+                "usedBytes": swap_used,
+                "percent": swap_percent,
+            },
+        )
+
+    def unescape_mount_value(self, value: str) -> str:
+        return (
+            value
+            .replace("\\040", " ")
+            .replace("\\011", "\t")
+            .replace("\\012", "\n")
+            .replace("\\134", "\\")
+        )
+
+    def mountinfo(self) -> list[dict]:
+        mounts = []
+        try:
+            lines = Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return mounts
+
+        for line in lines:
+            parts = line.split()
+            if "-" not in parts or len(parts) < 10:
+                continue
+            sep = parts.index("-")
+            if sep + 2 >= len(parts):
+                continue
+            mounts.append(
+                {
+                    "mountPoint": self.unescape_mount_value(parts[4]),
+                    "fsType": parts[sep + 1],
+                    "source": self.unescape_mount_value(parts[sep + 2]),
+                }
+            )
+        return mounts
+
+    def existing_path_for_usage(self, path: str) -> Path:
+        probe = Path(path)
+        while not probe.exists() and probe != probe.parent:
+            probe = probe.parent
+        return probe
+
+    def mount_for_path(self, path: Path, mounts: list[dict]) -> dict | None:
+        try:
+            target = os.path.realpath(str(path))
+        except OSError:
+            target = os.path.abspath(str(path))
+
+        best = None
+        best_len = -1
+        for mount in mounts:
+            mount_point = mount.get("mountPoint") or ""
+            if not mount_point:
+                continue
+            real_mount = os.path.realpath(mount_point)
+            if target == real_mount or real_mount == "/" or target.startswith(real_mount.rstrip("/") + "/"):
+                if len(real_mount) > best_len:
+                    best = mount
+                    best_len = len(real_mount)
+        return best
+
+    def disk_stat(self, label: str, path: str, mounts: list[dict]) -> dict:
+        probe = self.existing_path_for_usage(path)
+        try:
+            usage = shutil.disk_usage(probe)
+        except OSError as exc:
+            return {
+                "label": label,
+                "path": path,
+                "error": summarize_error(str(exc)),
+            }
+
+        mount = self.mount_for_path(probe, mounts) or {}
+        used = usage.used
+        percent = 100.0 * used / usage.total if usage.total else None
+        return {
+            "label": label,
+            "path": path,
+            "probePath": str(probe),
+            "mountPoint": mount.get("mountPoint") or str(probe),
+            "fsType": mount.get("fsType") or "",
+            "source": mount.get("source") or "",
+            "totalBytes": usage.total,
+            "usedBytes": used,
+            "freeBytes": usage.free,
+            "percent": percent,
+        }
+
+    def disk_stats(self) -> list[dict]:
+        mounts = self.mountinfo()
+        candidates = [
+            ("Root", "/"),
+            ("Nix Store", "/nix"),
+            ("Backups", self.cluster["backup"]["repoBaseDir"]),
+            ("Boot", "/boot"),
+        ]
+        disks = []
+        seen_mounts = set()
+        for label, path in candidates:
+            if label == "Boot" and not Path(path).exists():
+                continue
+            stat_row = self.disk_stat(label, path, mounts)
+            dedupe_key = stat_row.get("mountPoint") or stat_row.get("probePath") or path
+            if dedupe_key in seen_mounts:
+                continue
+            seen_mounts.add(dedupe_key)
+            disks.append(stat_row)
+        return disks
+
+    def temperature_stats(self) -> dict:
+        sensors = []
+        for input_path in sorted(Path("/sys/class/hwmon").glob("hwmon*/temp*_input")):
+            try:
+                raw = input_path.read_text(encoding="utf-8").strip()
+                value = int(raw) / 1000.0
+            except (OSError, ValueError):
+                continue
+            if value < -40 or value > 150:
+                continue
+
+            chip = ""
+            try:
+                chip = (input_path.parent / "name").read_text(encoding="utf-8").strip()
+            except OSError:
+                pass
+            label_path = input_path.with_name(input_path.name.replace("_input", "_label"))
+            label = ""
+            try:
+                label = label_path.read_text(encoding="utf-8").strip()
+            except OSError:
+                pass
+            name_parts = []
+            if chip:
+                name_parts.append(chip)
+            if label and label not in name_parts:
+                name_parts.append(label)
+            sensors.append(
+                {
+                    "name": " ".join(name_parts) or input_path.parent.name,
+                    "celsius": value,
+                }
+            )
+
+        if not sensors:
+            for zone_path in sorted(Path("/sys/class/thermal").glob("thermal_zone*")):
+                try:
+                    raw = (zone_path / "temp").read_text(encoding="utf-8").strip()
+                    value = int(raw) / 1000.0
+                except (OSError, ValueError):
+                    continue
+                if value < -40 or value > 150:
+                    continue
+                try:
+                    name = (zone_path / "type").read_text(encoding="utf-8").strip()
+                except OSError:
+                    name = zone_path.name
+                sensors.append({"name": name, "celsius": value})
+
+        sensors.sort(key=lambda item: item["celsius"], reverse=True)
+        return {
+            "maxCelsius": sensors[0]["celsius"] if sensors else None,
+            "sensors": sensors[:6],
+        }
+
+    def network_stats(self) -> list[dict]:
+        now = time.time()
+        interfaces = []
+        try:
+            lines = Path("/proc/net/dev").read_text(encoding="utf-8").splitlines()[2:]
+        except OSError:
+            return interfaces
+
+        current_samples = {}
+        for line in lines:
+            if ":" not in line:
+                continue
+            iface, rest = line.split(":", 1)
+            iface = iface.strip()
+            if iface == "lo":
+                continue
+            fields = rest.split()
+            if len(fields) < 16:
+                continue
+            try:
+                rx_bytes = int(fields[0])
+                tx_bytes = int(fields[8])
+            except ValueError:
+                continue
+            try:
+                operstate = (Path("/sys/class/net") / iface / "operstate").read_text(encoding="utf-8").strip()
+            except OSError:
+                operstate = "unknown"
+
+            current_samples[iface] = (now, rx_bytes, tx_bytes)
+            previous = self._last_network_sample.get(iface)
+            rx_rate = tx_rate = None
+            if previous is not None:
+                previous_time, previous_rx, previous_tx = previous
+                elapsed = max(0.001, now - previous_time)
+                rx_rate = max(0.0, (rx_bytes - previous_rx) / elapsed)
+                tx_rate = max(0.0, (tx_bytes - previous_tx) / elapsed)
+
+            if operstate != "up" and rx_bytes == 0 and tx_bytes == 0:
+                continue
+
+            interfaces.append(
+                {
+                    "name": iface,
+                    "operstate": operstate,
+                    "rxBytes": rx_bytes,
+                    "txBytes": tx_bytes,
+                    "rxRateBytes": rx_rate,
+                    "txRateBytes": tx_rate,
+                }
+            )
+
+        with self._stats_lock:
+            self._last_network_sample = current_samples
+
+        interfaces.sort(
+            key=lambda item: (
+                item["operstate"] == "up",
+                (item.get("rxRateBytes") or 0) + (item.get("txRateBytes") or 0),
+                item["rxBytes"] + item["txBytes"],
+            ),
+            reverse=True,
+        )
+        return interfaces[:5]
+
+    def systemd_health(self) -> dict:
+        try:
+            proc = self.run(["systemctl", "is-system-running"], timeout=2.0, check=False)
+            state = (proc.stdout or proc.stderr or "unknown").strip()
+        except Exception as exc:
+            state = summarize_error(str(exc), limit=80)
+
+        failed_units = []
+        try:
+            proc = self.run(["systemctl", "--failed", "--no-legend", "--plain"], timeout=3.0, check=False)
+            for line in proc.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 4 and "." in parts[0]:
+                    failed_units.append(parts[0])
+        except Exception:
+            pass
+
+        return {
+            "state": state or "unknown",
+            "failedCount": len(failed_units),
+            "failedUnits": failed_units[:5],
+        }
+
+    def process_count(self) -> int | None:
+        try:
+            return sum(1 for path in Path("/proc").iterdir() if path.name.isdigit())
+        except OSError:
+            return None
+
+    def uptime_seconds(self) -> float | None:
+        try:
+            raw = Path("/proc/uptime").read_text(encoding="utf-8").split()[0]
+            return float(raw)
+        except (OSError, ValueError, IndexError):
+            return None
+
+    def system_stats(self) -> dict:
+        memory, swap = self.memory_stats()
+        uptime = self.uptime_seconds()
+        uname = os.uname()
+        return {
+            "cpu": self.cpu_stats(),
+            "memory": memory,
+            "swap": swap,
+            "disks": self.disk_stats(),
+            "temperatures": self.temperature_stats(),
+            "network": self.network_stats(),
+            "systemd": self.systemd_health(),
+            "uptimeSeconds": uptime,
+            "uptimeHuman": format_age(uptime) if uptime is not None else "unknown",
+            "processCount": self.process_count(),
+            "kernel": uname.release,
+        }
 
     def managed_units(self) -> list[str]:
         units = ["alanix-cluster-controller.service", self.target]
@@ -814,6 +1220,10 @@ class Dashboard:
         controller_state = self.controller_runtime_state()
         runtime_mode = controller_state.get("runtimeMode") or self.local_runtime_mode()
         queued_admin_requests = self.queued_admin_requests()
+        try:
+            system_stats = self.system_stats()
+        except Exception as exc:
+            system_stats = {"error": summarize_error(str(exc))}
 
         if leader.get("error"):
             role = {"label": "unknown", "kind": "warn"}
@@ -887,6 +1297,7 @@ class Dashboard:
             "dashboardLinks": unique_links(self.dashboard.get("links", [])),
             "units": unit_statuses,
             "services": services,
+            "systemStats": system_stats,
             "controllerState": controller_state,
             "runtimeMode": runtime_mode,
             "adminQueue": queued_admin_requests,
@@ -902,6 +1313,7 @@ class Dashboard:
         role = state["cluster"]["role"]
         units = state["units"]
         services = state["services"]
+        system_stats = state.get("systemStats") or {}
         dashboard_links = state.get("dashboardLinks", [])
         controller_state = state.get("controllerState") or {}
         runtime_mode = state.get("runtimeMode") or {"mode": "ha"}
@@ -1009,6 +1421,44 @@ class Dashboard:
                 f"<div class='prog-hd'><span>{html.escape(phase)}</span>"
                 f"<span class='prog-stats'>{html.escape(right)}</span></div>"
                 f"<div class='prog-bar'><span style='width:{pct:.2f}%'></span></div>"
+                f"</div>"
+            )
+
+        def percent_kind(value, *, warn: float = 75.0, bad: float = 90.0) -> str:
+            if value is None:
+                return "muted"
+            value = float(value)
+            if value >= bad:
+                return "bad"
+            if value >= warn:
+                return "warn"
+            return "good"
+
+        def meter_html(value, *, warn: float = 75.0, bad: float = 90.0) -> str:
+            if value is None:
+                return ""
+            pct = max(0.0, min(100.0, float(value)))
+            return (
+                f"<div class='meter meter-{percent_kind(pct, warn=warn, bad=bad)}'>"
+                f"<span style='width:{pct:.2f}%'></span></div>"
+            )
+
+        def stat_tile(
+            label: str,
+            value: str,
+            detail: str = "",
+            *,
+            percent: float | None = None,
+            warn: float = 75.0,
+            bad: float = 90.0,
+        ) -> str:
+            detail_html = f"<span class='stat-detail'>{html.escape(detail)}</span>" if detail else ""
+            return (
+                f"<div class='stat-tile'>"
+                f"<span class='stat-label'>{html.escape(label)}</span>"
+                f"<strong>{html.escape(value)}</strong>"
+                f"{detail_html}"
+                f"{meter_html(percent, warn=warn, bad=bad)}"
                 f"</div>"
             )
 
@@ -1138,6 +1588,155 @@ class Dashboard:
             f"<div class='mode-row'><div class='mode-bits'>{''.join(mode_bits)}</div>{mode_controls}</div>"
             "</section>"
         )
+
+        # ── host stats panel ─────────────────────────────────────────────────
+        if system_stats.get("error"):
+            host_stats_panel = (
+                "<section id='host-stats-panel' class='panel section host-stats'>"
+                "<div class='sh'><h2>Host Stats</h2></div>"
+                f"<p class='muted small'>{html.escape(system_stats['error'])}</p>"
+                "</section>"
+            )
+        else:
+            cpu = system_stats.get("cpu") or {}
+            memory = system_stats.get("memory") or {}
+            swap = system_stats.get("swap") or {}
+            temps = system_stats.get("temperatures") or {}
+            systemd = system_stats.get("systemd") or {}
+
+            loads = [
+                value
+                for value in [cpu.get("load1"), cpu.get("load5"), cpu.get("load15")]
+                if value is not None
+            ]
+            load_text = "/".join(f"{float(value):.2f}" for value in loads)
+            cpu_detail = f"load {load_text} | {cpu.get('cores', '?')} cores" if load_text else f"{cpu.get('cores', '?')} cores"
+
+            mem_used = memory.get("usedBytes")
+            mem_total = memory.get("totalBytes")
+            mem_detail = f"{format_bytes(mem_used)} / {format_bytes(mem_total)}"
+
+            swap_total = swap.get("totalBytes") or 0
+            if swap_total:
+                swap_value = format_percent(swap.get("percent"))
+                swap_detail = f"{format_bytes(swap.get('usedBytes'))} / {format_bytes(swap_total)}"
+                swap_percent = swap.get("percent")
+            else:
+                swap_value = "none"
+                swap_detail = "no swap configured"
+                swap_percent = None
+
+            temp_sensors = temps.get("sensors") or []
+            temp_detail = temp_sensors[0].get("name", "hottest sensor") if temp_sensors else "no sensors found"
+
+            failed_count = int(systemd.get("failedCount") or 0)
+            failed_units = systemd.get("failedUnits") or []
+            systemd_detail = (
+                f"{failed_count} failed: {', '.join(failed_units)}"
+                if failed_count
+                else "no failed units"
+            )
+
+            stat_tiles = [
+                stat_tile(
+                    "CPU",
+                    format_percent(cpu.get("percent")),
+                    cpu_detail,
+                    percent=cpu.get("percent"),
+                    warn=75,
+                    bad=90,
+                ),
+                stat_tile(
+                    "RAM",
+                    format_percent(memory.get("percent")),
+                    mem_detail,
+                    percent=memory.get("percent"),
+                    warn=80,
+                    bad=92,
+                ),
+                stat_tile(
+                    "Swap",
+                    swap_value,
+                    swap_detail,
+                    percent=swap_percent,
+                    warn=40,
+                    bad=70,
+                ),
+                stat_tile(
+                    "Temp",
+                    format_celsius(temps.get("maxCelsius")),
+                    temp_detail,
+                    percent=temps.get("maxCelsius"),
+                    warn=75,
+                    bad=88,
+                ),
+                stat_tile(
+                    "Systemd",
+                    str(systemd.get("state") or "unknown"),
+                    systemd_detail,
+                ),
+                stat_tile(
+                    "Uptime",
+                    str(system_stats.get("uptimeHuman") or "unknown"),
+                    f"{system_stats.get('processCount') or '?'} processes",
+                ),
+            ]
+
+            disk_rows = []
+            for disk in system_stats.get("disks") or []:
+                if disk.get("error"):
+                    disk_rows.append(
+                        f"<div class='disk-row'><div class='disk-main'>"
+                        f"<strong>{html.escape(disk.get('label', 'Disk'))}</strong>"
+                        f"<span class='muted'>{html.escape(disk.get('error', 'unknown error'))}</span>"
+                        f"</div></div>"
+                    )
+                    continue
+                used_text = format_bytes(disk.get("usedBytes"))
+                total_text = format_bytes(disk.get("totalBytes"))
+                free_text = format_bytes(disk.get("freeBytes"))
+                pct = disk.get("percent")
+                meta_bits = [disk.get("mountPoint") or disk.get("path") or ""]
+                if disk.get("fsType"):
+                    meta_bits.append(disk["fsType"])
+                if disk.get("source"):
+                    meta_bits.append(disk["source"])
+                disk_rows.append(
+                    f"<div class='disk-row'>"
+                    f"<div class='disk-main'><strong>{html.escape(disk.get('label', 'Disk'))}</strong>"
+                    f"<span class='muted'>{html.escape(' | '.join(bit for bit in meta_bits if bit))}</span></div>"
+                    f"<div class='disk-usage'>{html.escape(format_percent(pct))} · {html.escape(used_text)} / {html.escape(total_text)}"
+                    f"<span class='muted'> free {html.escape(free_text)}</span></div>"
+                    f"{meter_html(pct, warn=80, bad=92)}"
+                    f"</div>"
+                )
+
+            network_rows = []
+            for iface in system_stats.get("network") or []:
+                network_rows.append(
+                    f"<span class='net-chip'>"
+                    f"<strong>{html.escape(iface.get('name', 'iface'))}</strong>"
+                    f"<span class='muted'>{html.escape(iface.get('operstate', 'unknown'))}</span>"
+                    f"<span>rx {html.escape(format_rate(iface.get('rxRateBytes')))}</span>"
+                    f"<span>tx {html.escape(format_rate(iface.get('txRateBytes')))}</span>"
+                    f"</span>"
+                )
+            if not network_rows:
+                network_rows.append("<span class='muted small'>No active network interfaces found.</span>")
+
+            meta_bits = []
+            if system_stats.get("kernel"):
+                meta_bits.append(f"kernel {system_stats['kernel']}")
+            host_meta = f"<p class='muted small'>{html.escape(' | '.join(meta_bits))}</p>" if meta_bits else ""
+
+            host_stats_panel = (
+                "<section id='host-stats-panel' class='panel section host-stats'>"
+                "<div class='sh'><h2>Host Stats</h2></div>"
+                f"<div class='stats-grid'>{''.join(stat_tiles)}</div>"
+                f"<div class='stats-subgrid'><div><h3>Disks</h3>{''.join(disk_rows)}</div>"
+                f"<div><h3>Network</h3><div class='net-list'>{''.join(network_rows)}</div>{host_meta}</div></div>"
+                "</section>"
+            )
 
         # ── service cards ─────────────────────────────────────────────────────
         cards: list[str] = []
@@ -1485,6 +2084,103 @@ class Dashboard:
       background: linear-gradient(90deg, var(--good), #5fa86e);
       transition: width 0.4s ease;
     }}
+    /* ── host stats ── */
+    .stats-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+      gap: 0.55rem;
+    }}
+    .stat-tile {{
+      border: 1px solid rgba(36,69,45,0.12);
+      border-radius: 0.5rem;
+      background: rgba(36,69,45,0.035);
+      padding: 0.55rem 0.65rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      min-width: 0;
+    }}
+    .stat-label {{
+      font-size: 0.68rem;
+      color: var(--muted);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }}
+    .stat-tile strong {{
+      font-size: 1.05rem;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }}
+    .stat-detail {{
+      color: var(--muted);
+      font-size: 0.76rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }}
+    .meter {{
+      height: 0.4rem;
+      background: rgba(90,102,89,0.12);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 0.1rem;
+    }}
+    .meter span {{ display: block; height: 100%; transition: width 0.4s ease; }}
+    .meter-good span {{ background: var(--good); }}
+    .meter-warn span {{ background: var(--warn); }}
+    .meter-bad span {{ background: var(--bad); }}
+    .meter-muted span {{ background: var(--muted); }}
+    .stats-subgrid {{
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(14rem, 0.8fr);
+      gap: 0.9rem;
+      margin-top: 0.75rem;
+    }}
+    .stats-subgrid h3 {{
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.35rem;
+    }}
+    .disk-row {{
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 0.3rem 0.6rem;
+      padding: 0.35rem 0;
+      border-top: 1px solid rgba(212,200,180,0.5);
+      align-items: center;
+    }}
+    .disk-row:first-of-type {{ border-top: none; }}
+    .disk-main {{ min-width: 0; display: flex; flex-direction: column; }}
+    .disk-main strong, .disk-main span {{
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+    .disk-usage {{
+      font-size: 0.8rem;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      text-align: right;
+    }}
+    .disk-row .meter {{ grid-column: 1 / -1; margin-top: 0; }}
+    .net-list {{ display: flex; flex-wrap: wrap; gap: 0.35rem; }}
+    .net-chip {{
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      border: 1px solid rgba(36,69,45,0.14);
+      border-radius: 999px;
+      background: rgba(36,69,45,0.045);
+      padding: 0.2rem 0.5rem;
+      font-size: 0.78rem;
+      white-space: nowrap;
+    }}
     /* ── backup list ── */
     .bkp-sched {{ margin-bottom: 0.35rem; }}
     .bkp-list {{ display: flex; flex-direction: column; gap: 0.2rem; }}
@@ -1528,6 +2224,11 @@ class Dashboard:
     .muted {{ color: var(--muted); }}
     .small {{ font-size: 0.8rem; }}
     .section {{ }}
+    @media (max-width: 760px) {{
+      .stats-subgrid {{ grid-template-columns: 1fr; }}
+      .disk-row {{ grid-template-columns: 1fr; }}
+      .disk-usage {{ text-align: left; }}
+    }}
     @media (max-width: 600px) {{
       .site-hd {{ flex-direction: column; align-items: flex-start; }}
       .bkp-row {{ grid-template-columns: 3rem 1fr auto; }}
@@ -1548,6 +2249,7 @@ class Dashboard:
   <main>
     {admin_bar}
     {mode_banner}
+    {host_stats_panel}
     {ops_banner}
     {backup_slots_banner}
     {services_html}
@@ -1561,8 +2263,8 @@ class Dashboard:
       var pendingHtml = null;
       var reconnectTimer = null;
       var sectionIds = [
-        'admin-bar', 'mode-banner', 'ops-banner', 'backup-slots-banner', 'services-section',
-        'cluster-panel', 'units-panel', 'events-panel'
+        'admin-bar', 'mode-banner', 'host-stats-panel', 'ops-banner', 'backup-slots-banner',
+        'services-section', 'cluster-panel', 'units-panel', 'events-panel'
       ];
 
       function userIsEditingForm() {{

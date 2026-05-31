@@ -688,6 +688,8 @@ in
 
       mailserver = lib.recursiveUpdate baseMailserverConfig cfg.settings;
 
+      systemd.services.activate-virtual-mail-users.enable = lib.mkForce false;
+
       systemd.services.alanix-mail-dkim-keys = lib.mkIf declarativeDkim {
         description = "Install declarative DKIM keys for Alanix mail";
         wantedBy = [ dkimKeyTarget ];
