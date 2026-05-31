@@ -14,7 +14,8 @@ let
     || swayCfg.outputRules != null
     || swayCfg.idle.lockSeconds != null
     || swayCfg.idle.displayOffSeconds != null
-    || swayCfg.idle.suspendSeconds != null;
+    || swayCfg.idle.suspendSeconds != null
+    || swayCfg.hideCursorMs != null;
 in
 {
   options.alanix.desktop.profiles.sway = {
@@ -59,6 +60,12 @@ in
         default = null;
         description = "Seconds before suspending the system.";
       };
+    };
+
+    hideCursorMs = lib.mkOption {
+      type = lib.types.nullOr lib.types.int;
+      default = null;
+      description = "Hide the cursor after this many milliseconds of inactivity. Useful on Wayland where app-level cursor hiding is ignored.";
     };
   };
 
