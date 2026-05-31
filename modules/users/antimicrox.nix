@@ -864,7 +864,7 @@ in
               reconcile_focus startup
 
               while true; do
-                ${pkgs.sway}/bin/swaymsg -t subscribe '["window"]' | while IFS= read -r event; do
+                ${pkgs.coreutils}/bin/timeout 10 ${pkgs.sway}/bin/swaymsg -t subscribe '["window"]' | while IFS= read -r event; do
                   change=$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.change // ""')
                   reconcile_focus "$change"
                 done
