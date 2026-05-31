@@ -61,7 +61,7 @@ in
         Buttons/B = `Button S`
         Buttons/X = `Button W`
         Buttons/Y = `Button N`
-        Buttons/Z = `Shoulder R`
+        Buttons/Z = `Shoulder R` | `Button N`
         Buttons/L = `Shoulder L`
         Buttons/Start = Start
         Main Stick/Up = `Left Y+`
@@ -77,7 +77,7 @@ in
         Triggers/L = `Trigger L`
         Triggers/R = `Trigger R`
         D-Pad/Up = `Pad N`
-        D-Pad/Down = `Pad S`
+        D-Pad/Down = `Pad S` | `Trigger R`
         D-Pad/Left = `Pad W`
         D-Pad/Right = `Pad E`
       '';
