@@ -1002,6 +1002,16 @@ class Dashboard:
             "transport": "tor",
         }
 
+    def dashboard_links_for_host(self, active_host: str | None) -> list[dict]:
+        links = []
+        for link in self.dashboard.get("links", []):
+            normalized = dict(link)
+            if active_host and normalized.get("transport") == "wan":
+                normalized["host"] = active_host
+                normalized["label"] = f"{active_host} dashboard (wan)"
+            links.append(normalized)
+        return unique_links(links)
+
     def restic_snapshot_size(self, repo_path: str, snapshot_id: str) -> int | None:
         try:
             proc = self.run(
@@ -1294,7 +1304,7 @@ class Dashboard:
                 "role": role,
                 "activeTarget": self.target,
             },
-            "dashboardLinks": unique_links(self.dashboard.get("links", [])),
+            "dashboardLinks": self.dashboard_links_for_host(leader_host),
             "units": unit_statuses,
             "services": services,
             "systemStats": system_stats,
