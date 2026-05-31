@@ -415,7 +415,6 @@ in
             startup = [
               { command = "waybar"; }
               { command = "blueman-applet"; }
-              { command = "sleep 2 && swaymsg workspace number 1"; always = false; }
             ];
             keybindings = lib.mkOptionDefault {
               "XF86AudioRaiseVolume" = "exec ${volumeRaiseCommand}";
