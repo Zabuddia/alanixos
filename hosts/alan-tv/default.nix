@@ -169,6 +169,7 @@
           displayOffSeconds = null;
           suspendSeconds = null;
         };
+        hideCursorMs = 1000;
       };
     };
 

@@ -437,6 +437,8 @@ in
           extraConfig = ''
             bindgesture swipe:3:left workspace next
             bindgesture swipe:3:right workspace prev
+          '' + lib.optionalString (nixosConfig.alanix.desktop.profiles.sway.hideCursorMs != null) ''
+            seat * hide_cursor ${toString nixosConfig.alanix.desktop.profiles.sway.hideCursorMs}
           '';
         };
       }
