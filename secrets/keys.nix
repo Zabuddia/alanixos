@@ -37,8 +37,8 @@
     };
 
     alan-tv = {
-      recipient = "age15dpyxhmqtehzkhatfg65yh7nwslhtdmnyz4yrrtkj2y9mdzrjdfqj9kuq5";
-      description = "Shares the OptiPlex runtime key at /var/lib/sops-nix/key.txt.";
+      recipient = "age1jvv2kuyxsyaut5jtfv5ylcq7c7dgpepn2r6qzyf483rme46ddy2qdftgga";
+      description = "Root-only runtime key stored at /var/lib/sops-nix/key.txt.";
     };
   };
 

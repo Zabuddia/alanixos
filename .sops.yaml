@@ -7,4 +7,5 @@ creation_rules:
   - age14hvqw052wzn8wlxrevzlgydthcenjc7jh4t76gwqljglknj6maash22pl5
   - age1xlpujktcrv84rx498z7wakal4c4pklda2c2s4jx2kgxsh2yaa9lq6v7ptk
   - age15dpyxhmqtehzkhatfg65yh7nwslhtdmnyz4yrrtkj2y9mdzrjdfqj9kuq5
+  - age1jvv2kuyxsyaut5jtfv5ylcq7c7dgpepn2r6qzyf483rme46ddy2qdftgga
   path_regex: ^secrets/.*\.ya?ml$
