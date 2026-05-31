@@ -116,6 +116,9 @@
             leftTrigger = "openScrcpy";
             rightTrigger = "openKodi";
           };
+          controllerGuids = [
+            "0300f6b6c82d00000b310000140100001172012555B92A5226DA"
+          ];
         };
         chromium.enable = true;
         makemkv = {

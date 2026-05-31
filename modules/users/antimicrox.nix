@@ -110,6 +110,7 @@ let
   actionNames = builtins.attrNames actionDefinitions;
 
   profilePath = "${config.home.directory}/.config/antimicrox/profiles/${cfg.profile.fileName}";
+  settingsFilePath = "${config.home.directory}/.config/antimicrox/antimicrox_settings.ini";
   keyboardProgramPath = "${cfg.onScreenKeyboard.package}/bin/${cfg.onScreenKeyboard.program}";
   keyboardLaunchCommand = lib.escapeShellArgs ([ keyboardProgramPath ] ++ cfg.onScreenKeyboard.extraArgs);
   keyboardToggleCommand = pkgs.writeShellScript "alanix-toggle-${cfg.onScreenKeyboard.program}" ''
@@ -772,6 +773,12 @@ in
       };
       description = "Mapping from SDL gamecontroller button and trigger names to named controller actions.";
     };
+
+    controllerGuids = lib.mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "Controller GUIDs to auto-assign this profile to in antimicrox_settings.ini. Each value is the GUID string as it appears after \"Controller\" in the settings file (visible after connecting the controller once).";
+    };
   };
 
   config = {
@@ -812,6 +819,39 @@ in
           ++ lib.optionals usesOpenScrcpy [ cfg.openScrcpy.package ];
 
         xdg.configFile."antimicrox/profiles/${cfg.profile.fileName}".text = profile;
+
+        home.activation.antimicroxControllerMappings = lib.mkIf (cfg.controllerGuids != [ ]) (
+          let
+            f = lib.escapeShellArg;
+            mapGuid = guid:
+              let
+                prefix = "Controller${guid}";
+              in
+              ''
+                if ! ${pkgs.gnugrep}/bin/grep -q ${f "^${prefix}ConfigFile1="} ${f settingsFilePath} 2>/dev/null; then
+                  ${pkgs.gnused}/bin/sed -i ${f "/^${prefix}/d"} ${f settingsFilePath} 2>/dev/null || true
+                  printf '%s\n' \
+                    ${f "${prefix}ConfigFile1=${profilePath}"} \
+                    ${f "${prefix}LastSelected=${profilePath}"} \
+                    ${f "${prefix}ProfileName1=${cfg.profile.name}"} \
+                    >> ${f settingsFilePath}
+                fi
+              '';
+          in
+          {
+            after = [ "writeBoundary" ];
+            before = [ ];
+            data = ''
+              mkdir -p ${f (builtins.dirOf settingsFilePath)}
+              if [ ! -f ${f settingsFilePath} ]; then
+                printf '[General]\n\n[Controllers]\n' > ${f settingsFilePath}
+              elif ! ${pkgs.gnugrep}/bin/grep -qF '[Controllers]' ${f settingsFilePath}; then
+                printf '\n[Controllers]\n' >> ${f settingsFilePath}
+              fi
+              ${lib.concatMapStrings mapGuid cfg.controllerGuids}
+            '';
+          }
+        );
 
         systemd.user.services.antimicrox-focus-watcher = lib.mkIf (swayActive && (cfg.pauseForApps != [ ] || cfg.pauseForGameApps != [ ])) (
           let
