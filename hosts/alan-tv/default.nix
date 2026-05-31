@@ -10,7 +10,7 @@
     ];
 
     alanix.system = {
-      stateVersion = "25.11";
+      stateVersion = "26.05";
       timeZone = "America/Chicago";
       locale = "en_US.UTF-8";
       enableSystemdBoot = true;
@@ -22,6 +22,7 @@
       enableFirewall = true;
       packages = with pkgs; [
         age
+        android-tools
         bind
         caddy
         curl
@@ -46,7 +47,7 @@
       accounts.buddia = {
         enable = true;
         isNormalUser = true;
-        extraGroups = [ "wheel" "networkmanager" "input" "adbusers" ];
+        extraGroups = [ "wheel" "networkmanager" "input" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
         sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJhIOpVi6T5JO3hzG/OOtKwZscOBBbwSD1WOoBh012RL fife.alan@protonmail.com";
@@ -63,7 +64,7 @@
         home = {
           enable = true;
           directory = "/home/buddia";
-          stateVersion = "25.11";
+          stateVersion = "26.05";
           files = { };
           packages = with pkgs; [
             handbrake
@@ -212,7 +213,6 @@
 
     alanix.wifi.radio.enable = false;
 
-    programs.adb.enable = true;
     services.avahi.enable = true;
 
     alanix.syncthing = {

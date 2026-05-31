@@ -8,9 +8,8 @@ in
 
   config.home.modules = lib.optionals cfg.enable [
     {
-      programs.vscode = {
+      programs.vscodium = {
         enable = true;
-        package = pkgs-unstable.vscodium;
         profiles.default.extensions = with pkgs-unstable.vscode-extensions; [
           jnoortheen.nix-ide
           yzhang.markdown-all-in-one

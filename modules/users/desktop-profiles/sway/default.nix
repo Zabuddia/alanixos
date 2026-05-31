@@ -242,10 +242,10 @@ in
 
         services.swayidle = {
           enable = true;
-          events = [
-            { event = "before-sleep"; command = "${pkgs.swaylock}/bin/swaylock -f"; }
-            { event = "lock"; command = "${pkgs.swaylock}/bin/swaylock -f"; }
-          ];
+          events = {
+            before-sleep = "${pkgs.swaylock}/bin/swaylock -f";
+            lock = "${pkgs.swaylock}/bin/swaylock -f";
+          };
           timeouts =
             lib.optionals (idleCfg.lockSeconds != null) [
               {

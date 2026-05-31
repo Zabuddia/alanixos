@@ -9,19 +9,19 @@ in
     ssh = {
       enable = lib.mkEnableOption "SSH client config for this user";
 
-      matchBlocks = lib.mkOption {
+      settings = lib.mkOption {
         type = types.attrs;
         default = { };
-        description = "Additional Home Manager SSH match blocks.";
+        description = "Additional Home Manager SSH settings blocks.";
       };
     };
   };
 
   config = {
-    _assertions = lib.optionals (!cfg.enable && cfg.matchBlocks != { }) [
+    _assertions = lib.optionals (!cfg.enable && cfg.settings != { }) [
       {
         assertion = false;
-        message = "alanix.users.accounts.${name}.ssh.matchBlocks requires alanix.users.accounts.${name}.ssh.enable = true.";
+        message = "alanix.users.accounts.${name}.ssh.settings requires alanix.users.accounts.${name}.ssh.enable = true.";
       }
     ];
 
@@ -30,18 +30,18 @@ in
         programs.ssh = {
           enable = true;
           enableDefaultConfig = false;
-          matchBlocks =
+          settings =
             {
               "*" = {
-                addKeysToAgent = "yes";
-                serverAliveInterval = 60;
-                serverAliveCountMax = 3;
-                controlMaster = "auto";
-                controlPath = "~/.ssh/control-%C";
-                controlPersist = "10m";
+                AddKeysToAgent = "yes";
+                ServerAliveInterval = 60;
+                ServerAliveCountMax = 3;
+                ControlMaster = "auto";
+                ControlPath = "~/.ssh/control-%C";
+                ControlPersist = "10m";
               };
             }
-            // cfg.matchBlocks;
+            // cfg.settings;
         };
       }
     ];

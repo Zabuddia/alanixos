@@ -22,7 +22,7 @@ let
   sanitizedUsersForRestart =
     lib.mapAttrs (_: u: { inherit (u) name email passwordSecret; }) cfg.users;
 
-  reconcileScript = pkgs.writeShellScript "alanix-homebox-reconcile-users" ''
+  reconcileScript = ''
     set -euo pipefail
 
     BASE_URL=${lib.escapeShellArg "http://${cfg.listenAddress}:${toString cfg.port}"}
@@ -243,7 +243,7 @@ in
 
         path = [ pkgs.coreutils pkgs.curl ];
 
-        script = builtins.readFile reconcileScript;
+        script = reconcileScript;
 
         restartTriggers = [ (builtins.toJSON sanitizedUsersForRestart) ];
       };

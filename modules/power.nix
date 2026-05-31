@@ -155,10 +155,10 @@ in
       boot.kernelParams =
         lib.mkIf (cfg.hibernate.resumeOffset != null)
           [ "resume_offset=${toString cfg.hibernate.resumeOffset}" ];
-      systemd.sleep.extraConfig = ''
-        HibernateDelaySec=${cfg.hibernate.suspendThenHibernateDelay}
-        HibernateOnACPower=${if cfg.hibernate.hibernateOnACPower then "yes" else "no"}
-      '';
+      systemd.sleep.settings.Sleep = {
+        HibernateDelaySec = cfg.hibernate.suspendThenHibernateDelay;
+        HibernateOnACPower = if cfg.hibernate.hibernateOnACPower then "yes" else "no";
+      };
     })
 
     (lib.mkIf (cfg.hibernate.enable && cfg.hibernate.resumeSwapFile != null) {

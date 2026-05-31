@@ -117,21 +117,21 @@
 
         ssh = {
           enable = true;
-          matchBlocks = {
+          settings = {
             "github-personal" = {
-              hostname = "github.com";
-              user = "git";
-              identityFile = config.sops.secrets."ssh-private-keys/alan-laptop-nixos".path;
-              identitiesOnly = true;
-              controlPath = "none";
+              HostName = "github.com";
+              User = "git";
+              IdentityFile = config.sops.secrets."ssh-private-keys/alan-laptop-nixos".path;
+              IdentitiesOnly = true;
+              ControlPath = "none";
             };
 
             "github-work" = {
-              hostname = "github.com";
-              user = "git";
-              identityFile = config.sops.secrets."ssh-private-keys/alan-laptop-nixos-work".path;
-              identitiesOnly = true;
-              controlPath = "none";
+              HostName = "github.com";
+              User = "git";
+              IdentityFile = config.sops.secrets."ssh-private-keys/alan-laptop-nixos-work".path;
+              IdentitiesOnly = true;
+              ControlPath = "none";
             };
           };
         };

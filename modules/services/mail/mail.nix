@@ -86,15 +86,14 @@ let
       stateVersion = cfg.stateVersion;
       fqdn = effectiveFqdn;
       domains = effectiveDomains;
-      loginAccounts = loginAccounts;
-      extraVirtualAliases = cfg.extraVirtualAliases;
+      accounts = loginAccounts;
+      aliases = cfg.extraVirtualAliases;
       forwards = cfg.forwards;
       rejectSender = cfg.rejectSender;
       rejectRecipients = cfg.rejectRecipients;
       openFirewall = cfg.openFirewall;
 
       inherit (cfg)
-        certificateScheme
         enableImap
         enableImapSsl
         enableManageSieve
@@ -103,24 +102,29 @@ let
         enableSubmission
         enableSubmissionSsl
         localDnsResolver
-        mailDirectory
         messageSizeLimit
         recipientDelimiter
         rewriteMessageId
-        sieveDirectory
         systemName
-        useFsLayout
         useUTF8FolderNames
         virusScanning
         ;
 
-      dkimSigning = cfg.dkim.enable;
-      dkimSelector = cfg.dkim.selector;
-      dkimKeyDirectory = cfg.dkim.keyDirectory;
-      dkimKeyType = cfg.dkim.keyType;
-      dkimKeyBits = cfg.dkim.keyBits;
+      storage.path = cfg.mailDirectory;
+      storage.directoryLayout = if cfg.useFsLayout then "fs" else "Maildir++";
+      dkim = {
+        enable = cfg.dkim.enable;
+        keyDirectory = cfg.dkim.keyDirectory;
+        defaults = {
+          selector = cfg.dkim.selector;
+          keyType = cfg.dkim.keyType;
+          keyLength = cfg.dkim.keyBits;
+        };
+      };
 
-      fullTextSearch = cfg.fullTextSearch;
+      fullTextSearch = (builtins.removeAttrs cfg.fullTextSearch [ "autoIndexExclude" "enforced" ]) // {
+        fallback = cfg.fullTextSearch.enforced == "no";
+      };
       dmarcReporting = cfg.dmarcReporting;
       srs =
         {
@@ -144,7 +148,7 @@ let
       systemDomain = cfg.systemDomain;
     }
     // lib.optionalAttrs (cfg.certificateScheme == "acme") {
-      acmeCertificateName = effectiveAcmeCertificateName;
+      x509.useACMEHost = effectiveAcmeCertificateName;
     };
 in
 {
@@ -720,7 +724,7 @@ in
             dnsProvider = cfg.acme.dnsProvider;
           }
           // lib.optionalAttrs (cfg.acme.credentialsFile != null) {
-            credentialsFile = cfg.acme.credentialsFile;
+            environmentFile = cfg.acme.credentialsFile;
           };
       };
     }
