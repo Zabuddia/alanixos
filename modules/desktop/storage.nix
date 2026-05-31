@@ -5,6 +5,6 @@ lib.mkIf config.alanix.desktop.enable {
 
   programs.thunar = {
     enable = true;
-    plugins = [ pkgs.xfce.thunar-volman ];
+    plugins = [ pkgs.thunar-volman ];
   };
 }

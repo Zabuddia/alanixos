@@ -9,8 +9,6 @@
       ./secrets.nix
     ];
 
-    programs.adb.enable = true;
-
     alanix.system = {
       stateVersion = "25.11";
       timeZone = "America/Chicago";
@@ -24,6 +22,7 @@
       enableFirewall = true;
       packages = with pkgs; [
         age
+        android-tools
         bind
         caddy
         curl
@@ -63,7 +62,7 @@
       accounts.buddia = {
         enable = true;
         isNormalUser = true;
-        extraGroups = [ "wheel" "networkmanager" "input" "adbusers" "kvm" ];
+        extraGroups = [ "wheel" "networkmanager" "input" "kvm" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
         sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExSf9y7yGFQySwkx42MXCgZ6EkgP2PebAJb4++5X0SB fife.alan@protonmail.com";
@@ -121,21 +120,21 @@
 
         ssh = {
           enable = true;
-          matchBlocks = {
+          settings = {
             "github-personal" = {
-              hostname = "github.com";
-              user = "git";
-              identityFile = config.sops.secrets."ssh-private-keys/alan-framework-laptop".path;
-              identitiesOnly = true;
-              controlPath = "none";
+              HostName = "github.com";
+              User = "git";
+              IdentityFile = config.sops.secrets."ssh-private-keys/alan-framework-laptop".path;
+              IdentitiesOnly = true;
+              ControlPath = "none";
             };
 
             "github-work" = {
-              hostname = "github.com";
-              user = "git";
-              identityFile = config.sops.secrets."ssh-private-keys/alan-laptop-nixos-work".path;
-              identitiesOnly = true;
-              controlPath = "none";
+              HostName = "github.com";
+              User = "git";
+              IdentityFile = config.sops.secrets."ssh-private-keys/alan-laptop-nixos-work".path;
+              IdentitiesOnly = true;
+              ControlPath = "none";
             };
           };
         };

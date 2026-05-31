@@ -3,12 +3,12 @@
 
   inputs = {
     # Base system
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     # User environment
     home-manager = {
-      url = "github:nix-community/home-manager/release-25.11";
+      url = "github:nix-community/home-manager/release-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -23,7 +23,7 @@
 
     # Mail stack
     simple-nixos-mailserver = {
-      url = "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-25.11";
+      url = "gitlab:simple-nixos-mailserver/nixos-mailserver/nixos-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 

@@ -95,7 +95,7 @@ let
             else if path == redisDataDir then
               "${config.services.redis.servers.rspamd.user}:${config.services.redis.servers.rspamd.group}"
             else
-              "${config.mailserver.vmailUserName}:${config.mailserver.vmailGroupName}";
+              "${config.mailserver.storage.owner}:${config.mailserver.storage.group}";
         in
         ''
           restore_dir ${lib.escapeShellArg path} ${lib.escapeShellArg ownerGroup}

@@ -40,6 +40,7 @@
       enableFirewall = true;
       packages = with pkgs; [
         age
+        android-tools
         bind
         caddy
         curl
@@ -64,7 +65,7 @@
       accounts.buddia = {
         enable = true;
         isNormalUser = true;
-        extraGroups = [ "wheel" "networkmanager" "input" "adbusers" ];
+        extraGroups = [ "wheel" "networkmanager" "input" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
         sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJagVnL05ndecnIntQQbEUFs9EMxVP/27oGNuZGAjpbJ fife.alan@protonmail.com";
@@ -230,7 +231,6 @@
 
     alanix.wifi.radio.enable = false;
 
-    programs.adb.enable = true;
     services.avahi.enable = true;
 
     alanix.syncthing = {

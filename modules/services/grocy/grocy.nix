@@ -28,7 +28,7 @@ let
 
   grocyDb = "${cfg.dataDir}/grocy.db";
 
-  reconcileScript = pkgs.writeShellScript "alanix-grocy-reconcile-users" ''
+  reconcileScript = ''
     set -euo pipefail
 
     DB=${lib.escapeShellArg grocyDb}
@@ -263,7 +263,7 @@ in
 
         path = [ pkgs.php pkgs.sqlite pkgs.curl ];
 
-        script = builtins.readFile reconcileScript;
+        script = reconcileScript;
 
         restartTriggers = [ (builtins.toJSON sanitizedUsersForRestart) ];
       };
