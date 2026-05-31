@@ -50,13 +50,13 @@ in
 
       xdg.configFile."dolphin-emu/Hotkeys.ini" = mkDolphinConfig ''
         [Hotkeys]
-        Device = SDL/0/Xbox 360 Controller
+        Device = SDL/0/8BitDo Ultimate 2 Wireless Controller
         General/Stop = Guide
       '';
 
       xdg.configFile."dolphin-emu/Profiles/GCPad/MarioKartX360.ini" = mkDolphinConfig ''
         [Profile]
-        Device = SDL/0/Xbox 360 Controller
+        Device = SDL/0/8BitDo Ultimate 2 Wireless Controller
         Buttons/A = `Button E`
         Buttons/B = `Button S`
         Buttons/X = `Button W`
@@ -84,7 +84,7 @@ in
 
       xdg.configFile."dolphin-emu/Profiles/Wiimote/LegoX360.ini" = mkDolphinConfig ''
         [Profile]
-        Device = SDL/0/Xbox 360 Controller
+        Device = SDL/0/8BitDo Ultimate 2 Wireless Controller
         Buttons/A = `Button S`
         Buttons/B = `Button W`
         Buttons/1 = `Shoulder L`
@@ -187,7 +187,7 @@ in
 
       xdg.configFile."dolphin-emu/Profiles/GCPad/SmashBrawlX360.ini" = mkDolphinConfig ''
         [Profile]
-        Device = SDL/0/Xbox 360 Controller
+        Device = SDL/0/8BitDo Ultimate 2 Wireless Controller
         Buttons/A = `Button S`
         Buttons/B = `Button E`
         Buttons/X = `Button W`
@@ -214,7 +214,7 @@ in
 
       xdg.configFile."dolphin-emu/Profiles/Wiimote/SMGalaxyX360.ini" = mkDolphinConfig ''
         [Profile]
-        Device = SDL/0/Xbox 360 Controller
+        Device = SDL/0/8BitDo Ultimate 2 Wireless Controller
         Buttons/A = `Button S`
         Buttons/B = `Trigger R`
         Buttons/- = Back
@@ -243,7 +243,7 @@ in
 
       xdg.configFile."dolphin-emu/Profiles/Wiimote/NBAX360.ini" = mkDolphinConfig ''
         [Profile]
-        Device = SDL/0/Xbox 360 Controller
+        Device = SDL/0/8BitDo Ultimate 2 Wireless Controller
         Buttons/Home = Guide
         Extension = Classic
         Classic/Buttons/A = `Button S`
@@ -269,7 +269,7 @@ in
 
       xdg.configFile."dolphin-emu/Profiles/Wiimote/NSMBWXbox360.ini" = mkDolphinConfig ''
         [Profile]
-        Device = SDL/0/Xbox 360 Controller
+        Device = SDL/0/8BitDo Ultimate 2 Wireless Controller
         Buttons/1 = `Button W`
         Buttons/2 = `Button S`
         Buttons/- = Back
@@ -286,7 +286,7 @@ in
 
       xdg.configFile."dolphin-emu/Profiles/Wiimote/StrikersX360.ini" = mkDolphinConfig ''
         [Profile]
-        Device = SDL/0/Xbox 360 Controller
+        Device = SDL/0/8BitDo Ultimate 2 Wireless Controller
         Buttons/A = `Button S`
         Buttons/B = `Trigger R`
         Buttons/- = Back
@@ -310,7 +310,7 @@ in
 
       xdg.configFile."dolphin-emu/Profiles/Wiimote/SportsMixX360.ini" = mkDolphinConfig ''
         [Profile]
-        Device = SDL/0/Xbox 360 Controller
+        Device = SDL/0/8BitDo Ultimate 2 Wireless Controller
         Buttons/A = `Button S`
         Buttons/B = `Trigger R`
         Buttons/1 = `Button W`
@@ -336,7 +336,7 @@ in
 
       xdg.configFile."dolphin-emu/Profiles/Wiimote/KirbyX360.ini" = mkDolphinConfig ''
         [Profile]
-        Device = SDL/0/Xbox 360 Controller
+        Device = SDL/0/8BitDo Ultimate 2 Wireless Controller
         Buttons/1 = `Button W`
         Buttons/2 = `Button S`
         Buttons/A = `Shoulder R` | `Trigger R`
@@ -351,7 +351,7 @@ in
 
       xdg.configFile."dolphin-emu/Profiles/Wiimote/MaddenX360.ini" = mkDolphinConfig ''
         [Profile]
-        Device = SDL/0/Xbox 360 Controller
+        Device = SDL/0/8BitDo Ultimate 2 Wireless Controller
         Buttons/A = `Button S`
         Buttons/B = `Trigger R`
         Buttons/- = Back
