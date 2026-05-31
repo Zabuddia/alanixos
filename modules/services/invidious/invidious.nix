@@ -481,6 +481,23 @@ in
               psql -v ON_ERROR_STOP=1 -qAt -c "$1"
             }
 
+            refresh_database_collation_if_needed() {
+              local mismatch
+
+              mismatch="$(
+                psql -v ON_ERROR_STOP=1 -qAt -c \
+                  "SELECT datcollversion IS DISTINCT FROM pg_database_collation_actual_version(oid) FROM pg_database WHERE datname = current_database();"
+              )"
+
+              if [ "$mismatch" != "t" ]; then
+                return 0
+              fi
+
+              echo "Refreshing PostgreSQL collation version for Invidious database: $PGDATABASE"
+              psql -v ON_ERROR_STOP=1 -q -v dbname="$PGDATABASE" -c 'REINDEX DATABASE CONCURRENTLY :"dbname";'
+              psql -v ON_ERROR_STOP=1 -q -v dbname="$PGDATABASE" -c 'ALTER DATABASE :"dbname" REFRESH COLLATION VERSION;'
+            }
+
             relation_exists() {
               local relation="$1"
               [ "$(run_sql "SELECT to_regclass('public.' || '$relation') IS NOT NULL;")" = "t" ]
@@ -557,7 +574,7 @@ in
               local qtoken
 
               password="$(tr -d '\r\n' < "$passfile")"
-              password_hash="$(mkpasswd --method=bcrypt-a -R 10 "$password")"
+              password_hash="$(mkpasswd --method=bcrypt_a -R 10 "$password")"
               token="$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '\n=')"
               qid="$(sql_quote "$user_id")"
               qhash="$(sql_quote "$password_hash")"
@@ -581,6 +598,7 @@ in
 
             ${passfileLines}
 
+            refresh_database_collation_if_needed
             wait_for_users_table
 
             ${ensureLines}
