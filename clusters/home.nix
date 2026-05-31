@@ -1,4 +1,4 @@
-{ config, lib, hostname, ... }:
+{ config, lib, hostname, pkgs, ... }:
 let
   members = [
     "alan-big-nixos"
@@ -995,6 +995,7 @@ in
 
     alanix.nextcloud = {
       enable = true;
+      package = pkgs.nextcloud33;
       listenAddress = "127.0.0.1";
       port = 8080;
       backupDir = "/var/backup/nextcloud";
