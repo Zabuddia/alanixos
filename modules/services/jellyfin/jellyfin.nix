@@ -669,6 +669,13 @@ in
       systemd.services.jellyfin = lib.mkIf baseConfigReady {
         after = [ "alanix-jellyfin-network-config.service" ];
         requires = [ "alanix-jellyfin-network-config.service" ];
+        restartTriggers = lib.optional reconcileEnabled (
+          builtins.toJSON {
+            users = sanitizedUsersForRestart;
+            libraries = sanitizedLibrariesForRestart;
+            liveTv = sanitizedLiveTvForRestart;
+          }
+        );
         serviceConfig.ExecStartPost = lib.optional reconcileEnabled
           "+${pkgs.writeShellScript "alanix-jellyfin-trigger-reconcile" ''
             ${config.systemd.package}/bin/systemctl --no-block start jellyfin-reconcile-users.service >/dev/null 2>&1 || true
