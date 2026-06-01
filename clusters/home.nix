@@ -752,14 +752,12 @@ in
       };
 
       liveTv = {
-        recordingPath = "/srv/tvheadend/recordings";
+        recordingPath = "/srv/jellyfin/recordings";
 
-        tvheadend.sources.local = {
+        hdhomerun.sources.local = {
           enable = true;
-          friendlyName = "alan-big-nixos TVHeadend";
-          baseUrl = "http://alan-big-nixos:19981";
-          playlistPath = "/playlist/channels";
-          xmltvPath = "/xmltv/channels";
+          friendlyName = "HDHomeRun";
+          url = "192.168.1.105";
         };
       };
 
@@ -805,10 +803,10 @@ in
         };
 
         recordings = {
-          path = "/srv/tvheadend/recordings";
+          path = "/srv/jellyfin/recordings";
           create = true;
-          user = "root";
-          group = "root";
+          user = "jellyfin";
+          group = "jellyfin";
           mode = "0755";
         };
       };

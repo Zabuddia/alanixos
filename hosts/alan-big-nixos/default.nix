@@ -154,6 +154,7 @@
       enable = true;
       address = "alan-big-nixos";
       acceptRoutes = true;
+      advertiseRoutes = [ "192.168.1.0/24" ];
       operator = "buddia";
     };
 
@@ -189,35 +190,6 @@
           "emulation-dolphin"
           "emulation-melonds"
         ];
-      };
-    };
-
-    alanix.tvheadend = {
-      enable = true;
-      recordingsDir = "/srv/tvheadend/recordings";
-      epg.disableOverTheAirGrabbers = true;
-      expose.tor = {
-        enable = true;
-        publicPort = 80;
-        secretKeyBase64Secret = "tor/tvheadend/secret-key-base64";
-      };
-      expose.tailscale = {
-        enable = true;
-        port = 19981;
-      };
-      expose.wireguard = {
-        enable = true;
-        address = "10.100.0.1";
-        port = 9981;
-      };
-      htsp.expose.tailscale = {
-        enable = true;
-        port = 19982;
-      };
-      htsp.expose.wireguard = {
-        enable = true;
-        address = "10.100.0.1";
-        port = 9982;
       };
     };
 

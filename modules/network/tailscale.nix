@@ -2,13 +2,21 @@
 
 let
   cfg = config.alanix.tailscale;
+  hasAdvertiseRoutes = cfg.advertiseRoutes != [ ];
   routingMode =
-    if cfg.acceptRoutes then
+    if cfg.acceptRoutes && hasAdvertiseRoutes then
+      "both"
+    else if cfg.acceptRoutes then
       "client"
+    else if hasAdvertiseRoutes then
+      "server"
     else
       "none";
   preferenceFlags =
     lib.optionals cfg.acceptRoutes [ "--accept-routes=true" ]
+    ++ lib.optionals hasAdvertiseRoutes [
+      "--advertise-routes=${lib.concatStringsSep "," cfg.advertiseRoutes}"
+    ]
     ++ lib.optionals (cfg.operator != null) [ "--operator=${cfg.operator}" ];
 in
 {
@@ -25,6 +33,13 @@ in
       type = lib.types.bool;
       default = false;
       description = "Accept subnet routes advertised by other Tailscale nodes.";
+    };
+
+    advertiseRoutes = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "192.168.1.0/24" ];
+      description = "Subnet routes to advertise from this Tailscale node.";
     };
 
     operator = lib.mkOption {

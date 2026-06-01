@@ -90,6 +90,22 @@ let
       })
       cfg.liveTv.tvheadend.sources;
 
+  effectiveHdhomerunSources =
+    lib.mapAttrs
+      (sourceName: sourceCfg: {
+        inherit (sourceCfg)
+          enable
+          url
+          importFavoritesOnly
+          ;
+        friendlyName =
+          if hasValue sourceCfg.friendlyName then
+            sourceCfg.friendlyName
+          else
+            sourceName;
+      })
+      cfg.liveTv.hdhomerun.sources;
+
   effectiveLiveTvRecordingPath =
     if cfg.liveTv.recordingPath != null then
       cfg.liveTv.recordingPath
@@ -98,7 +114,9 @@ let
     else
       null;
 
-  liveTvEnabled = lib.any (sourceCfg: sourceCfg.enable) (builtins.attrValues effectiveTvheadendSources);
+  liveTvEnabled =
+    lib.any (sourceCfg: sourceCfg.enable) (builtins.attrValues effectiveTvheadendSources)
+    || lib.any (sourceCfg: sourceCfg.enable) (builtins.attrValues effectiveHdhomerunSources);
   reconcileEnabled = cfg.users != { } || cfg.libraries != { } || liveTvEnabled;
 
   sanitizedUsersForRestart = passwordUsers.sanitizeForRestart {
@@ -116,7 +134,7 @@ let
   sanitizedLiveTvForRestart = {
     enable = liveTvEnabled;
     recordingPath = effectiveLiveTvRecordingPath;
-    sources =
+    tvheadendSources =
       lib.mapAttrs
         (_: sourceCfg: {
           inherit (sourceCfg)
@@ -140,6 +158,17 @@ let
               toString sourceCfg.passwordFile;
         })
         effectiveTvheadendSources;
+    hdhomerunSources =
+      lib.mapAttrs
+        (_: sourceCfg: {
+          inherit (sourceCfg)
+            enable
+            url
+            friendlyName
+            importFavoritesOnly
+            ;
+        })
+        effectiveHdhomerunSources;
   };
 
   mediaTmpfilesRules =
@@ -357,6 +386,40 @@ in
           description = "Named TVHeadend sources for Jellyfin Live TV.";
         };
       };
+
+      hdhomerun = {
+        sources = lib.mkOption {
+          type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
+            options = {
+              enable = lib.mkOption {
+                type = lib.types.bool;
+                default = true;
+                description = "Whether this named HDHomeRun tuner should be managed.";
+              };
+
+              friendlyName = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = "Optional display name shown in Jellyfin for this tuner.";
+              };
+
+              url = lib.mkOption {
+                type = lib.types.str;
+                example = "192.168.1.105";
+                description = "HDHomeRun tuner address. Jellyfin accepts either a bare host/IP or an HTTP URL.";
+              };
+
+              importFavoritesOnly = lib.mkOption {
+                type = lib.types.bool;
+                default = false;
+                description = "Whether Jellyfin should import only favorite channels from this HDHomeRun tuner.";
+              };
+            };
+          }));
+          default = { };
+          description = "Named HDHomeRun tuners for Jellyfin Live TV.";
+        };
+      };
     };
 
     expose = serviceExposure.mkOptions {
@@ -500,6 +563,16 @@ in
                 }
               ])
             cfg.liveTv.tvheadend.sources
+        )
+        ++ lib.flatten (
+          lib.mapAttrsToList
+            (sourceName: sourceCfg: [
+              {
+                assertion = !sourceCfg.enable || hasValue sourceCfg.url;
+                message = "alanix.jellyfin.liveTv.hdhomerun.sources.${sourceName}.url must be set.";
+              }
+            ])
+            cfg.liveTv.hdhomerun.sources
         );
 
       services.jellyfin = lib.mkIf baseConfigReady {
@@ -649,7 +722,7 @@ in
                 builtins.toJSON {
                   enabled = liveTvEnabled;
                   recordingPath = effectiveLiveTvRecordingPath;
-                  sources =
+                  tvheadendSources =
                     lib.mapAttrs
                       (_: sourceCfg: {
                         inherit (sourceCfg)
@@ -662,6 +735,17 @@ in
                         username = if sourceCfg.username == null then "" else sourceCfg.username;
                       })
                       effectiveTvheadendSources;
+                  hdhomerunSources =
+                    lib.mapAttrs
+                      (_: sourceCfg: {
+                        inherit (sourceCfg)
+                          enable
+                          url
+                          friendlyName
+                          importFavoritesOnly
+                          ;
+                      })
+                      effectiveHdhomerunSources;
                 }
               );
 
@@ -755,6 +839,7 @@ in
             BOOTSTRAP_MARKER=${lib.escapeShellArg bootstrapMarkerPath}
             IMPLICIT_BOOTSTRAP_USER=${lib.escapeShellArg config.services.jellyfin.user}
             TVHEADEND_MARKER_PREFIX="alanix-tvheadend:"
+            HDHOMERUN_MARKER_PREFIX="alanix-hdhomerun:"
             ACTING_TOKEN=""
             ACTING_USER=""
             USED_IMPLICIT_BOOTSTRAP=0
@@ -1186,6 +1271,20 @@ in
               LIVETV_JSON="$(fetch_livetv_json)"
             }
 
+            remove_managed_hdhomerun_livetv() {
+              local tuner_ids
+              local id
+
+              tuner_ids="$(printf '%s' "$LIVETV_JSON" | jq -r --arg prefix "$HDHOMERUN_MARKER_PREFIX" '.TunerHosts[]? | select((.Source // "") | startswith($prefix)) | .Id')"
+              while IFS= read -r id; do
+                [ -n "$id" ] || continue
+                echo "Removing managed Jellyfin Live TV tuner: $id"
+                api_delete "/LiveTv/TunerHosts?id=$(uri_encode "$id")" >/dev/null
+              done <<<"$tuner_ids"
+
+              LIVETV_JSON="$(fetch_livetv_json)"
+            }
+
             sync_livetv_recording_paths() {
               local recording_path="$1"
               local updated_json
@@ -1277,7 +1376,48 @@ in
               api_post_json "/LiveTv/ListingProviders" "$listing_payload" >/dev/null
             }
 
-            ensure_tvheadend_livetv() {
+            ensure_hdhomerun_source() {
+              local source_name="$1"
+              local source_json="$2"
+              local url
+              local friendly_name
+              local import_favorites_only
+              local source_marker
+              local tuner_payload
+
+              url="$(printf '%s' "$source_json" | jq -r '.url')"
+              friendly_name="$(printf '%s' "$source_json" | jq -r '.friendlyName')"
+              import_favorites_only="$(printf '%s' "$source_json" | jq -r '.importFavoritesOnly')"
+              source_marker="''${HDHOMERUN_MARKER_PREFIX}$source_name"
+
+              tuner_payload="$(
+                jq -cn \
+                  --arg type "hdhomerun" \
+                  --arg url "$url" \
+                  --arg friendlyName "$friendly_name" \
+                  --arg source "$source_marker" \
+                  --argjson importFavoritesOnly "$import_favorites_only" '
+                    {
+                      Type: $type,
+                      Url: $url,
+                      FriendlyName: $friendlyName,
+                      Source: $source,
+                      ImportFavoritesOnly: $importFavoritesOnly,
+                      AllowStreamSharing: true,
+                      AllowHWTranscoding: true,
+                      IgnoreDts: true,
+                      ReadAtNativeFramerate: false,
+                      AllowFmp4TranscodingContainer: false,
+                      FallbackMaxStreamingBitrate: 30000000
+                    }
+                  '
+              )"
+
+              echo "Reconciling Jellyfin Live TV tuner: $friendly_name"
+              api_post_json "/LiveTv/TunerHosts" "$tuner_payload" >/dev/null
+            }
+
+            ensure_livetv() {
               local enabled
               local recording_path
               local source_name
@@ -1288,16 +1428,24 @@ in
 
               if [ "$enabled" != "true" ]; then
                 remove_managed_tvheadend_livetv
+                remove_managed_hdhomerun_livetv
                 return 0
               fi
 
               recording_path="$(jq -r '.recordingPath // ""' "$LIVETV_FILE")"
               remove_managed_tvheadend_livetv
+              remove_managed_hdhomerun_livetv
 
               while IFS=$'\t' read -r source_name source_json; do
                 ensure_tvheadend_source "$source_name" "$source_json"
               done < <(
-                jq -r '(.sources // {}) | to_entries[] | select(.value.enable) | [.key, (.value | tojson)] | @tsv' "$LIVETV_FILE"
+                jq -r '(.tvheadendSources // {}) | to_entries[] | select(.value.enable) | [.key, (.value | tojson)] | @tsv' "$LIVETV_FILE"
+              )
+
+              while IFS=$'\t' read -r source_name source_json; do
+                ensure_hdhomerun_source "$source_name" "$source_json"
+              done < <(
+                jq -r '(.hdhomerunSources // {}) | to_entries[] | select(.value.enable) | [.key, (.value | tojson)] | @tsv' "$LIVETV_FILE"
               )
 
               LIVETV_JSON="$(fetch_livetv_json)"
@@ -1341,8 +1489,8 @@ in
               jq -r 'to_entries[] | [.key, .value.type, (.value.paths | sort | tojson)] | @tsv' "$LIBRARIES_FILE"
             )
 
-            if ! ensure_tvheadend_livetv; then
-              echo "Warning: could not reconcile Jellyfin Live TV from TVHeadend." >&2
+            if ! ensure_livetv; then
+              echo "Warning: could not reconcile Jellyfin Live TV." >&2
             fi
 
             touch "$BOOTSTRAP_MARKER"
