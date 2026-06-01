@@ -136,7 +136,26 @@ let
 
     exec ${lib.getExe cfg.openScrcpy.package} ${lib.escapeShellArgs cfg.openScrcpy.extraArgs}
   '';
-  pauseAntimicroxCommand = name: command: pkgs.writeShellScript "alanix-${name}" ''
+  pauseAntimicroxCommand = name: command: processNames: pkgs.writeShellScript "alanix-${name}" ''
+    set -u
+
+    process_names=${lib.escapeShellArg (lib.concatStringsSep "\n" processNames)}
+    pause_dir="''${XDG_RUNTIME_DIR:-/tmp}/alanix-antimicrox-pause"
+    pause_token="$pause_dir/${name}-$$"
+
+    process_is_running() {
+      while IFS= read -r process_name; do
+        [ -n "$process_name" ] || continue
+        if ${pkgs.procps}/bin/pgrep -x -- "$process_name" >/dev/null 2>&1; then
+          return 0
+        fi
+      done <<< "$process_names"
+      return 1
+    }
+
+    ${pkgs.coreutils}/bin/mkdir -p "$pause_dir"
+    printf '%s\n' "$$" > "$pause_token"
+
     was_active=0
     if ${systemctl} --user --quiet is-active antimicrox; then
       was_active=1
@@ -144,17 +163,58 @@ let
     fi
 
     cleanup() {
+      ${pkgs.coreutils}/bin/rm -f "$pause_token"
       if [ "$was_active" -eq 1 ]; then
         ${systemctl} --user start antimicrox || true
       fi
     }
     trap cleanup EXIT
+    trap 'trap - EXIT; cleanup; exit 130' INT
+    trap 'trap - EXIT; cleanup; exit 143' HUP TERM
 
-    ${command}
-    status=$?
+    ${command} &
+    command_pid=$!
+    command_status=0
+    command_done=0
+    app_seen=0
+    attempts=0
+    attempts_after_command=0
+
+    while [ "$attempts" -lt 80 ]; do
+      if process_is_running; then
+        app_seen=1
+        break
+      fi
+
+      if [ "$command_done" -eq 0 ] && ! kill -0 "$command_pid" 2>/dev/null; then
+        wait "$command_pid" || command_status=$?
+        command_done=1
+      fi
+
+      if [ "$command_done" -eq 1 ]; then
+        attempts_after_command=$((attempts_after_command + 1))
+        if [ "$attempts_after_command" -ge 20 ]; then
+          break
+        fi
+      fi
+
+      attempts=$((attempts + 1))
+      ${pkgs.coreutils}/bin/sleep 0.25
+    done
+
+    if [ "$command_done" -eq 0 ]; then
+      wait "$command_pid" || command_status=$?
+    fi
+
+    if [ "$app_seen" -eq 1 ] || process_is_running; then
+      while process_is_running; do
+        ${pkgs.coreutils}/bin/sleep 1
+      done
+    fi
+
     trap - EXIT
     cleanup
-    exit "$status"
+    exit "$command_status"
   '';
 
   keyboardSlot = code: ''
@@ -400,7 +460,7 @@ let
       "${cfg.onScreenKeyboard.keybinding}" = "exec ${keyboardToggleCommand}";
     }
     // lib.optionalAttrs usesOpenKodi {
-      "${cfg.openKodi.keybinding}" = "exec ${pauseAntimicroxCommand "open-kodi" cfg.openKodi.command}";
+      "${cfg.openKodi.keybinding}" = "exec ${pauseAntimicroxCommand "open-kodi" cfg.openKodi.command cfg.openKodi.processNames}";
     }
     // lib.optionalAttrs usesOpenDolphin {
       "${cfg.openDolphin.keybinding}" = "exec ${cfg.openDolphin.command}";
@@ -641,6 +701,12 @@ in
         default = "kodi";
         description = "Command run by the Kodi keybinding. AntiMicroX is stopped while this command runs.";
       };
+
+      processNames = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ "kodi" "kodi.bin" ];
+        description = "Process names that keep AntiMicroX paused after launching Kodi.";
+      };
     };
 
     openDolphin = {
@@ -860,10 +926,36 @@ in
             watcherScript = pkgs.writeShellScript "antimicrox-focus-watcher" ''
               pause_apps=${lib.escapeShellArg (lib.concatStringsSep "\n" pauseAppIds)}
               pause_game_apps=${lib.escapeShellArg (lib.concatStringsSep "\n" pauseGameAppIds)}
+              pause_dir="''${XDG_RUNTIME_DIR:-/tmp}/alanix-antimicrox-pause"
+
+              normalize_app_id() {
+                printf '%s' "$1" | ${pkgs.coreutils}/bin/tr '[:upper:]' '[:lower:]'
+              }
 
               contains_app() {
                 [ -n "$1" ] && [ -n "$2" ] || return 1
-                printf '%s\n' "$1" | ${pkgs.gnugrep}/bin/grep -Fixq -- "$2"
+                needle="$(normalize_app_id "$2")"
+                while IFS= read -r configured_app; do
+                  configured_app="$(normalize_app_id "$configured_app")"
+                  [ -n "$configured_app" ] || continue
+                  if [ "$needle" = "$configured_app" ] || [ "''${needle##*.}" = "$configured_app" ]; then
+                    return 0
+                  fi
+                done <<< "$1"
+                return 1
+              }
+
+              manual_pause_active() {
+                [ -d "$pause_dir" ] || return 1
+                for marker in "$pause_dir"/*; do
+                  [ -e "$marker" ] || continue
+                  marker_pid="$(${pkgs.coreutils}/bin/cat "$marker" 2>/dev/null || true)"
+                  if [ -n "$marker_pid" ] && kill -0 "$marker_pid" 2>/dev/null; then
+                    return 0
+                  fi
+                  ${pkgs.coreutils}/bin/rm -f "$marker"
+                done
+                return 1
               }
 
               is_game_title() {
@@ -891,9 +983,14 @@ in
                 is_pause_app=$(contains_app "$pause_apps" "$app_id" && echo yes || echo no)
                 is_game_app=$(contains_app "$pause_game_apps" "$app_id" && echo yes || echo no)
                 is_game_session=$([ "$is_game_app" = "yes" ] && is_game_title "$title" && echo yes || echo no)
-                should_pause=$([ "$is_pause_app" = "yes" ] || [ "$is_game_session" = "yes" ] && echo yes || echo no)
+                is_manual_pause=$(manual_pause_active && echo yes || echo no)
+                if [ "$is_manual_pause" = "yes" ] || [ "$is_pause_app" = "yes" ] || [ "$is_game_session" = "yes" ]; then
+                  should_pause=yes
+                else
+                  should_pause=no
+                fi
 
-                echo "change=$change focused_app=$app_id is_pause_app=$is_pause_app is_game_session=$is_game_session title=$title"
+                echo "change=$change focused_app=$app_id is_manual_pause=$is_manual_pause is_pause_app=$is_pause_app is_game_session=$is_game_session title=$title"
                 if [ "$should_pause" = "yes" ]; then
                   ${systemctl} --user stop antimicrox
                 else
