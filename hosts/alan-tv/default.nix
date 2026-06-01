@@ -148,9 +148,9 @@
           mediaSources.music = [
             { name = "Music"; path = "${config.alanix.syncthing.syncRoot}/media/music"; }
           ];
-          hdhomerun = {
+          iptvSimple = {
             enable = true;
-            httpDiscovery = true;
+            m3uUrl = "http://192.168.1.105/lineup.m3u";
           };
         };
         dolphin.enable = true;

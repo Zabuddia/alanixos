@@ -6,7 +6,7 @@ let
   cfg = config.kodi;
 
   hasTvheadend = cfg.tvheadend.servers != [ ];
-  hasHdhomerun = cfg.hdhomerun.enable;
+  hasIptvSimple = cfg.iptvSimple.enable;
   hasInvidious = cfg.invidious.enable;
   hasInvidiousUrl = hasInvidious && cfg.invidious.instanceUrl != null;
   hasInvidiousUsername = hasInvidious && cfg.invidious.username != null;
@@ -19,7 +19,7 @@ let
   kodiPackage = cfg.package.withPackages (p:
     [ p.joystick ]
     ++ lib.optionals hasTvheadend [ p.pvr-hts ]
-    ++ lib.optionals hasHdhomerun [ p.pvr-hdhomerun ]
+    ++ lib.optionals hasIptvSimple [ p.pvr-iptvsimple ]
     ++ lib.optionals hasInvidious [ p.invidious ]
     ++ lib.optionals hasJellyfin [ p.jellyfin ]
     ++ lib.optionals hasInputstreamAdaptive [ p.inputstream-adaptive ]);
@@ -41,16 +41,6 @@ let
       value.text = tvheadendSettingsXml server;
     })
     cfg.tvheadend.servers);
-
-  hdhomerunSettingsXml = ''
-    <settings version="2">
-        <setting id="hide_protected">${lib.boolToString cfg.hdhomerun.hideProtected}</setting>
-        <setting id="debug">${lib.boolToString cfg.hdhomerun.debug}</setting>
-        <setting id="hide_duplicate">${lib.boolToString cfg.hdhomerun.hideDuplicate}</setting>
-        <setting id="mark_new">${lib.boolToString cfg.hdhomerun.markNew}</setting>
-        <setting id="http_discovery">${lib.boolToString cfg.hdhomerun.httpDiscovery}</setting>
-    </settings>
-  '';
 
   invidiousSettingsXml = ''
     <settings version="2">
@@ -80,10 +70,20 @@ let
     </settings>
   '';
 
+  iptvSimpleSettingsXml = ''
+    <settings version="2">
+        <setting id="kodi_addon_instance_name">${lib.escapeXML cfg.iptvSimple.name}</setting>
+        <setting id="kodi_addon_instance_enabled" default="true">true</setting>
+        <setting id="m3uPathType">1</setting>
+        <setting id="m3uUrl">${lib.escapeXML cfg.iptvSimple.m3uUrl}</setting>
+        <setting id="m3uCache">${lib.boolToString cfg.iptvSimple.cache}</setting>
+    </settings>
+  '';
+
   hasMediaSources = cfg.mediaSources.video != [ ] || cfg.mediaSources.music != [ ];
   enabledAddonIds =
     lib.optionals hasTvheadend [ "pvr.hts" ]
-    ++ lib.optionals hasHdhomerun [ "pvr.hdhomerun" ]
+    ++ lib.optionals hasIptvSimple [ "pvr.iptvsimple" ]
     ++ lib.optionals hasInvidious [ "plugin.video.invidious" ]
     ++ lib.optionals hasJellyfin [ "plugin.video.jellyfin" ]
     ++ lib.optionals hasInputstreamAdaptive [ "inputstream.adaptive" ];
@@ -174,40 +174,6 @@ in
         });
         default = [ ];
         description = "List of TVHeadend servers to configure. The first entry is the primary instance; additional entries create multi-instance pvr.hts configs.";
-      };
-    };
-
-    hdhomerun = {
-      enable = lib.mkEnableOption "HDHomeRun Kodi PVR add-on";
-
-      hideProtected = lib.mkOption {
-        type = types.bool;
-        default = true;
-        description = "Whether the Kodi HDHomeRun PVR add-on should hide protected channels.";
-      };
-
-      hideDuplicate = lib.mkOption {
-        type = types.bool;
-        default = true;
-        description = "Whether the Kodi HDHomeRun PVR add-on should hide duplicate channels.";
-      };
-
-      markNew = lib.mkOption {
-        type = types.bool;
-        default = true;
-        description = "Whether the Kodi HDHomeRun PVR add-on should mark new shows.";
-      };
-
-      httpDiscovery = lib.mkOption {
-        type = types.bool;
-        default = false;
-        description = "Whether the Kodi HDHomeRun PVR add-on should try SiliconDust HTTP discovery before LAN broadcast discovery.";
-      };
-
-      debug = lib.mkOption {
-        type = types.bool;
-        default = false;
-        description = "Whether the Kodi HDHomeRun PVR add-on should enable debug logging.";
       };
     };
 
@@ -320,6 +286,27 @@ in
         description = "Music file sources declared in Kodi sources.xml.";
       };
     };
+
+    iptvSimple = {
+      enable = lib.mkEnableOption "IPTV Simple Client Kodi PVR add-on";
+
+      m3uUrl = lib.mkOption {
+        type = types.str;
+        description = "URL of the M3U playlist for the IPTV Simple Client.";
+      };
+
+      name = lib.mkOption {
+        type = types.str;
+        default = "HDHomeRun";
+        description = "Display name for the IPTV Simple Client instance.";
+      };
+
+      cache = lib.mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether the IPTV Simple Client should cache the remote M3U playlist.";
+      };
+    };
   };
 
   config._assertions = lib.optionals cfg.enable [
@@ -338,12 +325,6 @@ in
       home.packages = [ kodiPackage ];
       home.file =
         lib.optionalAttrs hasTvheadend tvheadendFiles
-        // lib.optionalAttrs hasHdhomerun {
-          ".kodi/userdata/addon_data/pvr.hdhomerun/settings.xml" = {
-            text = hdhomerunSettingsXml;
-            force = true;
-          };
-        }
         // lib.optionalAttrs (hasInvidious && !hasInvidiousAuth) {
           ".kodi/userdata/addon_data/plugin.video.invidious/settings.xml" = {
             text = invidiousSettingsXml;
@@ -372,6 +353,14 @@ in
             fi
           done
         fi
+      '');
+
+      home.activation.writeIptvSimpleSettings = lib.mkIf hasIptvSimple (lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+        addonDir="${config.home.homeDirectory}/.kodi/userdata/addon_data/pvr.iptvsimple"
+        mkdir -p "$addonDir"
+        settingsFile="$addonDir/instance-settings-1.xml"
+        rm -f "$settingsFile"
+        printf '%s\n' ${lib.escapeShellArg iptvSimpleSettingsXml} > "$settingsFile"
       '');
 
       home.activation.writeInvidiousSettings = lib.mkIf hasInvidiousAuth (lib.hm.dag.entryAfter [ "linkGeneration" ] ''
