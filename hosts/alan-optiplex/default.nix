@@ -163,9 +163,10 @@
           mediaSources.music = [
             { name = "Music"; path = "${config.alanix.syncthing.syncRoot}/media/music"; }
           ];
-          tvheadend.servers = [
-            { name = "alan-big-nixos"; host = "alan-big-nixos"; htspPort = 19982; httpPort = 19981; }
-          ];
+          hdhomerun = {
+            enable = true;
+            httpDiscovery = true;
+          };
         };
         dolphin.enable = true;
         melonds.enable = true;

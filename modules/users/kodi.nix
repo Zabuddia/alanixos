@@ -6,6 +6,7 @@ let
   cfg = config.kodi;
 
   hasTvheadend = cfg.tvheadend.servers != [ ];
+  hasHdhomerun = cfg.hdhomerun.enable;
   hasInvidious = cfg.invidious.enable;
   hasInvidiousUrl = hasInvidious && cfg.invidious.instanceUrl != null;
   hasInvidiousUsername = hasInvidious && cfg.invidious.username != null;
@@ -18,6 +19,7 @@ let
   kodiPackage = cfg.package.withPackages (p:
     [ p.joystick ]
     ++ lib.optionals hasTvheadend [ p.pvr-hts ]
+    ++ lib.optionals hasHdhomerun [ p.pvr-hdhomerun ]
     ++ lib.optionals hasInvidious [ p.invidious ]
     ++ lib.optionals hasJellyfin [ p.jellyfin ]
     ++ lib.optionals hasInputstreamAdaptive [ p.inputstream-adaptive ]);
@@ -39,6 +41,16 @@ let
       value.text = tvheadendSettingsXml server;
     })
     cfg.tvheadend.servers);
+
+  hdhomerunSettingsXml = ''
+    <settings version="2">
+        <setting id="hide_protected">${lib.boolToString cfg.hdhomerun.hideProtected}</setting>
+        <setting id="debug">${lib.boolToString cfg.hdhomerun.debug}</setting>
+        <setting id="hide_duplicate">${lib.boolToString cfg.hdhomerun.hideDuplicate}</setting>
+        <setting id="mark_new">${lib.boolToString cfg.hdhomerun.markNew}</setting>
+        <setting id="http_discovery">${lib.boolToString cfg.hdhomerun.httpDiscovery}</setting>
+    </settings>
+  '';
 
   invidiousSettingsXml = ''
     <settings version="2">
@@ -71,6 +83,7 @@ let
   hasMediaSources = cfg.mediaSources.video != [ ] || cfg.mediaSources.music != [ ];
   enabledAddonIds =
     lib.optionals hasTvheadend [ "pvr.hts" ]
+    ++ lib.optionals hasHdhomerun [ "pvr.hdhomerun" ]
     ++ lib.optionals hasInvidious [ "plugin.video.invidious" ]
     ++ lib.optionals hasJellyfin [ "plugin.video.jellyfin" ]
     ++ lib.optionals hasInputstreamAdaptive [ "inputstream.adaptive" ];
@@ -161,6 +174,40 @@ in
         });
         default = [ ];
         description = "List of TVHeadend servers to configure. The first entry is the primary instance; additional entries create multi-instance pvr.hts configs.";
+      };
+    };
+
+    hdhomerun = {
+      enable = lib.mkEnableOption "HDHomeRun Kodi PVR add-on";
+
+      hideProtected = lib.mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether the Kodi HDHomeRun PVR add-on should hide protected channels.";
+      };
+
+      hideDuplicate = lib.mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether the Kodi HDHomeRun PVR add-on should hide duplicate channels.";
+      };
+
+      markNew = lib.mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether the Kodi HDHomeRun PVR add-on should mark new shows.";
+      };
+
+      httpDiscovery = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether the Kodi HDHomeRun PVR add-on should try SiliconDust HTTP discovery before LAN broadcast discovery.";
+      };
+
+      debug = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether the Kodi HDHomeRun PVR add-on should enable debug logging.";
       };
     };
 
@@ -291,6 +338,12 @@ in
       home.packages = [ kodiPackage ];
       home.file =
         lib.optionalAttrs hasTvheadend tvheadendFiles
+        // lib.optionalAttrs hasHdhomerun {
+          ".kodi/userdata/addon_data/pvr.hdhomerun/settings.xml" = {
+            text = hdhomerunSettingsXml;
+            force = true;
+          };
+        }
         // lib.optionalAttrs (hasInvidious && !hasInvidiousAuth) {
           ".kodi/userdata/addon_data/plugin.video.invidious/settings.xml" = {
             text = invidiousSettingsXml;
