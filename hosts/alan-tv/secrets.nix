@@ -34,6 +34,12 @@
     mode = "0400";
   };
 
+  sops.secrets."wifi-passwords/OpenWrt" = {
+    sopsFile = (import ../../secrets/files.nix).network;
+    owner = "root";
+    mode = "0400";
+  };
+
   sops.secrets."ssh-private-keys/alan-tv" = {
     sopsFile = (import ../../secrets/files.nix).users;
     owner = "buddia";

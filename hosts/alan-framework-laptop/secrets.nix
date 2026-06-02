@@ -82,7 +82,7 @@
         mode = "0400";
       };
 
-      "wifi-passwords/ATT2edMYDj" = {
+      "wifi-passwords/OpenWrt" = {
         sopsFile = (import ../../secrets/files.nix).network;
         owner = "root";
         mode = "0400";
