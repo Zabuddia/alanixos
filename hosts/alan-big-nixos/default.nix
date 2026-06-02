@@ -154,7 +154,7 @@
       enable = true;
       address = "alan-big-nixos";
       acceptRoutes = true;
-      advertiseRoutes = [ "192.168.1.0/24" ];
+      advertiseRoutes = [ "192.168.10.0/24" ];
       operator = "buddia";
     };
 
