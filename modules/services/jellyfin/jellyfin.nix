@@ -405,7 +405,7 @@ in
 
               url = lib.mkOption {
                 type = lib.types.str;
-                example = "192.168.1.105";
+                example = "192.168.10.105";
                 description = "HDHomeRun tuner address. Jellyfin accepts either a bare host/IP or an HTTP URL.";
               };
 

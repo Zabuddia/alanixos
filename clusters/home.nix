@@ -757,7 +757,7 @@ in
         hdhomerun.sources.local = {
           enable = true;
           friendlyName = "HDHomeRun";
-          url = "192.168.1.105";
+          url = "192.168.10.105";
         };
       };
 
