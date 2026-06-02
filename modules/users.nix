@@ -222,6 +222,26 @@ let
         && userCfg.home.directory != null
         && userCfg.sshPublicKey != null)
       cfg.accounts;
+  kodiRemoteControlAccounts =
+    lib.filterAttrs
+      (_: userCfg:
+        userCfg.enable
+        && userCfg.kodi.enable
+        && userCfg.kodi.remoteControl.enable)
+      cfg.accounts;
+  kodiRemoteControlFirewallPorts =
+    lib.unique (
+      lib.concatMap
+        (userCfg:
+          lib.optionals userCfg.kodi.remoteControl.openFirewall [
+            userCfg.kodi.remoteControl.port
+          ])
+        (builtins.attrValues kodiRemoteControlAccounts)
+    );
+  hasKodiRemoteControlZeroconf =
+    lib.any
+      (userCfg: userCfg.kodi.remoteControl.announceServices)
+      (builtins.attrValues kodiRemoteControlAccounts);
   mkHomeConfig = username: userCfg: {
     imports = userCfg.home.modules;
     home.username = username;
@@ -311,6 +331,17 @@ in
             '')
           sshPublicKeyAccounts
       );
+    })
+
+    (lib.mkIf (kodiRemoteControlFirewallPorts != [ ]) {
+      networking.firewall.allowedTCPPorts = kodiRemoteControlFirewallPorts;
+    })
+
+    (lib.mkIf hasKodiRemoteControlZeroconf {
+      services.avahi = {
+        enable = true;
+        openFirewall = true;
+      };
     })
 
     {
