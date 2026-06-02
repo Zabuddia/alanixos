@@ -10,8 +10,6 @@ in
 {
   options.dolphin.enable = lib.mkEnableOption "Dolphin Emulator for this user";
 
-  config.services.udev.packages = lib.optionals cfg.enable [ pkgs-unstable.dolphin-emu ];
-
   config.home.modules = lib.optionals cfg.enable [
     {
       home.packages = [ pkgs-unstable.dolphin-emu ];
