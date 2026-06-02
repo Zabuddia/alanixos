@@ -216,7 +216,12 @@
       operator = "buddia";
     };
 
-    alanix.wifi.radio.enable = false;
+    alanix.wifi = {
+      radio.enable = true;
+      networks = [
+        { ssid = "OpenWrt"; pskSecret = "wifi-passwords/OpenWrt"; }
+      ];
+    };
 
     services.avahi.enable = true;
 

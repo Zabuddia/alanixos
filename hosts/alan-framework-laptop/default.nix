@@ -273,7 +273,7 @@
     };
 
     alanix.wifi.networks = [
-      { ssid = "ATT2edMYDj"; pskSecret = "wifi-passwords/ATT2edMYDj"; }
+      { ssid = "OpenWrt"; pskSecret = "wifi-passwords/OpenWrt"; }
     ];
 
     alanix.syncthing = {
