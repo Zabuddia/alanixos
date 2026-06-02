@@ -214,6 +214,7 @@ let
   enabledAccounts = lib.filterAttrs (_: userCfg: userCfg.enable) cfg.accounts;
   homeEnabledAccounts = lib.filterAttrs (_: userCfg: userCfg.enable && userCfg.home.enable) cfg.accounts;
   antimicroxEnabledAccounts = lib.filterAttrs (_: userCfg: userCfg.enable && userCfg.antimicrox.enable) cfg.accounts;
+  dolphinEnabledAccounts = lib.filterAttrs (_: userCfg: userCfg.enable && userCfg.dolphin.enable) cfg.accounts;
   sshPublicKeyAccounts =
     lib.filterAttrs
       (_: userCfg:
@@ -291,6 +292,10 @@ in
     (lib.mkIf (antimicroxEnabledAccounts != { }) {
       hardware.uinput.enable = true;
       users.groups.uinput.members = builtins.attrNames antimicroxEnabledAccounts;
+    })
+
+    (lib.mkIf (dolphinEnabledAccounts != { }) {
+      services.udev.packages = [ pkgs-unstable.dolphin-emu ];
     })
 
     (lib.mkIf (sshPublicKeyAccounts != { }) {
