@@ -152,6 +152,11 @@
             enable = true;
             m3uUrl = "http://192.168.10.105/lineup.m3u";
           };
+          remoteControl = {
+            enable = true;
+            port = 8080;
+            requireAuthentication = false;
+          };
         };
         dolphin.enable = true;
         melonds.enable = true;

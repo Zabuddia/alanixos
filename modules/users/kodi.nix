@@ -15,6 +15,10 @@ let
   invidiousUsername = lib.escapeXML (lib.optionalString (cfg.invidious.username != null) cfg.invidious.username);
   hasInputstreamAdaptive = cfg.inputstreamAdaptive.enable;
   hasJellyfin = cfg.jellyfin.enable;
+  hasRemoteControl = cfg.remoteControl.enable;
+  hasRemoteControlAuth = hasRemoteControl && cfg.remoteControl.requireAuthentication;
+  hasRemoteControlUsername = hasRemoteControlAuth && cfg.remoteControl.username != null;
+  hasRemoteControlPasswordFile = hasRemoteControlAuth && cfg.remoteControl.passwordFile != null;
 
   kodiPackage = cfg.package.withPackages (p:
     [ p.joystick ]
@@ -120,6 +124,25 @@ let
         </files>
     </sources>
   '';
+
+  kodiRemoteControlSettings =
+    {
+      "services.webserver" = "true";
+      "services.webserverport" = toString cfg.remoteControl.port;
+      "services.webserverauthentication" = lib.boolToString cfg.remoteControl.requireAuthentication;
+      "services.esenabled" = lib.boolToString cfg.remoteControl.allowApplicationsOnThisSystem;
+      "services.esallinterfaces" = lib.boolToString cfg.remoteControl.allowApplicationsOnOtherSystems;
+      "services.zeroconf" = lib.boolToString cfg.remoteControl.announceServices;
+    }
+    // lib.optionalAttrs hasRemoteControlUsername {
+      "services.webserverusername" = cfg.remoteControl.username;
+    }
+    // lib.optionalAttrs (!hasRemoteControlAuth) {
+      "services.webserverusername" = "";
+      "services.webserverpassword" = "";
+    };
+
+  kodiRemoteControlSettingsJson = builtins.toJSON kodiRemoteControlSettings;
 
   mediaSourceType = types.submodule {
     options = {
@@ -307,6 +330,58 @@ in
         description = "Whether the IPTV Simple Client should cache the remote M3U playlist.";
       };
     };
+
+    remoteControl = {
+      enable = lib.mkEnableOption "Kodi remote control";
+
+      port = lib.mkOption {
+        type = types.port;
+        default = 8080;
+        description = "HTTP port used by Kodi's built-in web server.";
+      };
+
+      openFirewall = lib.mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether to open Kodi's HTTP remote control port in the NixOS firewall.";
+      };
+
+      requireAuthentication = lib.mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether Kodi's web server should require a username and password.";
+      };
+
+      username = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Username for Kodi's web server when authentication is required.";
+      };
+
+      passwordFile = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Path to a file containing Kodi's web server password. Read at activation time; never stored in the Nix store.";
+      };
+
+      allowApplicationsOnThisSystem = lib.mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether applications on the same system may control Kodi via JSON-RPC or EventServer.";
+      };
+
+      allowApplicationsOnOtherSystems = lib.mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether applications on other systems may control Kodi via JSON-RPC or EventServer.";
+      };
+
+      announceServices = lib.mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether Kodi should announce enabled services to other systems via Zeroconf.";
+      };
+    };
   };
 
   config._assertions = lib.optionals cfg.enable [
@@ -317,6 +392,14 @@ in
     {
       assertion = !(hasInvidiousAuth && cfg.invidious.username == null);
       message = "kodi.invidious.username must be set when kodi.invidious.passwordFile is set";
+    }
+    {
+      assertion = !(hasRemoteControlAuth && cfg.remoteControl.username == null);
+      message = "kodi.remoteControl.username must be set when kodi.remoteControl.requireAuthentication is true";
+    }
+    {
+      assertion = !(hasRemoteControlAuth && cfg.remoteControl.passwordFile == null);
+      message = "kodi.remoteControl.passwordFile must be set when kodi.remoteControl.requireAuthentication is true";
     }
   ];
 
@@ -379,6 +462,55 @@ in
           printf '%s\n' '    <setting id="mark_items_watched">${lib.boolToString cfg.invidious.markItemsWatched}</setting>'
           printf '%s\n' '</settings>'
         } > "$settingsFile"
+        chmod 600 "$settingsFile"
+      '');
+
+      home.activation.writeKodiRemoteControlSettings = lib.mkIf hasRemoteControl (lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+        settingsFile="${config.home.homeDirectory}/.kodi/userdata/guisettings.xml"
+        mkdir -p "$(dirname "$settingsFile")"
+        tmpFile="$(mktemp)"
+        ${pkgs.python3}/bin/python3 - "$settingsFile" "$tmpFile" ${lib.escapeShellArg kodiRemoteControlSettingsJson} ${lib.optionalString hasRemoteControlPasswordFile (lib.escapeShellArg cfg.remoteControl.passwordFile)} <<'PY'
+import json
+import sys
+import xml.etree.ElementTree as ET
+
+settings_file = sys.argv[1]
+tmp_file = sys.argv[2]
+updates = json.loads(sys.argv[3])
+
+if len(sys.argv) > 4:
+    with open(sys.argv[4], encoding="utf-8") as password_file:
+        updates["services.webserverpassword"] = password_file.read().rstrip("\n")
+
+try:
+    tree = ET.parse(settings_file)
+    root = tree.getroot()
+except (FileNotFoundError, ET.ParseError):
+    root = ET.Element("settings", {"version": "2"})
+    tree = ET.ElementTree(root)
+
+if root.tag != "settings":
+    root = ET.Element("settings", {"version": "2"})
+    tree = ET.ElementTree(root)
+
+root.set("version", root.get("version", "2"))
+
+settings = {
+    setting.get("id"): setting
+    for setting in root.findall("setting")
+    if setting.get("id") is not None
+}
+
+for setting_id, value in updates.items():
+    setting = settings.get(setting_id)
+    if setting is None:
+        setting = ET.SubElement(root, "setting", {"id": setting_id})
+    setting.text = value
+
+ET.indent(tree, space="    ")
+tree.write(tmp_file, encoding="utf-8", xml_declaration=False)
+PY
+        mv "$tmpFile" "$settingsFile"
         chmod 600 "$settingsFile"
       '');
     })
