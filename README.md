@@ -167,7 +167,25 @@ The embedded DERP server is enabled and the public DERP map is disabled by defau
 | ACME HTTP challenge | `80/tcp` |
 | DERP STUN | `3478/udp` |
 
-Clients still run `tailscaled`; they point at Headscale with `tailscale up --login-server https://headscale.fifefin.com ...`. When a host has a Headscale pre-auth key stored in SOPS, `alanix.tailscale.authKeyFile` can make that login declarative.
+Clients still run `tailscaled`; they point at Headscale with `alanix.tailscale.loginServer = "https://headscale.fifefin.com";`. When `loginServer` is set, `alanix.tailscale` automatically looks for a host-specific preauth key in `secrets/network.yaml`:
+
+```yaml
+headscale:
+  preauth-keys:
+    alan-framework-laptop: ...
+```
+
+The generated secret path is `/run/secrets/headscale/preauth-keys/<hostname>`, and NixOS passes it to `tailscale up --auth-key ... --login-server=...` when `tailscaled` needs login. Existing nodes already logged into Tailscale SaaS still need a one-time `sudo tailscale logout` so the autoconnect unit can join Headscale.
+
+Create preauth keys on the active Headscale leader, then store them in SOPS from the repo checkout:
+
+```bash
+host=alan-framework-laptop
+key="$(sudo headscale preauthkeys create --user 1 --reusable --expiration 87600h --output json | jq -r .key)"
+sops set secrets/network.yaml "[\"headscale\"][\"preauth-keys\"][\"$host\"]" "$(jq -Rn --arg key "$key" '$key')"
+```
+
+Use `sudo headscale users list` if the `buddia` user ID is not `1`.
 
 ## Why a host file starts like this
 
