@@ -1,6 +1,7 @@
 {
   imports = [
     ./actual
+    ./adguardhome
     ./audiobookshelf
     ./firefly-iii
     ./filebrowser
