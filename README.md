@@ -153,8 +153,21 @@ nmcli connection add type wifi ifname wlo1 con-name eduroam ssid eduroam \
 - `modules/users.nix` handles users and Home Manager. It works like `modules/system.nix`: it defines `alanix.users` and maps that into normal NixOS and Home Manager options.
 - `alanix.users.accounts.<name>.home` is just the base Home Manager block for that user: directory, state version, files, and extra packages.
 - `modules/users/` implements per-account user features like `git`, `sh`, `ssh`, `desktop`, `chromium`, `librewolf`, and `vscode`, which are enabled directly as `alanix.users.accounts.<name>.<feature>`.
-- `alanix.wireguard.peers` stays explicit in each host file, so VPN topology is declared where the rest of the host lives.
 - `modules/desktop/`, `modules/network/`, and `modules/services/` implement the actual feature modules that the host files turn on with `alanix.*`.
+
+## Headscale and DERP
+
+`alanix.headscale` runs on the active `home` cluster leader and is exposed at `https://headscale.fifefin.com`. The cluster DDNS service keeps that name pointed at the current leader, and the Headscale state in `/var/lib/headscale` is staged and backed up like the other clustered services.
+
+The embedded DERP server is enabled and the public DERP map is disabled by default. Routers that can become the active leader need these inbound forwards to the currently active node:
+
+| Service | Port |
+| --- | --- |
+| Headscale HTTPS | `443/tcp` |
+| ACME HTTP challenge | `80/tcp` |
+| DERP STUN | `3478/udp` |
+
+Clients still run `tailscaled`; they point at Headscale with `tailscale up --login-server https://headscale.fifefin.com ...`. When a host has a Headscale pre-auth key stored in SOPS, `alanix.tailscale.authKeyFile` can make that login declarative.
 
 ## Why a host file starts like this
 
@@ -169,13 +182,11 @@ module = { config, pkgs, ... }: let
     git
   ];
 
-  wireguard = {
+  tailscale = {
     enable = true;
-    vpnIP = "10.100.0.4";
-    endpoint = "alan-laptop-nixos-wg.fifefin.com:51820";
-    publicKey = "...";
-    listenPort = 51820;
-    peers = [ "alan-big-nixos" "randy-big-nixos" "alan-framework" ];
+    address = "alan-laptop-nixos";
+    acceptRoutes = true;
+    loginServer = "https://headscale.fifefin.com";
   };
 in {
   imports = [

@@ -11,10 +11,10 @@ in
   options.alanix.ssh = {
     enable = lib.mkEnableOption "OpenSSH server";
 
-    openFirewallOnWireguard = lib.mkOption {
+    openFirewallOnTailscale = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = "Whether to allow SSH on the WireGuard interface.";
+      description = "Whether to allow SSH on the Tailscale interface.";
     };
 
     startAgent = lib.mkOption {
@@ -26,7 +26,7 @@ in
     hostPublicKey = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
-      description = "SSH host public key for this machine (content of /etc/ssh/ssh_host_ed25519_key.pub). When set, all other hosts add a programs.ssh.knownHosts entry using this host's WireGuard IP.";
+      description = "SSH host public key for this machine (content of /etc/ssh/ssh_host_ed25519_key.pub). When set, all other hosts add a programs.ssh.knownHosts entry using this host's Tailscale name.";
     };
   };
 
@@ -34,12 +34,12 @@ in
     {
       assertions = [
         {
-          assertion = !cfg.openFirewallOnWireguard || cfg.enable;
-          message = "alanix.ssh.openFirewallOnWireguard requires alanix.ssh.enable = true.";
+          assertion = !cfg.openFirewallOnTailscale || cfg.enable;
+          message = "alanix.ssh.openFirewallOnTailscale requires alanix.ssh.enable = true.";
         }
         {
-          assertion = !cfg.openFirewallOnWireguard || config.alanix.wireguard.enable;
-          message = "alanix.ssh.openFirewallOnWireguard requires alanix.wireguard.enable = true.";
+          assertion = !cfg.openFirewallOnTailscale || config.alanix.tailscale.enable;
+          message = "alanix.ssh.openFirewallOnTailscale requires alanix.tailscale.enable = true.";
         }
       ];
     }
@@ -58,8 +58,8 @@ in
         mode = "0644";
       };
 
-      networking.firewall.interfaces.wg0.allowedTCPPorts =
-        lib.optionals cfg.openFirewallOnWireguard [ 22 ];
+      networking.firewall.interfaces.${config.services.tailscale.interfaceName}.allowedTCPPorts =
+        lib.optionals cfg.openFirewallOnTailscale [ 22 ];
     })
 
     (lib.mkIf cfg.startAgent {
@@ -70,8 +70,8 @@ in
       programs.ssh.knownHosts = lib.mapAttrs'
         (hostName: hostCfg:
           let
-            wgIP = hostCfg.config.alanix.wireguard.vpnIP;
-            extraNames = lib.optional (wgIP != null) wgIP;
+            tailscaleName = hostCfg.config.alanix.tailscale.address;
+            extraNames = lib.optional (tailscaleName != null) tailscaleName;
           in
           lib.nameValuePair
             hostName

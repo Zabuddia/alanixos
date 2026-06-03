@@ -95,7 +95,7 @@ let
         authorizedHosts = lib.mkOption {
           type = types.listOf types.str;
           default = [ ];
-          description = "Names of alanix hosts whose sshPublicKey for this account is added to authorized_keys on this host. Mirrors the wireguard peers pattern.";
+          description = "Names of alanix hosts whose sshPublicKey for this account is added to authorized_keys on this host. Mirrors the explicit peer-list pattern.";
         };
 
         home = {

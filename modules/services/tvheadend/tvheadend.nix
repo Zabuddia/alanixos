@@ -25,7 +25,6 @@ let
   htspExposed =
     cfg.htsp.expose.tor.enable
     || cfg.htsp.expose.tailscale.enable
-    || cfg.htsp.expose.wireguard.enable
     || cfg.htsp.expose.wan.enable;
 
   containerVolumes =
@@ -105,8 +104,7 @@ let
 
   proxyUnitNamesFor =
     serviceName: exposeCfg:
-    lib.optionals (exposeCfg.tailscale.enable && !exposeCfg.tailscale.tls) [ "alanix-expose-tailscale-${serviceName}" ]
-    ++ lib.optionals (exposeCfg.wireguard.enable && !exposeCfg.wireguard.tls) [ "alanix-expose-wireguard-${serviceName}" ];
+    lib.optionals (exposeCfg.tailscale.enable && !exposeCfg.tailscale.tls) [ "alanix-expose-tailscale-${serviceName}" ];
 
   proxyUnitNames =
     proxyUnitNamesFor "tvheadend" cfg.expose

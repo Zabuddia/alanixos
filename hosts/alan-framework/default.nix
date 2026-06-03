@@ -138,38 +138,13 @@
 
     alanix.ssh = {
       enable = true;
-      openFirewallOnWireguard = true;
+      openFirewallOnTailscale = true;
       startAgent = true;
       hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDJKhkgpVCtwYKMoUpybQejUcyAcuDTRdEk0981whwds";
     };
-
-    alanix.ddns = {
-      enable = true;
-      provider = "cloudflare";
-      domains = [ "alan-framework-wg.fifefin.com" ];
-      credentialsFile = config.sops.templates."cloudflare-env".path;
-    };
-
-    alanix.wireguard = {
-      enable = true;
-      vpnIP = "10.100.0.3";
-      endpoint = "alan-framework-wg.fifefin.com:51820";
-      publicKey = "f6MBPUIr8jLqr8F4LDvJksJIN/BvGnDGG8OycXbrd1c=";
-      privateKeyFile = config.sops.secrets."wireguard-private-keys/${hostname}".path;
-      listenPort = 51820;
-      peers = [
-        "alan-big-nixos"
-        "randy-big-nixos"
-        "alan-framework-laptop"
-        "alan-laptop-nixos"
-        "alan-node"
-        "alan-optiplex"
-        "alan-tv"
-      ];
-    };
-
     alanix.tailscale = {
       enable = true;
+      loginServer = "https://headscale.fifefin.com";
       address = "alan-framework";
       acceptRoutes = true;
       operator = "buddia";
@@ -224,10 +199,6 @@
           tailscale = {
             enable = true;
             port = 19843;
-          };
-          wireguard = {
-            enable = true;
-            port = 9843;
           };
           tor = {
             enable = true;

@@ -456,28 +456,6 @@ let
         };
       }
     ]
-    ++ lib.optionals (
-      dashboardCfg.expose.wireguard.enable
-      && (
-        config.alanix.wireguard.vpnIP != null
-        || dashboardCfg.expose.wireguard.address != null
-      )
-      && dashboardCfg.expose.wireguard.port != null
-    ) [
-      {
-        label = "WireGuard";
-        transport = "wireguard";
-        url = mkUrl {
-          scheme = "http";
-          host =
-            if dashboardCfg.expose.wireguard.address != null then
-              dashboardCfg.expose.wireguard.address
-            else
-              config.alanix.wireguard.vpnIP;
-          port = dashboardCfg.expose.wireguard.port;
-        };
-      }
-    ]
     ++ lib.optionals (dashboardCfg.expose.tor.enable && dashboardCfg.expose.tor.hostname != null) [
       {
         label = "Tor";

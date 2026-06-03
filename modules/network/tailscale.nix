@@ -18,6 +18,9 @@ let
       "--advertise-routes=${lib.concatStringsSep "," cfg.advertiseRoutes}"
     ]
     ++ lib.optionals (cfg.operator != null) [ "--operator=${cfg.operator}" ];
+  loginFlags = lib.optionals (cfg.loginServer != null) [
+    "--login-server=${cfg.loginServer}"
+  ];
 in
 {
   options.alanix.tailscale = {
@@ -47,6 +50,18 @@ in
       default = null;
       description = "Unix user allowed to operate Tailscale as an operator (e.g. for serve/funnel).";
     };
+
+    loginServer = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Optional Tailscale-compatible control server URL, such as a Headscale server.";
+    };
+
+    authKeyFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = "Optional file containing a Tailscale/Headscale auth key for declarative login.";
+    };
   };
 
   config = lib.mkIf cfg.enable (lib.mkMerge [
@@ -54,6 +69,9 @@ in
       services.tailscale = {
         enable = true;
         package = pkgs-unstable.tailscale;
+        authKeyFile = cfg.authKeyFile;
+        disableUpstreamLogging = cfg.loginServer != null;
+        extraUpFlags = loginFlags;
         useRoutingFeatures = routingMode;
         extraSetFlags = preferenceFlags;
       };

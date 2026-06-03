@@ -49,7 +49,6 @@ let
     && (
       exposeCfg.wan.enable
       || exposeCfg.tailscale.enable
-      || exposeCfg.wireguard.enable
       || exposeCfg.tor.enable
     );
 

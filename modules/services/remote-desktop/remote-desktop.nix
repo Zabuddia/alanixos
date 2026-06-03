@@ -57,7 +57,7 @@ let
 in
 {
   options.alanix.remote-desktop = {
-    enable = lib.mkEnableOption "wayvnc VNC remote desktop (WireGuard-restricted)";
+    enable = lib.mkEnableOption "wayvnc VNC remote desktop (Tailscale-restricted)";
 
     autoStart = lib.mkOption {
       type = lib.types.bool;
@@ -81,8 +81,8 @@ in
   config = lib.mkIf cfg.enable {
     assertions = [
       {
-        assertion = config.alanix.wireguard.enable;
-        message = "alanix.remote-desktop: requires alanix.wireguard.enable = true (VNC is restricted to wg0).";
+        assertion = config.alanix.tailscale.enable;
+        message = "alanix.remote-desktop: requires alanix.tailscale.enable = true (VNC is restricted to the Tailscale interface).";
       }
       {
         assertion = config.alanix.desktop.enable;
@@ -99,7 +99,7 @@ in
       }
     ];
 
-    networking.firewall.interfaces.wg0.allowedTCPPorts = [ cfg.port ];
+    networking.firewall.interfaces.${config.services.tailscale.interfaceName}.allowedTCPPorts = [ cfg.port ];
 
     environment.systemPackages = [
       pkgs.wayvnc

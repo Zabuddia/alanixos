@@ -24,7 +24,6 @@ let
     inherit config exposeCfg;
     listenAddress = cfg.listenAddress;
     domainOverride = cfg.domain;
-    allowWireguard = false;
     allowListenAddressFallback = false;
   };
 
