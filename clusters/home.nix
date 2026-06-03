@@ -96,6 +96,7 @@ in
         detectionTimeout = "15s";
         domains = [
           "headscale.fifefin.com"
+          "headplane.fifefin.com"
           "dashboard.fifefin.com"
           "filebrowser.fifefin.com"
           "forgejo.fifefin.com"
@@ -182,6 +183,17 @@ in
       serverUrl = "https://headscale.fifefin.com";
       baseDomain = "tail.fifefin.com";
       backupDir = "/var/backup/headscale";
+      routeAutoApprovers = {
+        "192.168.10.0/24" = [ "fife.alan@protonmail.com" ];
+      };
+
+      dns = {
+        overrideLocalDns = true;
+        nameservers = [
+          "45.90.28.226"
+          "45.90.30.226"
+        ];
+      };
 
       derp = {
         enable = true;
@@ -192,6 +204,25 @@ in
       expose.wan = {
         enable = true;
         domain = "headscale.fifefin.com";
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "15m";
+        maxBackupAge = "2h";
+      };
+    };
+
+    alanix.headplane = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 8087;
+      baseUrl = "https://headplane.fifefin.com";
+      backupDir = "/var/backup/headplane";
+
+      expose.wan = {
+        enable = true;
+        domain = "headplane.fifefin.com";
       };
 
       cluster = {

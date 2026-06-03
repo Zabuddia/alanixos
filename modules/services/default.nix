@@ -7,6 +7,7 @@
     ./forgejo
     ./grocy
     ./headscale
+    ./headplane
     ./homebox
     ./icecast
     ./immich

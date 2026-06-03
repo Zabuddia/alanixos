@@ -157,7 +157,7 @@ nmcli connection add type wifi ifname wlo1 con-name eduroam ssid eduroam \
 
 ## Headscale and DERP
 
-`alanix.headscale` runs on the active `home` cluster leader and is exposed at `https://headscale.fifefin.com`. The cluster DDNS service keeps that name pointed at the current leader, and the Headscale state in `/var/lib/headscale` is staged and backed up like the other clustered services.
+`alanix.headscale` runs on the active `home` cluster leader and is exposed at `https://headscale.fifefin.com`. `alanix.headplane` runs beside it as the Headscale admin UI at `https://headplane.fifefin.com`. The cluster DDNS service keeps those names pointed at the current leader, and their state directories are staged and backed up like the other clustered services.
 
 The embedded DERP server is enabled and the public DERP map is disabled by default. Routers that can become the active leader need these inbound forwards to the currently active node:
 
@@ -186,6 +186,12 @@ sops set secrets/network.yaml "[\"headscale\"][\"preauth-keys\"][\"$host\"]" "$(
 ```
 
 Use `sudo headscale users list` if the `buddia` user ID is not `1`.
+
+Headplane uses Headscale API-key login unless OIDC is configured later. Create an API key on the active Headscale leader, then paste it into Headplane:
+
+```bash
+sudo headscale apikeys create --expiration 8760h
+```
 
 ## Why a host file starts like this
 
