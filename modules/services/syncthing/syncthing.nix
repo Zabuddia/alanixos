@@ -30,17 +30,7 @@ let
       cfg.peers;
 
   transportConfig =
-    if cfg.transport == "wireguard" then
-      {
-        localAddress = config.alanix.wireguard.vpnIP;
-        localFirewallInterface = "wg0";
-        requireLocal = config.alanix.wireguard.enable && hasValue config.alanix.wireguard.vpnIP;
-        requireLocalMessage = "alanix.syncthing.transport = \"wireguard\" requires alanix.wireguard.enable = true and alanix.wireguard.vpnIP to be set.";
-        peerAddress = hostCfg: hostCfg.config.alanix.wireguard.vpnIP;
-        peerReady = hostCfg: hostCfg.config.alanix.wireguard.enable && hasValue hostCfg.config.alanix.wireguard.vpnIP;
-        peerMessage = peerName: "alanix.syncthing.peers.${peerName} must reference a host with alanix.wireguard.enable = true and alanix.wireguard.vpnIP set when transport = \"wireguard\".";
-      }
-    else if cfg.transport == "tailscale" then
+    if cfg.transport == "tailscale" then
       {
         localAddress = "0.0.0.0";
         localFirewallInterface = config.services.tailscale.interfaceName;
@@ -604,7 +594,7 @@ in
     };
 
     transport = lib.mkOption {
-      type = lib.types.nullOr (lib.types.enum [ "wireguard" "tailscale" ]);
+      type = lib.types.nullOr (lib.types.enum [ "tailscale" ]);
       default = null;
       description = "Network transport used for Syncthing peer connectivity.";
     };
@@ -636,17 +626,17 @@ in
         }
         {
           assertion = cfg.transport != null;
-          message = "alanix.syncthing.transport must be set to either \"wireguard\" or \"tailscale\" when alanix.syncthing.enable = true.";
+          message = "alanix.syncthing.transport must be set to \"tailscale\" when alanix.syncthing.enable = true.";
         }
         {
           assertion = transportConfig != null;
-          message = "alanix.syncthing.transport must be one of: wireguard, tailscale.";
+          message = "alanix.syncthing.transport must be \"tailscale\".";
         }
         {
           assertion = transportConfig == null || transportConfig.requireLocal;
           message =
             if transportConfig == null then
-              "alanix.syncthing.transport must be set to either \"wireguard\" or \"tailscale\" when alanix.syncthing.enable = true."
+              "alanix.syncthing.transport must be set to \"tailscale\" when alanix.syncthing.enable = true."
             else
               transportConfig.requireLocalMessage;
         }
@@ -733,7 +723,7 @@ in
           assertion = transportConfig != null && hostCfg != null && transportConfig.peerReady hostCfg;
           message =
             if transportConfig == null then
-              "alanix.syncthing.transport must be one of: wireguard, tailscale."
+              "alanix.syncthing.transport must be \"tailscale\"."
             else
               transportConfig.peerMessage name;
         })

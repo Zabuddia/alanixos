@@ -10,7 +10,6 @@
     ./users.nix
     ./desktop
     ./network/ssh.nix
-    ./network/wireguard.nix
     ./network/cloudflare-dns.nix
     ./network/ddns.nix
     ./network/tailscale.nix

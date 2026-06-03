@@ -32,7 +32,6 @@ let
   anyCaddyRecorderExposure =
     cfg.recorder.expose.wan.enable
     || cfg.recorder.expose.tailscale.enable
-    || cfg.recorder.expose.wireguard.enable
     || (cfg.recorder.expose.tor.enable && cfg.recorder.expose.tor.tls);
 
   backupPrepScript = pkgs.writeShellScript "alanix-owntracks-cluster-backup-runtime" ''

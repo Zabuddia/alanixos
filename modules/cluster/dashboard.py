@@ -1341,7 +1341,7 @@ class Dashboard:
 
         def chip_link(link: dict) -> str:
             t = link.get("transport", "")
-            extra = f" chip-{t}" if t in ("tor", "wan", "tailscale", "wireguard") else ""
+            extra = f" chip-{t}" if t in ("tor", "wan", "tailscale") else ""
             return (
                 f"<a class='chip chip-link{extra}' href='{html.escape(link['url'])}' "
                 f"target='_blank' rel='noreferrer'>{html.escape(link.get('transport', 'link'))}</a>"

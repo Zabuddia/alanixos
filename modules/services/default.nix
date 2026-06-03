@@ -6,6 +6,7 @@
     ./filebrowser
     ./forgejo
     ./grocy
+    ./headscale
     ./homebox
     ./icecast
     ./immich

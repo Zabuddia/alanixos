@@ -15,14 +15,6 @@
     group = "root";
     mode = "0400";
   };
-
-  sops.secrets."wireguard-private-keys/alan-big-nixos" = {
-    sopsFile = (import ../../secrets/files.nix).network;
-    owner = "root";
-    group = "root";
-    mode = "0400";
-  };
-
   sops.secrets."ssh-private-keys/alan-big-nixos" = {
     sopsFile = (import ../../secrets/files.nix).users;
     owner = "buddia";
@@ -80,12 +72,6 @@
     group = "users";
     mode = "0400";
   };
-
-  sops.templates."cloudflare-env" = {
-    content = "CLOUDFLARE_API_TOKEN=${config.sops.placeholder."cloudflare/api-token"}";
-    owner = "cloudflare-ddns";
-  };
-
   sops.secrets."filebrowser-passwords/admin" = {
     sopsFile = (import ../../secrets/files.nix).servicePasswords;
     owner = "filebrowser";

@@ -20,21 +20,7 @@
     owner = "root";
     group = "root";
     mode = "0400";
-  };
-
-  sops.templates."cloudflare-env" = {
-    content = "CLOUDFLARE_API_TOKEN=${config.sops.placeholder."cloudflare/api-token"}";
-    owner = "cloudflare-ddns";
-  };
-
-  sops.secrets."wireguard-private-keys/alan-tv" = {
-    sopsFile = (import ../../secrets/files.nix).network;
-    owner = "root";
-    group = "root";
-    mode = "0400";
-  };
-
-  sops.secrets."wifi-passwords/OpenWrt" = {
+  };  sops.secrets."wifi-passwords/OpenWrt" = {
     sopsFile = (import ../../secrets/files.nix).network;
     owner = "root";
     mode = "0400";

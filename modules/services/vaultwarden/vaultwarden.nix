@@ -23,7 +23,6 @@ let
         listenAddress = cfg.listenAddress;
         port = cfg.port;
         rootUrlOverride = cfg.rootUrl;
-        allowWireguard = false;
         allowListenAddressFallback = false;
       };
     in

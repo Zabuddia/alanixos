@@ -75,11 +75,6 @@ in
             port = 19842;
           };
 
-          wireguard = {
-            enable = true;
-            port = 9842;
-          };
-
           tor = {
             enable = true;
             publicPort = 80;
@@ -100,6 +95,7 @@ in
         ipv6Provider = "none";
         detectionTimeout = "15s";
         domains = [
+          "headscale.fifefin.com"
           "dashboard.fifefin.com"
           "filebrowser.fifefin.com"
           "forgejo.fifefin.com"
@@ -179,6 +175,32 @@ in
       };
     };
 
+    alanix.headscale = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 8086;
+      serverUrl = "https://headscale.fifefin.com";
+      baseDomain = "tail.fifefin.com";
+      backupDir = "/var/backup/headscale";
+
+      derp = {
+        enable = true;
+        stunPort = 3478;
+        useUpstreamDerpMap = false;
+      };
+
+      expose.wan = {
+        enable = true;
+        domain = "headscale.fifefin.com";
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "15m";
+        maxBackupAge = "2h";
+      };
+    };
+
     alanix.vaultwarden = {
       enable = true;
       listenAddress = "127.0.0.1";
@@ -207,12 +229,6 @@ in
           port = 18222;
           tls = true;
           tlsName = config.alanix.tailscale.address;
-        };
-
-        wireguard = {
-          enable = true;
-          port = 8222;
-          tls = true;
         };
       };
 
@@ -252,12 +268,6 @@ in
           tls = true;
           tlsName = config.alanix.tailscale.address;
         };
-
-        wireguard = {
-          enable = true;
-          port = 5006;
-          tls = true;
-        };
       };
 
       cluster = {
@@ -290,11 +300,6 @@ in
           publicPort = 80;
           secretKeyBase64Secret = "tor/forgejo/secret-key-base64";
           hostname = "v75vursfye2nc52psierh35xpeury5x7yxfkdamr3i76vuh3rlh42fyd.onion";
-        };
-
-        wireguard = {
-          enable = true;
-          port = 3000;
         };
       };
 
@@ -338,11 +343,6 @@ in
         tailscale = {
           enable = true;
           address = config.alanix.tailscale.address;
-          port = 8088;
-        };
-
-        wireguard = {
-          enable = true;
           port = 8088;
         };
       };
@@ -397,11 +397,6 @@ in
           enable = true;
           port = 18091;
         };
-
-        wireguard = {
-          enable = true;
-          port = 8091;
-        };
       };
 
       cluster = {
@@ -441,11 +436,6 @@ in
           enable = true;
           port = 18092;
         };
-
-        wireguard = {
-          enable = true;
-          port = 8092;
-        };
       };
 
       cluster = {
@@ -478,11 +468,6 @@ in
         tailscale = {
           enable = true;
           port = 15232;
-        };
-
-        wireguard = {
-          enable = true;
-          port = 5232;
         };
       };
 
@@ -563,11 +548,6 @@ in
           enable = true;
           port = 18090;
         };
-
-        wireguard = {
-          enable = true;
-          port = 8090;
-        };
       };
 
       cluster = {
@@ -604,11 +584,6 @@ in
           tailscale = {
             enable = true;
             port = 18083;
-          };
-
-          wireguard = {
-            enable = true;
-            port = 8083;
           };
 
           tor = {
@@ -659,11 +634,6 @@ in
           enable = true;
           port = 13001;
         };
-
-        wireguard = {
-          enable = true;
-          port = 3001;
-        };
       };
 
       cluster = {
@@ -700,11 +670,6 @@ in
         tailscale = {
           enable = true;
           port = 12283;
-        };
-
-        wireguard = {
-          enable = true;
-          port = 2283;
         };
       };
 
@@ -777,11 +742,6 @@ in
         tailscale = {
           enable = true;
           port = 18096;
-        };
-
-        wireguard = {
-          enable = true;
-          port = 8096;
         };
       };
 
@@ -862,11 +822,6 @@ in
           address = config.alanix.tailscale.address;
           port = 13378;
         };
-
-        wireguard = {
-          enable = true;
-          port = 13378;
-        };
       };
 
       cluster = {
@@ -918,11 +873,6 @@ in
         tailscale = {
           enable = true;
           address = config.alanix.tailscale.address;
-          port = 5000;
-        };
-
-        wireguard = {
-          enable = true;
           port = 5000;
         };
       };
@@ -977,11 +927,6 @@ in
           enable = true;
           port = 14533;
         };
-
-        wireguard = {
-          enable = true;
-          port = 4533;
-        };
       };
 
       cluster = {
@@ -1017,11 +962,6 @@ in
           address = config.alanix.tailscale.address;
           port = 8080;
         };
-
-        wireguard = {
-          enable = true;
-          port = 8080;
-        };
       };
 
       collabora = {
@@ -1044,11 +984,6 @@ in
           tailscale = {
             enable = true;
             address = config.alanix.tailscale.address;
-            port = 9980;
-          };
-
-          wireguard = {
-            enable = true;
             port = 9980;
           };
         };
@@ -1121,11 +1056,6 @@ in
           enable = true;
           port = 18888;
         };
-
-        wireguard = {
-          enable = true;
-          port = 8888;
-        };
       };
 
       cluster = {
@@ -1175,11 +1105,6 @@ in
         tailscale = {
           enable = true;
           port = 18000;
-        };
-
-        wireguard = {
-          enable = true;
-          port = 8000;
         };
       };
 

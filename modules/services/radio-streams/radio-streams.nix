@@ -37,13 +37,6 @@ let
       "http://${config.alanix.tailscale.address}:${toString config.alanix.icecast.expose.tailscale.port}${cfg.liveMount}"
     else
       null;
-  streamUrlWireguard =
-    if config.alanix.icecast.expose.wireguard.enable
-      && config.alanix.icecast.expose.wireguard.address != null
-      && config.alanix.icecast.expose.wireguard.port != null then
-      "http://${config.alanix.icecast.expose.wireguard.address}:${toString config.alanix.icecast.expose.wireguard.port}${cfg.liveMount}"
-    else
-      null;
 
   stationWithDerived =
     id: station:
@@ -262,9 +255,6 @@ let
         if [ -n "$tailscale_ip" ]; then
           printf 'Tailscale IP URL: http://%s:%s%s\n' "$tailscale_ip" ${lib.escapeShellArg (toString config.alanix.icecast.expose.tailscale.port)} ${lib.escapeShellArg cfg.liveMount}
         fi
-      ''}
-      ${lib.optionalString (streamUrlWireguard != null) ''
-        printf 'WireGuard URL: %s\n' ${lib.escapeShellArg streamUrlWireguard}
       ''}
     }
   '';

@@ -99,34 +99,6 @@ in
         };
       };
 
-      wireguard = {
-        enable = lib.mkEnableOption "expose ${serviceDescription} on the WireGuard interface";
-
-        address = lib.mkOption {
-          type = types.nullOr types.str;
-          default = null;
-          description = "WireGuard-facing bind address. Defaults to alanix.wireguard.vpnIP.";
-        };
-
-        port = lib.mkOption {
-          type = types.nullOr types.port;
-          default = null;
-          description = "WireGuard-facing port. Must be set explicitly when WireGuard exposure is enabled.";
-        };
-
-        tls = lib.mkOption {
-          type = types.bool;
-          default = false;
-          description = "Whether to terminate HTTPS with a private/self-signed certificate on the WireGuard listener.";
-        };
-
-        tlsName = lib.mkOption {
-          type = types.nullOr types.str;
-          default = null;
-          description = "Hostname or IP address presented by the HTTPS certificate. Defaults to the WireGuard bind address.";
-        };
-      };
-
       wan = {
         enable = lib.mkEnableOption "expose ${serviceDescription} on the public WAN";
 
@@ -171,10 +143,6 @@ in
       inherit config optionPrefix endpoint;
       torCfg = exposeCfg.tor;
     }
-    ++ backends.wireguard.mkAssertions {
-      inherit config optionPrefix endpoint;
-      wireguardCfg = exposeCfg.wireguard;
-    }
     ++ backends.wan.mkAssertions {
       inherit config optionPrefix endpoint;
       wanCfg = exposeCfg.wan;
@@ -196,10 +164,6 @@ in
       (backends.tor.mkConfig {
         inherit config serviceName serviceDescription endpoint;
         torCfg = exposeCfg.tor;
-      })
-      (backends.wireguard.mkConfig {
-        inherit config serviceName serviceDescription endpoint;
-        wireguardCfg = exposeCfg.wireguard;
       })
       (backends.wan.mkConfig {
         inherit serviceName serviceDescription endpoint;

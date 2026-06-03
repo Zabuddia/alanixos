@@ -5,16 +5,6 @@ in
 rec {
   inherit hasValue;
 
-  wireguardAddress =
-    {
-      config,
-      exposeCfg,
-    }:
-    if exposeCfg.wireguard.address != null then
-      exposeCfg.wireguard.address
-    else
-      config.alanix.wireguard.vpnIP;
-
   wanPort =
     {
       exposeCfg,
@@ -33,8 +23,6 @@ rec {
     }:
     if exposeCfg.wan.enable then
       wanPort { inherit exposeCfg; }
-    else if exposeCfg.wireguard.enable then
-      exposeCfg.wireguard.port
     else
       port;
 
@@ -44,8 +32,6 @@ rec {
     }:
     if exposeCfg.wan.enable then
       exposeCfg.wan.tls
-    else if exposeCfg.wireguard.enable then
-      exposeCfg.wireguard.tls
     else
       false;
 
@@ -55,18 +41,12 @@ rec {
       exposeCfg,
       listenAddress,
       domainOverride ? null,
-      allowWireguard ? true,
       allowListenAddressFallback ? true,
     }:
-    let
-      wgAddress = wireguardAddress { inherit config exposeCfg; };
-    in
     if hasValue domainOverride then
       domainOverride
     else if exposeCfg.wan.enable && hasValue exposeCfg.wan.domain then
       exposeCfg.wan.domain
-    else if allowWireguard && exposeCfg.wireguard.enable && hasValue wgAddress then
-      wgAddress
     else if allowListenAddressFallback then
       listenAddress
     else
@@ -79,11 +59,9 @@ rec {
       listenAddress,
       port,
       rootUrlOverride ? null,
-      allowWireguard ? true,
       allowListenAddressFallback ? true,
     }:
     let
-      wgAddress = wireguardAddress { inherit config exposeCfg; };
       publicWanPort = wanPort { inherit exposeCfg; };
     in
     if hasValue rootUrlOverride then
@@ -95,11 +73,6 @@ rec {
         portSuffix = if publicWanPort == defaultPort then "" else ":${toString publicWanPort}";
       in
       "${scheme}://${exposeCfg.wan.domain}${portSuffix}/"
-    else if allowWireguard && exposeCfg.wireguard.enable && hasValue wgAddress then
-      let
-        scheme = if exposeCfg.wireguard.tls then "https" else "http";
-      in
-      "${scheme}://${wgAddress}:${toString exposeCfg.wireguard.port}/"
     else if allowListenAddressFallback then
       "http://${listenAddress}:${toString port}/"
     else

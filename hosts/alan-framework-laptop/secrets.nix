@@ -38,14 +38,6 @@
         group = "users";
         mode = "0400";
       };
-
-      "wireguard-private-keys/alan-framework-laptop" = {
-        sopsFile = (import ../../secrets/files.nix).network;
-        owner = "root";
-        group = "root";
-        mode = "0400";
-      };
-
       "ssh-private-keys/alan-framework-laptop" = {
         sopsFile = (import ../../secrets/files.nix).users;
         owner = "buddia";
@@ -88,14 +80,4 @@
         mode = "0400";
       };
     }
-  ];
-
-  sops.templates = lib.mkMerge [
-    {
-      "cloudflare-env" = {
-        content = "CLOUDFLARE_API_TOKEN=${config.sops.placeholder."cloudflare/api-token"}";
-        owner = "cloudflare-ddns";
-      };
-    }
-  ];
-}
+  ];}

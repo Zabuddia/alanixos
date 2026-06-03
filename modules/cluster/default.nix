@@ -37,7 +37,7 @@ in
     };
 
     transport = lib.mkOption {
-      type = types.enum [ "tailscale" "wireguard" ];
+      type = types.enum [ "tailscale" ];
       default = "tailscale";
     };
 
@@ -280,13 +280,6 @@ in
         in
         if hostCfg != null then hostCfg.config.alanix.tailscale.address else null;
 
-      peerWireguardAddress =
-        peer:
-        let
-          hostCfg = peerHostCfg peer;
-        in
-        if hostCfg != null then hostCfg.config.alanix.wireguard.vpnIP else null;
-
       urlHostLiteral =
         host:
         if lib.hasPrefix "[" host && lib.hasSuffix "]" host then
@@ -376,18 +369,6 @@ in
             };
           }) (lib.filter (peer: peerTailscaleAddress peer != null && peerTailscaleAddress peer != "") cfg.members)
         )
-        ++ lib.optionals dashboardCfg.expose.wireguard.enable (
-          map (peer: {
-            label = "${peer} dashboard (wireguard)";
-            host = peer;
-            transport = "wireguard";
-            url = mkUrl {
-              scheme = "http";
-              host = peerWireguardAddress peer;
-              port = dashboardCfg.expose.wireguard.port;
-            };
-          }) (lib.filter (peer: peerWireguardAddress peer != null && peerWireguardAddress peer != "") cfg.members)
-        )
         ++ lib.optionals dashboardCfg.expose.tor.enable (
           lib.concatMap (peer:
             let torHostname = peerDashboardTorHostname peer;
@@ -428,14 +409,12 @@ in
       endpointHasCaddy =
         endpoint:
         (endpoint.expose.tailscale.enable or false)
-        || (endpoint.expose.wireguard.enable or false)
         || (endpoint.expose.wan.enable or false)
         || ((endpoint.expose.tor.enable or false) && (endpoint.expose.tor.tls or false));
 
       anyCaddyExposure = lib.any endpointHasCaddy webEndpoints;
       anyWanExposure = lib.any (endpoint: endpoint.expose.wan.enable or false) webEndpoints;
       anyTailscaleCaddyExposure = lib.any (endpoint: endpoint.expose.tailscale.enable or false) webEndpoints;
-      anyWireguardCaddyExposure = lib.any (endpoint: endpoint.expose.wireguard.enable or false) webEndpoints;
       anyTorExposure = lib.any (endpoint: endpoint.expose.tor.enable or false) webEndpoints;
       postgresqlCluster = lib.any (svc: svc.needsPostgresql or false) serviceEntries;
 
@@ -484,15 +463,6 @@ in
               scheme = if exposeCfg.tailscale.tls then "https" else "http";
               port = exposeCfg.tailscale.port;
               addressFn = peerTailscaleAddress;
-            }
-          ))
-          (lib.optionalAttrs exposeCfg.wireguard.enable (
-            mkPeerLinksByHost {
-              inherit label;
-              transport = "wireguard";
-              scheme = if exposeCfg.wireguard.tls then "https" else "http";
-              port = exposeCfg.wireguard.port;
-              addressFn = peerWireguardAddress;
             }
           ))
           (lib.optionalAttrs (exposeCfg.tor.enable && exposeCfg.tor.hostname != null) (
@@ -652,14 +622,6 @@ in
                     port = dashboardCfg.expose.tailscale.port;
                     path = "/api/mode";
                   })
-                ]
-                ++ lib.optionals (dashboardCfg.expose.wireguard.enable && peerWireguardAddress peer != null && dashboardCfg.expose.wireguard.port != null) [
-                  (mkUrl {
-                    scheme = "http";
-                    host = peerWireguardAddress peer;
-                    port = dashboardCfg.expose.wireguard.port;
-                    path = "/api/mode";
-                  })
                 ];
             })
             cfg.members
@@ -766,20 +728,6 @@ in
         else
           config.alanix.tailscale.address;
 
-      wireguardAddress =
-        endpoint:
-        if endpoint.expose.wireguard.address != null then
-          endpoint.expose.wireguard.address
-        else
-          config.alanix.wireguard.vpnIP;
-
-      wireguardName =
-        endpoint:
-        if endpoint.expose.wireguard.tlsName != null then
-          endpoint.expose.wireguard.tlsName
-        else
-          wireguardAddress endpoint;
-
       torTargetAddress =
         endpoint:
         normalizeLocalAddress (
@@ -834,14 +782,6 @@ in
               site = "${if exposeCfg.tailscale.tls then "https" else "http"}://${tailscaleName endpoint}:${toString exposeCfg.tailscale.port}";
               bindAddress = "$ts_ip";
               tls = exposeCfg.tailscale.tls;
-              inherit endpoint;
-            }
-          ))
-          (lib.optionalString exposeCfg.wireguard.enable (
-            mkCaddyBlock {
-              site = "${if exposeCfg.wireguard.tls then "https" else "http"}://${wireguardName endpoint}:${toString exposeCfg.wireguard.port}";
-              bindAddress = wireguardAddress endpoint;
-              tls = exposeCfg.wireguard.tls;
               inherit endpoint;
             }
           ))
@@ -912,12 +852,6 @@ in
               echo "failed to determine Tailscale IPv4 address" >&2
               exit 1
             fi
-          ''}
-
-          ${lib.optionalString anyWireguardCaddyExposure ''
-            ip link show dev wg0 >/dev/null
-            ip address replace ${lib.escapeShellArg "${config.alanix.wireguard.vpnIP}/24"} dev wg0
-            ip link set up dev wg0
           ''}
 
           ${lib.concatMapStringsSep "\n" (svc: svc.extraExposureStart or "") serviceEntries}
@@ -1017,16 +951,8 @@ in
                 message = "alanix.cluster.transport = \"tailscale\" requires alanix.tailscale.enable = true.";
               }
               {
-                assertion = cfg.transport == "wireguard" -> config.alanix.wireguard.enable;
-                message = "alanix.cluster.transport = \"wireguard\" requires alanix.wireguard.enable = true.";
-              }
-              {
                 assertion = cfg.transport != "tailscale" || config.alanix.tailscale.address != null;
                 message = "alanix.cluster.transport = \"tailscale\" requires alanix.tailscale.address to be set.";
-              }
-              {
-                assertion = cfg.transport != "wireguard" || config.alanix.wireguard.vpnIP != null;
-                message = "alanix.cluster.transport = \"wireguard\" requires alanix.wireguard.vpnIP to be set.";
               }
               {
                 assertion = cfg.etcd.bootstrapGeneration >= 1;
@@ -1211,13 +1137,6 @@ in
 
         })
 
-        (lib.mkIf (isVoter && cfg.transport == "wireguard") {
-          networking.firewall.interfaces.wg0.allowedTCPPorts = [
-            2379
-            2380
-          ];
-        })
-
         (lib.mkIf dashboardCfg.enable (
           serviceExposure.mkConfig {
             serviceName = "cluster-dashboard";
@@ -1286,22 +1205,11 @@ in
             description = "Alanix cluster runtime exposure manager";
             wantedBy = [ "alanix-cluster-active.target" ];
             partOf = [ "alanix-cluster-active.target" ];
-            after =
-              lib.optionals anyWireguardCaddyExposure [
-                "wireguard-wg0.service"
-                "alanix-wireguard-address.service"
-              ]
-              ++ exposureUnits;
-            wants =
-              lib.optionals anyWireguardCaddyExposure [
-                "wireguard-wg0.service"
-                "alanix-wireguard-address.service"
-              ]
-              ++ exposureUnits;
+            after = exposureUnits;
+            wants = exposureUnits;
             path =
               [ pkgs.coreutils pkgs.systemd ]
               ++ lib.optionals anyCaddyExposure [ config.services.caddy.package ]
-              ++ lib.optionals anyWireguardCaddyExposure [ pkgs.iproute2 ]
               ++ lib.optionals anyTailscaleCaddyExposure [ config.services.tailscale.package ];
             script = "${exposureScript} start";
             serviceConfig = {

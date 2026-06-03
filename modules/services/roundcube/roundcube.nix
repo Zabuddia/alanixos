@@ -69,9 +69,6 @@ let
       ++ lib.optional cfg.expose.tailscale.enable (
         if cfg.expose.tailscale.tlsName != null then cfg.expose.tailscale.tlsName else config.alanix.tailscale.address
       )
-      ++ lib.optional cfg.expose.wireguard.enable (
-        if cfg.expose.wireguard.tlsName != null then cfg.expose.wireguard.tlsName else config.alanix.wireguard.vpnIP
-      )
       ++ lib.optional cfg.expose.tor.enable cfg.expose.tor.hostname
       ++ lib.optional (cfg.expose.tor.enable && cfg.expose.tor.tls) cfg.expose.tor.tlsName
     );

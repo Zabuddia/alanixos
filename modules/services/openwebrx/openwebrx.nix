@@ -322,10 +322,6 @@ in
             assertion = !(cfg.expose.tailscale.enable && cfg.expose.tailscale.port == cfg.port);
             message = "alanix.openwebrx.expose.tailscale.port must differ from alanix.openwebrx.port because OpenWebRX binds 0.0.0.0 on its local port.";
           }
-          {
-            assertion = !(cfg.expose.wireguard.enable && cfg.expose.wireguard.port == cfg.port);
-            message = "alanix.openwebrx.expose.wireguard.port must differ from alanix.openwebrx.port because OpenWebRX binds 0.0.0.0 on its local port.";
-          }
         ]
         ++ lib.flatten (
           lib.mapAttrsToList

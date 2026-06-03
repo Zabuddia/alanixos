@@ -105,25 +105,6 @@ let
       )
     ];
 
-  wireguardAddress =
-    backendCfg:
-    if backendCfg.wireguard.address != null then
-      backendCfg.wireguard.address
-    else
-      config.alanix.wireguard.vpnIP;
-
-  wireguardHosts =
-    backendCfg:
-    uniqueValues [
-      (if backendCfg.wireguard.tls then backendCfg.wireguard.tlsName else null)
-      (
-        if wireguardAddress backendCfg != null && !(builtins.elem (wireguardAddress backendCfg) [ "0.0.0.0" "::" ]) then
-          wireguardAddress backendCfg
-        else
-          null
-      )
-    ];
-
   nextcloudInternalAddress = normalizeInternalAddress cfg.listenAddress;
   nextcloudInternalUrlBase =
     if hasValue nextcloudInternalAddress && cfg.port != null then
@@ -154,18 +135,6 @@ let
               80;
         })
       ])
-      (lib.optionals exposeCfg.wireguard.enable (
-        builtins.map
-          (
-            host:
-            mkOriginUrl {
-              scheme = if exposeCfg.wireguard.tls then "https" else "http";
-              inherit host;
-              port = exposeCfg.wireguard.port;
-            }
-          )
-          (wireguardHosts exposeCfg)
-      ))
       (lib.optionals exposeCfg.tailscale.enable (
         builtins.map
           (
@@ -201,16 +170,6 @@ let
   collaboraServerReachableNextcloudUrlBases = lib.unique (
     lib.filter hasValue (
       [
-        (
-          if exposeCfg.wireguard.enable then
-            mkOriginUrl {
-              scheme = if exposeCfg.wireguard.tls then "https" else "http";
-              host = wireguardAddress exposeCfg;
-              port = exposeCfg.wireguard.port;
-            }
-          else
-            null
-        )
         (
           if exposeCfg.tailscale.enable then
             let
@@ -310,7 +269,6 @@ let
         (if collaboraCfg.enable then urlHost collaboraLocalNextcloudUrlBase else null)
         (if collaboraCfg.enable then urlHost configuredCollaboraCallbackUrlBase else null)
       ]
-      ++ wireguardHosts exposeCfg
       ++ tailscaleHosts exposeCfg
       ++ cfg.trustedDomains
     );
