@@ -143,7 +143,7 @@ in
         package = pkgs-unstable.tailscale;
         authKeyFile = effectiveAuthKeyFile;
         disableUpstreamLogging = cfg.loginServer != null;
-        extraUpFlags = loginFlags;
+        extraUpFlags = loginFlags ++ preferenceFlags;
         useRoutingFeatures = routingMode;
         extraSetFlags = preferenceFlags;
       };

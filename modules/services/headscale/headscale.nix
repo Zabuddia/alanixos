@@ -3,17 +3,22 @@
 let
   cfg = config.alanix.headscale;
   serviceExposure = import ../../../lib/mkServiceExposure.nix { inherit lib pkgs; };
-  policyFile = pkgs.writeText "alanix-headscale-policy.hujson" ''
+  policy =
     {
-      "acls": [
+      acls = [
         {
-          "action": "accept",
-          "src": ["*"],
-          "dst": ["*:*"]
+          action = "accept";
+          src = [ "*" ];
+          dst = [ "*:*" ];
         }
-      ]
+      ];
     }
-  '';
+    // lib.optionalAttrs (cfg.routeAutoApprovers != { }) {
+      autoApprovers = {
+        routes = cfg.routeAutoApprovers;
+      };
+    };
+  policyFile = pkgs.writeText "alanix-headscale-policy.hujson" (builtins.toJSON policy);
 in
 {
   options.alanix.headscale = {
@@ -41,6 +46,27 @@ in
       type = lib.types.str;
       default = "tail.fifefin.com";
       description = "MagicDNS base domain for Headscale nodes.";
+    };
+
+    dns = {
+      overrideLocalDns = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Whether Headscale should override clients' local DNS settings.";
+      };
+
+      nameservers = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "45.90.28.226" "45.90.30.226" ];
+        description = "Global DNS resolvers pushed to Headscale clients.";
+      };
+
+      searchDomains = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "Additional DNS search domains pushed to Headscale clients.";
+      };
     };
 
     stateDir = lib.mkOption {
@@ -79,6 +105,15 @@ in
         };
       };
       description = "Headscale users reconciled on the active cluster leader.";
+    };
+
+    routeAutoApprovers = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.listOf lib.types.str);
+      default = { };
+      example = {
+        "192.168.10.0/24" = [ "fife.alan@protonmail.com" ];
+      };
+      description = "Headscale policy auto-approvers for advertised subnet routes.";
     };
 
     derp = {
@@ -187,9 +222,9 @@ in
           dns = {
             magic_dns = true;
             base_domain = cfg.baseDomain;
-            override_local_dns = false;
-            nameservers.global = [ ];
-            search_domains = [ ];
+            override_local_dns = cfg.dns.overrideLocalDns;
+            nameservers.global = cfg.dns.nameservers;
+            search_domains = cfg.dns.searchDomains;
           };
           policy = {
             mode = "file";
