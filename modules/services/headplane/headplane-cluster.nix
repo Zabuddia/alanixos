@@ -105,6 +105,9 @@ in
               protocol = "http";
             };
             expose = cfg.expose;
+            extraCaddyConfig = ''
+              redir / /admin/
+            '';
           }
         ];
       };
