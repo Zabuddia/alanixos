@@ -219,9 +219,23 @@ in
       baseUrl = "https://headplane.fifefin.com";
       backupDir = "/var/backup/headplane";
 
-      expose.wan = {
-        enable = true;
-        domain = "headplane.fifefin.com";
+      expose = {
+        wan = {
+          enable = true;
+          domain = "headplane.fifefin.com";
+        };
+
+        tor = {
+          enable = true;
+          publicPort = 80;
+          secretKeyBase64Secret = "tor/headplane/secret-key-base64";
+          hostname = "2tf3kobh4qab3uieuquw6ose2vs4qvrzcu2edvrkkpsjm4dnnvm4wpad.onion";
+        };
+
+        tailscale = {
+          enable = true;
+          port = 18087;
+        };
       };
 
       cluster = {
