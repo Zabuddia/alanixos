@@ -493,8 +493,10 @@ in
               fi
 
               echo "Refreshing PostgreSQL collation version for Invidious database: $PGDATABASE"
-              psql -v ON_ERROR_STOP=1 -q -v dbname="$PGDATABASE" -c 'REINDEX DATABASE CONCURRENTLY :"dbname";'
-              psql -v ON_ERROR_STOP=1 -q -v dbname="$PGDATABASE" -c 'ALTER DATABASE :"dbname" REFRESH COLLATION VERSION;'
+              psql -v ON_ERROR_STOP=1 -q -v dbname="$PGDATABASE" <<'SQL'
+            REINDEX DATABASE CONCURRENTLY :"dbname";
+            ALTER DATABASE :"dbname" REFRESH COLLATION VERSION;
+            SQL
             }
 
             relation_exists() {
