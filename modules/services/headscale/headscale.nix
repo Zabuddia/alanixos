@@ -239,6 +239,11 @@ in
 
       networking.firewall.allowedUDPPorts = lib.optionals cfg.derp.enable [ cfg.derp.stunPort ];
 
+      systemd.services.headscale = lib.mkIf config.alanix.unbound.enable {
+        after = [ "unbound.service" ];
+        wants = [ "unbound.service" ];
+      };
+
       environment.systemPackages = [ config.services.headscale.package ];
     }
 

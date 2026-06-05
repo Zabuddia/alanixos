@@ -182,6 +182,11 @@ in
         settings = lib.recursiveUpdate baseSettings cfg.settings;
       };
 
+      systemd.services.adguardhome = lib.mkIf config.alanix.unbound.enable {
+        after = [ "unbound.service" ];
+        wants = [ "unbound.service" ];
+      };
+
       networking.firewall.interfaces.${config.services.tailscale.interfaceName} =
         lib.mkIf cfg.dns.openFirewallOnTailscale {
           allowedTCPPorts = [ cfg.dns.port ];
