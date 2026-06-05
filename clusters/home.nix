@@ -804,6 +804,11 @@ in
           type = "homevideos";
           folder = "recordings";
         };
+
+        Videos = {
+          type = "homevideos";
+          folder = "videos";
+        };
       };
 
       liveTv = {
@@ -858,6 +863,14 @@ in
           user = "jellyfin";
           group = "jellyfin";
           mode = "0755";
+        };
+
+        videos = {
+          path = "${config.alanix.syncthing.syncRoot}/media/videos";
+          create = true;
+          user = "buddia";
+          group = "users";
+          mode = "2775";
         };
       };
 
