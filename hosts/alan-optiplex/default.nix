@@ -182,10 +182,12 @@
         "emulation-azahar"
         "emulation-dolphin"
         "emulation-melonds"
-        "jellyfin-media"
-        "navidrome-media"
-        "audiobookshelf-media"
-        "kavita-media"
+        "movies"
+        "shows"
+        "videos"
+        "music"
+        "audiobooks"
+        "ebooks"
       ];
       linkFolderSets = [
         "emulation-azahar"
@@ -208,6 +210,7 @@
           "emulation-azahar"
           "emulation-dolphin"
           "emulation-melonds"
+          "videos"
         ];
       };
     };

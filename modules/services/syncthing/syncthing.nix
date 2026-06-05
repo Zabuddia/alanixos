@@ -130,7 +130,7 @@ let
     };
   };
 
-  jellyfinMediaFolders = {
+  moviesFolders = {
     "media-movies" = {
       label = "media/movies";
       relativePath = "media/movies";
@@ -139,6 +139,9 @@ let
       mode = "2775";
       ignorePerms = true;
     };
+  };
+
+  showsFolders = {
     "media-shows" = {
       label = "media/shows";
       relativePath = "media/shows";
@@ -149,7 +152,18 @@ let
     };
   };
 
-  navidromeMediaFolders = {
+  videosFolders = {
+    "media-videos" = {
+      label = "media/videos";
+      relativePath = "media/videos";
+      user = "buddia";
+      group = "users";
+      mode = "2775";
+      ignorePerms = true;
+    };
+  };
+
+  musicFolders = {
     "media-music" = {
       label = "media/music";
       relativePath = "media/music";
@@ -160,7 +174,7 @@ let
     };
   };
 
-  audiobookshelfMediaFolders = {
+  audiobooksFolders = {
     "media-audiobooks" = {
       label = "media/audiobooks";
       relativePath = "media/audiobooks";
@@ -171,7 +185,7 @@ let
     };
   };
 
-  kavitaMediaFolders = {
+  ebooksFolders = {
     "media-ebooks" = {
       label = "media/ebooks";
       relativePath = "media/ebooks";
@@ -232,10 +246,12 @@ let
     emulation-dolphin = dolphinFolders;
     emulation-melonds = melondsFolders;
     emulation-ryujinx = ryujinxFolders;
-    jellyfin-media = jellyfinMediaFolders;
-    navidrome-media = navidromeMediaFolders;
-    audiobookshelf-media = audiobookshelfMediaFolders;
-    kavita-media = kavitaMediaFolders;
+    movies = moviesFolders;
+    shows = showsFolders;
+    videos = videosFolders;
+    music = musicFolders;
+    audiobooks = audiobooksFolders;
+    ebooks = ebooksFolders;
   } // filebrowserUserFolderSets;
 
   azaharLinks = {

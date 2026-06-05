@@ -169,6 +169,9 @@
             ignoreScreenResolution = true;
             ignoreScreenResolutionChanges = true;
           };
+          mediaSources.video = [
+            { name = "Videos"; path = "${config.alanix.syncthing.syncRoot}/media/videos"; }
+          ];
           iptvSimple = {
             enable = true;
             m3uUrl = "http://192.168.10.105/lineup.m3u";
@@ -269,9 +272,10 @@
         "emulation-dolphin"
         "emulation-melonds"
         "emulation-ryujinx"
-        "navidrome-media"
-        "audiobookshelf-media"
-        "kavita-media"
+        "videos"
+        "music"
+        "audiobooks"
+        "ebooks"
         "filebrowser-buddia-files"
       ];
       linkFolderSets = [
@@ -284,11 +288,12 @@
         id = "BT23SPJ-ICTEBQ7-GJTDRQT-LCUQ773-U63QFZR-472O3YA-2KRJ4KY-AMPZ7AF";
         addresses = [ "tcp://pixel-fold:22000" ];
         folderSets = [
-          "kavita-media"
+          "ebooks"
           "filebrowser-buddia-files"
           "emulation-azahar"
           "emulation-dolphin"
           "emulation-melonds"
+          "videos"
         ];
       };
     };

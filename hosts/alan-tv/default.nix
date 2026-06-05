@@ -145,6 +145,9 @@
             ignoreScreenResolution = true;
             ignoreScreenResolutionChanges = true;
           };
+          mediaSources.video = [
+            { name = "Videos"; path = "${config.alanix.syncthing.syncRoot}/media/videos"; }
+          ];
           mediaSources.music = [
             { name = "Music"; path = "${config.alanix.syncthing.syncRoot}/media/music"; }
           ];
@@ -213,10 +216,12 @@
         "emulation-azahar"
         "emulation-dolphin"
         "emulation-melonds"
-        "jellyfin-media"
-        "navidrome-media"
-        "audiobookshelf-media"
-        "kavita-media"
+        "movies"
+        "shows"
+        "videos"
+        "music"
+        "audiobooks"
+        "ebooks"
       ];
       linkFolderSets = [
         "emulation-azahar"
@@ -239,6 +244,7 @@
           "emulation-azahar"
           "emulation-dolphin"
           "emulation-melonds"
+          "videos"
         ];
       };
     };
