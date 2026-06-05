@@ -16,116 +16,50 @@ Install NixOS normally, create user `buddia`, enable networking, and boot in.
 
 ---
 
-## Step 2 — Enter a shell with required tools
+## Step 2 — Clone the repo
 
 ```bash
-nix-shell -p git sops age gh
-```
-
----
-
-## Step 3 — Clone the repo
-
-SSH keys are deployed by sops-nix after the first rebuild, so use HTTPS for the initial clone:
-
-```bash
+nix-shell -p git age
 git clone https://github.com/Zabuddia/alanixos.git ~/.nixos
 cd ~/.nixos
 ```
 
 ---
 
-## Step 4 — Generate the machine's sops age key
-
-This key is used by sops-nix to decrypt secrets at boot. It lives at `/var/lib/sops-nix/key.txt` and is root-only.
+## Step 3 — Generate the machine's age key and print the public key
 
 ```bash
 sudo mkdir -p /var/lib/sops-nix
 sudo age-keygen -o /var/lib/sops-nix/key.txt
 sudo chmod 0400 /var/lib/sops-nix/key.txt
 sudo chown root:root /var/lib/sops-nix/key.txt
-```
-
-Print the public key — you'll need it in the next step:
-
-```bash
 sudo age-keygen -y /var/lib/sops-nix/key.txt
 ```
 
-**Workstations only** — also copy the key for `buddia` so you can run `sops` without sudo to edit secrets:
-
-```bash
-mkdir -p ~/.config/sops/age
-sudo cp /var/lib/sops-nix/key.txt ~/.config/sops/age/keys.txt
-sudo chown buddia:users ~/.config/sops/age/keys.txt
-chmod 0600 ~/.config/sops/age/keys.txt
-```
+Copy the `age1...` public key — you'll need it on the already-set-up machine.
 
 ---
 
-## Step 5 — Add the key to the repo (on this machine)
-
-Edit `secrets/keys.nix` and add the new machine's `age1...` public key, then regenerate `.sops.yaml`:
+## Step 4 — Add the key and re-encrypt secrets (on the already-set-up machine)
 
 ```bash
-git config user.name "zabuddia"
-git config user.email "fife.alan@protonmail.com"
-vim secrets/keys.nix
+cd ~/.nixos
+nano secrets/keys.nix          # add the new age1... public key
 bash ./scripts/update-sops-config
-git add secrets/keys.nix .sops.yaml
-git commit -m "Add <hostname> age recipient"
-gh auth login
-git push
-```
-
----
-
-## Step 6 — Re-encrypt secrets (on another already-set-up machine)
-
-```bash
-cd ~/.nixos
-git pull
 sops updatekeys --yes secrets/*.yaml
-
-# If the already-set-up machine is not a workstation then do:
-sudo SOPS_AGE_KEY_FILE="/var/lib/sops-nix/key.txt" sops updatekeys --yes secrets/*.yaml
-
-git add secrets/*.yaml
-git commit -m "Re-encrypt secrets for <hostname>"
+git add secrets/keys.nix .sops.yaml secrets/*.yaml
+git commit -m "Add <hostname> age recipient"
 git push
 ```
 
 ---
 
-## Step 7 — Pull the updated secrets (back on the new machine)
+## Step 5 — Pull, copy hardware config, rebuild, and reboot (back on the new machine)
 
 ```bash
-cd ~/.nixos
 git pull
-```
-
----
-
-## Step 8 — Copy hardware config
-
-```bash
 cp /etc/nixos/hardware-configuration.nix ~/.nixos/hosts/<hostname>/hardware-configuration.nix
-```
-
----
-
-## Step 9 — Rebuild
-
-```bash
-nix flake check --no-build
 sudo nixos-rebuild switch --flake ~/.nixos#<hostname>
-```
-
----
-
-## Step 10 — Reboot
-
-```bash
 reboot
 ```
 
