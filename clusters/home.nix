@@ -6,8 +6,6 @@ let
     "alan-node"
   ];
 
-  headscaleDnsNameserver = "100.64.0.3";
-
   mailDkimTxt = lib.concatStrings [
     "v=DKIM1; k=rsa; p="
     "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnKr7G7M2LwNDdniDSDjXRk5L/6mX/egNq4m1lPVK1BgrHhJYn5XPsJQ6XXlKVUWiUlLBR6Fe8OgS9QxlEAhJzNEyaRpMMbAV/OK/Eb1LNN3hQMp47LNKP0kfCDBUJUANYg1I02hFjQt8LDBFZ2u5vt66bs0Sio1LEz+iMyUHSqJfaHqz8hJiuPJgEb7JZBxI0Uq6xpaOyNd7lhR7heSukrMj5f9iK7mah3NMo9QcjwpZObX7YRbU7XBcu/sffe58PmVBa4BplzmpM2x9m4J8Zyb8BNsZgy+S0gidYtTxmpQ2KMG/7qlP8ZLIxKtEf8PnOMeESiYJr5ZAbwsBUI6kbQIDAQAB"
@@ -162,6 +160,52 @@ in
     alanix.users.accounts.buddia.extraGroups = [ "filebrowser" ];
     users.users.filebrowser.extraGroups = [ "users" ];
 
+    alanix.adguardhome = {
+      enable = true;
+      mutableSettings = true;
+      filtersUpdateInterval = 24;
+
+      cluster = {
+        enable = true;
+        resolverHosts = [
+          "alan-big-nixos"
+          "alan-node"
+          "randy-big-nixos"
+        ];
+        resolverAddresses = {
+          alan-big-nixos = "100.64.0.3";
+          alan-node = "100.64.0.5";
+          randy-big-nixos = "100.64.0.6";
+        };
+        lanBindHosts.alan-big-nixos = [ "192.168.10.225" ];
+      };
+
+      web = {
+        listenAddress = "127.0.0.1";
+        port = 3002;
+      };
+
+      dns = {
+        port = 53;
+        upstreamDns = [ "127.0.0.1" ];
+        bootstrapDns = [ ];
+      };
+
+      filters = [
+        {
+          enabled = true;
+          url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt";
+          name = "AdGuard DNS filter";
+          id = 1;
+        }
+      ];
+
+      expose.tailscale = {
+        enable = true;
+        port = 13002;
+      };
+    };
+
     alanix.syncthing = {
       enable = true;
       transport = "tailscale";
@@ -191,13 +235,12 @@ in
 
       dns = {
         overrideLocalDns = true;
-        nameservers = [ headscaleDnsNameserver ];
       };
 
       derp = {
         enable = true;
         stunPort = 3478;
-        useUpstreamDerpMap = false;
+        useUpstreamDerpMap = true;
       };
 
       expose.wan = {
@@ -211,6 +254,8 @@ in
         maxBackupAge = "2h";
       };
     };
+
+    alanix.unbound.enable = true;
 
     alanix.headplane = {
       enable = true;
@@ -531,6 +576,7 @@ in
       sendingFqdn = "mail.fifefin.com";
       systemContact = "postmaster@fifefin.com";
       certificateScheme = "acme";
+      localDnsResolver = false;
 
       acme = {
         dnsProvider = "cloudflare";

@@ -12,6 +12,7 @@
     ./network/ssh.nix
     ./network/cloudflare-dns.nix
     ./network/ddns.nix
+    ./network/unbound.nix
     ./network/tailscale.nix
     ./network/wifi.nix
     ./network/tor.nix

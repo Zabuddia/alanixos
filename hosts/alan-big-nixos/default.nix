@@ -132,48 +132,6 @@
       operator = "buddia";
     };
 
-    alanix.adguardhome = {
-      enable = true;
-      mutableSettings = true;
-      filtersUpdateInterval = 24;
-
-      web = {
-        listenAddress = "127.0.0.1";
-        port = 3002;
-      };
-
-      dns = {
-        bindHosts = [ "100.64.0.3" "192.168.10.225" ];
-        port = 53;
-        upstreamDns = [
-          "https://dns.quad9.net/dns-query"
-          "https://cloudflare-dns.com/dns-query"
-        ];
-        bootstrapDns = [
-          "9.9.9.9"
-          "149.112.112.112"
-          "1.1.1.1"
-          "1.0.0.1"
-        ];
-        openFirewallOnTailscale = true;
-        openFirewallOnLan = true;
-      };
-
-      filters = [
-        {
-          enabled = true;
-          url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt";
-          name = "AdGuard DNS filter";
-          id = 1;
-        }
-      ];
-
-      expose.tailscale = {
-        enable = true;
-        port = 13002;
-      };
-    };
-
     alanix.wifi.radio.enable = false;
 
     alanix.syncthing = {
