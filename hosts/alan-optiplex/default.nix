@@ -65,7 +65,7 @@
       accounts.buddia = {
         enable = true;
         isNormalUser = true;
-        extraGroups = [ "wheel" "networkmanager" "input" ];
+        extraGroups = [ "wheel" "networkmanager" "input" "cdrom" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
         sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJagVnL05ndecnIntQQbEUFs9EMxVP/27oGNuZGAjpbJ fife.alan@protonmail.com";
@@ -85,9 +85,26 @@
           stateVersion = "25.11";
           files = { };
           packages = with pkgs; [
+            abcde
+            asunder
+            cdparanoia
+            cuetools
+            easytag
+            ffmpeg
+            flac
+            freac
+            glyr
             handbrake
+            kid3
+            lame
+            mediainfo
+            mp3val
+            opus-tools
+            picard
             tmux
             vlc
+            vorbis-tools
+            whipper
           ];
           unstablePackages = with pkgs-unstable; [
             yt-dlp

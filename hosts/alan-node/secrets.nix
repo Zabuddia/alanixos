@@ -211,6 +211,13 @@
     mode = "0400";
   };
 
+  sops.secrets."tor/headplane/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
   sops.secrets."tor/vaultwarden/secret-key-base64" = {
     sopsFile = (import ../../secrets/files.nix).tor;
     owner = "root";

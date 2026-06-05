@@ -6,6 +6,8 @@ let
     "alan-node"
   ];
 
+  headscaleDnsNameserver = "100.64.0.3";
+
   mailDkimTxt = lib.concatStrings [
     "v=DKIM1; k=rsa; p="
     "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnKr7G7M2LwNDdniDSDjXRk5L/6mX/egNq4m1lPVK1BgrHhJYn5XPsJQ6XXlKVUWiUlLBR6Fe8OgS9QxlEAhJzNEyaRpMMbAV/OK/Eb1LNN3hQMp47LNKP0kfCDBUJUANYg1I02hFjQt8LDBFZ2u5vt66bs0Sio1LEz+iMyUHSqJfaHqz8hJiuPJgEb7JZBxI0Uq6xpaOyNd7lhR7heSukrMj5f9iK7mah3NMo9QcjwpZObX7YRbU7XBcu/sffe58PmVBa4BplzmpM2x9m4J8Zyb8BNsZgy+S0gidYtTxmpQ2KMG/7qlP8ZLIxKtEf8PnOMeESiYJr5ZAbwsBUI6kbQIDAQAB"
@@ -189,10 +191,7 @@ in
 
       dns = {
         overrideLocalDns = true;
-        nameservers = [
-          "45.90.28.226"
-          "45.90.30.226"
-        ];
+        nameservers = [ headscaleDnsNameserver ];
       };
 
       derp = {
@@ -220,9 +219,23 @@ in
       baseUrl = "https://headplane.fifefin.com";
       backupDir = "/var/backup/headplane";
 
-      expose.wan = {
-        enable = true;
-        domain = "headplane.fifefin.com";
+      expose = {
+        wan = {
+          enable = true;
+          domain = "headplane.fifefin.com";
+        };
+
+        tor = {
+          enable = true;
+          publicPort = 80;
+          secretKeyBase64Secret = "tor/headplane/secret-key-base64";
+          hostname = "2tf3kobh4qab3uieuquw6ose2vs4qvrzcu2edvrkkpsjm4dnnvm4wpad.onion";
+        };
+
+        tailscale = {
+          enable = true;
+          port = 18087;
+        };
       };
 
       cluster = {
