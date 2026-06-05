@@ -37,7 +37,7 @@
     };
 
     alan-tv = {
-      recipient = "age1jvv2kuyxsyaut5jtfv5ylcq7c7dgpepn2r6qzyf483rme46ddy2qdftgga";
+      recipient = "age17hrwk6gthhga9d993c8aexnvcfzaz7jwvhf3vt8uqzeul6na8smqmunnl8";
       description = "Root-only runtime key stored at /var/lib/sops-nix/key.txt.";
     };
   };
