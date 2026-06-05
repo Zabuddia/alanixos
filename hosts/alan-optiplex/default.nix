@@ -7,25 +7,8 @@
     imports = [
       ./hardware-configuration.nix
       ./secrets.nix
+      ../../modules/services/bitcoin
     ];
-
-    hardware.alsa.enablePersistence = true;
-
-    systemd.services.alanix-optiplex-hdmi-audio = {
-      description = "Enable OptiPlex HDMI audio";
-      wantedBy = [ "multi-user.target" ];
-      wants = [ "sound.target" ];
-      after = [ "sound.target" "alsa-store.service" ];
-      serviceConfig.Type = "oneshot";
-      script = ''
-        # sset 'IEC958',0 silently no-ops sometimes; cset numid=35/41/47 is reliable.
-        ${pkgs.alsa-utils}/bin/amixer -c PCH cset numid=35 on || true
-        ${pkgs.alsa-utils}/bin/amixer -c PCH cset numid=41 on || true
-        ${pkgs.alsa-utils}/bin/amixer -c PCH cset numid=47 on || true
-        ${pkgs.coreutils}/bin/install -d -m 0755 /var/lib/alsa
-        ${pkgs.alsa-utils}/bin/alsactl store -gU || true
-      '';
-    };
 
     alanix.system = {
       stateVersion = "25.11";
@@ -57,7 +40,12 @@
         wget
         usbutils
       ];
-      swapDevices = [ ];
+      swapDevices = [
+        {
+          device = "/swapfile";
+          size = 8192;
+        }
+      ];
     };
 
     alanix.users = {
@@ -129,61 +117,10 @@
           profile = "sway/default";
         };
         azahar.enable = true;
-        antimicrox = {
-          enable = true;
-          mouse.precisionButton = "rb";
-          workspaceSwitching.enable = true;
-          openThunar.path = "${config.alanix.users.accounts.buddia.home.directory}/Syncthing/media";
-          openScrcpy.extraArgs = [ "--fullscreen" ];
-          pauseForApps = [ "kodi" ];
-          pauseForGameApps = [ "dolphin-emu" ];
-          buttonActions = {
-            a = "leftClick";
-            b = "rightClick";
-            x = "openDolphin";
-            y = "keyboard";
-            back = "escape";
-            guide = "launcher";
-            start = "enter";
-            lb = "closeWindow";
-            leftStick = "altTab";
-            rightStick = "middleClick";
-            leftTrigger = "openScrcpy";
-            rightTrigger = "openKodi";
-          };
-        };
         chromium.enable = true;
         makemkv = {
           enable = true;
           betaKey = "T-sJ5R5BKxhD671U9s0teXbyP19MhCkkkB7rmnNbb1aEHaqveiVqyI3RXGMHDXhoyNUC";
-        };
-        kodi = {
-          enable = true;
-          invidious = {
-            enable = true;
-            instanceUrl = "https://invidious.fifefin.com";
-            username = "buddia";
-            passwordFile = config.sops.secrets."invidious-passwords/buddia".path;
-            markItemsWatched = true;
-          };
-          jellyfin.enable = true;
-          inputstreamAdaptive = {
-            enable = true;
-            streamSelectionType = "fixed-res";
-            maxResolution = "1080p";
-            secureMaxResolution = "1080p";
-            autoInitialBandwidth = false;
-            initialBandwidthKbps = 25000;
-            ignoreScreenResolution = true;
-            ignoreScreenResolutionChanges = true;
-          };
-          mediaSources.music = [
-            { name = "Music"; path = "${config.alanix.syncthing.syncRoot}/media/music"; }
-          ];
-          iptvSimple = {
-            enable = true;
-            m3uUrl = "http://192.168.10.105/lineup.m3u";
-          };
         };
         dolphin.enable = true;
         melonds.enable = true;
@@ -226,9 +163,20 @@
 
     services.avahi.enable = true;
 
+    fileSystems."/home/buddia/storage" = {
+      device = "/dev/disk/by-uuid/1e1a79ae-0312-4f3b-81ce-66fca54202ba";
+      fsType = "ext4";
+      options = [ "nofail" "x-systemd.device-timeout=10s" ];
+    };
+
+    systemd.tmpfiles.rules = [
+      "d /home/buddia/storage 0755 buddia users - -"
+    ];
+
     alanix.syncthing = {
       enable = true;
       transport = "tailscale";
+      syncRoot = "/home/buddia/storage/Syncthing";
       listenPort = 22000;
       folderSets = [
         "emulation-azahar"
