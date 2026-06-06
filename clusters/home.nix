@@ -162,7 +162,7 @@ in
 
     alanix.adguardhome = {
       enable = true;
-      mutableSettings = true;
+      mutableSettings = false;
       filtersUpdateInterval = 6;
 
       cluster = {
@@ -242,7 +242,7 @@ in
         }
       ];
 
-      settings = {
+      settings.filtering = {
         blocked_services = {
           ids = [ "tiktok" ];
           schedule.time_zone = "Local";

@@ -51,15 +51,17 @@ let
   '';
 
   baseSettings = {
-    protection_enabled = true;
-    filtering_enabled = true;
-    filters_update_interval = cfg.filtersUpdateInterval;
-
     dns = {
       bind_hosts = cfg.dns.bindHosts;
       port = cfg.dns.port;
       upstream_dns = cfg.dns.upstreamDns;
       bootstrap_dns = cfg.dns.bootstrapDns;
+    };
+
+    filtering = {
+      protection_enabled = true;
+      filtering_enabled = true;
+      filters_update_interval = cfg.filtersUpdateInterval;
     };
 
     filters = cfg.filters;
