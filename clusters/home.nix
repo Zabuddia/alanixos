@@ -163,7 +163,7 @@ in
     alanix.adguardhome = {
       enable = true;
       mutableSettings = true;
-      filtersUpdateInterval = 24;
+      filtersUpdateInterval = 6;
 
       cluster = {
         enable = true;
@@ -194,11 +194,65 @@ in
       filters = [
         {
           enabled = true;
-          url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt";
-          name = "AdGuard DNS filter";
+          url = "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/pro.txt";
+          name = "HaGeZi Multi PRO";
           id = 1;
         }
+        {
+          enabled = true;
+          url = "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/tif.medium.txt";
+          name = "HaGeZi Threat Intelligence Feeds Medium";
+          id = 2;
+        }
+        {
+          enabled = true;
+          url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt";
+          name = "AdGuard DNS filter";
+          id = 3;
+        }
+        {
+          enabled = true;
+          url = "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/dyndns.txt";
+          name = "HaGeZi Dynamic DNS";
+          id = 4;
+        }
+        {
+          enabled = true;
+          url = "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/nsfw.txt";
+          name = "HaGeZi NSFW";
+          id = 5;
+        }
+        {
+          enabled = true;
+          url = "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/gambling.txt";
+          name = "HaGeZi Gambling";
+          id = 6;
+        }
+        {
+          enabled = true;
+          url = "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/anti.piracy.txt";
+          name = "HaGeZi Anti-Piracy";
+          id = 7;
+        }
       ];
+
+      settings = {
+        blocked_services = {
+          ids = [ "tiktok" ];
+          schedule.time_zone = "Local";
+        };
+
+        safe_search = {
+          enabled = true;
+          bing = true;
+          duckduckgo = true;
+          ecosia = true;
+          google = true;
+          pixabay = true;
+          yandex = true;
+          youtube = true;
+        };
+      };
 
       expose.tailscale = {
         enable = true;
@@ -255,7 +309,17 @@ in
       };
     };
 
-    alanix.unbound.enable = true;
+    alanix.unbound = {
+      enable = true;
+      settings.server.private-address = [
+        "10.0.0.0/8"
+        "169.254.0.0/16"
+        "172.16.0.0/12"
+        "192.168.0.0/16"
+        "fc00::/7"
+        "fe80::/10"
+      ];
+    };
 
     alanix.headplane = {
       enable = true;
