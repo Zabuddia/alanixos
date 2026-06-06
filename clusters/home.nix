@@ -200,8 +200,8 @@ in
         }
         {
           enabled = true;
-          url = "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/tif.medium.txt";
-          name = "HaGeZi Threat Intelligence Feeds Medium";
+          url = "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/tif.txt";
+          name = "HaGeZi Threat Intelligence Feeds";
           id = 2;
         }
         {
@@ -233,6 +233,12 @@ in
           url = "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/anti.piracy.txt";
           name = "HaGeZi Anti-Piracy";
           id = 7;
+        }
+        {
+          enabled = true;
+          url = "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/nosafesearch.txt";
+          name = "HaGeZi No SafeSearch";
+          id = 8;
         }
       ];
 
