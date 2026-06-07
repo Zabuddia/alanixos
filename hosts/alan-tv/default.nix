@@ -107,7 +107,7 @@
           pauseForGameAppTitlePatterns.Ryujinx = [
             ''\([[:xdigit:]]{16}\) \([[:digit:]]+-bit\)$''
           ];
-          gameButtonActions.guide = "closeWindow";
+          gameButtonActions.guide = "escape";
           gameButtonActionApps = [ "Ryujinx" ];
           buttonActions = {
             a = "leftClick";
