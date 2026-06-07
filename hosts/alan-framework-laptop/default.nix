@@ -186,6 +186,7 @@
             "${config.alanix.syncthing.syncRoot}/games/roms/wii"
           ];
         };
+        evdevhook2.enable = true;
         librewolf.enable = true;
         melonds.enable = true;
         nextcloudClient.enable = true;
