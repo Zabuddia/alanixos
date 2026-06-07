@@ -2,12 +2,10 @@
 
 let
   cfg = config.ryubing;
-  ryubingCommand = pkgs.writeShellScriptBin "ryubing" ''
-    exec ${pkgs-unstable.ryubing}/bin/Ryujinx "$@"
-  '';
   managedSettings = lib.filterAttrs (_: value: value != null) {
     game_dirs = cfg.gameDirs;
     start_fullscreen = cfg.startFullscreen;
+    show_confirm_exit = cfg.confirmExit;
   };
   managedSettingsJson = builtins.toJSON managedSettings;
 in
@@ -26,25 +24,17 @@ in
       default = null;
       description = "Whether Ryubing starts games in fullscreen mode.";
     };
+
+    confirmExit = lib.mkOption {
+      type = lib.types.nullOr lib.types.bool;
+      default = null;
+      description = "Whether Ryubing asks for confirmation before exiting.";
+    };
   };
 
   config.home.modules = lib.optionals cfg.enable [
     ({ config, lib, ... }: {
-      home.packages = [
-        pkgs-unstable.ryubing
-        ryubingCommand
-      ];
-
-      xdg.desktopEntries.ryubing = {
-        name = "Ryubing";
-        genericName = "Nintendo Switch Emulator";
-        comment = "Nintendo Switch emulator based on Ryujinx";
-        exec = "ryubing";
-        icon = "Ryujinx";
-        terminal = false;
-        categories = [ "Game" "Emulator" ];
-        settings.Keywords = "Ryubing;Ryujinx;Switch;Nintendo;Emulator;";
-      };
+      home.packages = [ pkgs-unstable.ryubing ];
 
       home.activation.writeRyubingSettings = lib.mkIf (managedSettings != { }) (lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         configDir="${config.home.homeDirectory}/.config/Ryujinx"

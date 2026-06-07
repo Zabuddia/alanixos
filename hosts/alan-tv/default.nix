@@ -178,6 +178,7 @@
         melonds.enable = true;
         ryubing = {
           enable = true;
+          confirmExit = false;
           gameDirs = [ "${config.alanix.syncthing.syncRoot}/games/roms/switch" ];
           startFullscreen = true;
         };

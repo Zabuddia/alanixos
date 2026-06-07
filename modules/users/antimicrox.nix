@@ -776,7 +776,7 @@ in
 
       command = lib.mkOption {
         type = types.str;
-        default = "ryubing";
+        default = lib.getExe pkgs-unstable.ryubing;
         description = "Command run by the Ryubing keybinding.";
       };
     };
