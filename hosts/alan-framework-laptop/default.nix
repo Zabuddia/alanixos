@@ -45,6 +45,8 @@
         imagemagick
         unzip
         p7zip
+        parted
+        dosfstools
         unar
         gparted
         usbutils

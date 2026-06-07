@@ -44,6 +44,8 @@
         imagemagick
         unzip
         p7zip
+        parted
+        dosfstools
         usbutils
       ];
       swapDevices = [

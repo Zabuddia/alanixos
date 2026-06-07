@@ -36,6 +36,8 @@
         tree
         unzip
         p7zip
+        parted
+        dosfstools
         wget
         usbutils
       ];
@@ -216,6 +218,7 @@
         "emulation-azahar"
         "emulation-dolphin"
         "emulation-melonds"
+        "emulation-ryujinx"
         "movies"
         "shows"
         "videos"
@@ -227,6 +230,7 @@
         "emulation-azahar"
         "emulation-dolphin"
         "emulation-melonds"
+        "emulation-ryujinx"
       ];
       deviceId = "OQE4RP7-C457Q5O-GYEPFIN-YNNEGWH-A7KFH3E-LYTMYOL-GJ6VLU4-EKTRLAP";
       peers = [

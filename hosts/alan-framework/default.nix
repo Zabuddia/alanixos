@@ -38,6 +38,8 @@
         tree
         unzip
         p7zip
+        parted
+        dosfstools
         wget
         usbutils
       ];
