@@ -9,6 +9,8 @@
       ./secrets.nix
     ];
 
+    services.joycond.enable = true;
+
     alanix.system = {
       stateVersion = "25.11";
       timeZone = "America/Chicago";
@@ -204,6 +206,7 @@
       enable = true;
       profile = "sway";
       bluetooth.enable = true;
+      bluetooth.allowUnbondedClassicHid = true;
       fingerprint.enable = true;
       printing.enable = true;
       profiles.sway = {

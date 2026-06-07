@@ -9,6 +9,8 @@
       ./secrets.nix
     ];
 
+    services.joycond.enable = true;
+
     alanix.system = {
       stateVersion = "26.05";
       timeZone = "America/Chicago";
@@ -178,7 +180,6 @@
         melonds.enable = true;
         ryubing = {
           enable = true;
-          sdlVideoDriver = "wayland";
           confirmExit = false;
           gameDirs = [ "${config.alanix.syncthing.syncRoot}/games/roms/switch" ];
           startFullscreen = true;
@@ -191,6 +192,7 @@
       enable = true;
       profile = "sway";
       bluetooth.enable = true;
+      bluetooth.allowUnbondedClassicHid = true;
       profiles.sway = {
         autoLogin = {
           enable = true;

@@ -34,6 +34,12 @@ in
         default = true;
         description = "Whether to power on the Bluetooth controller during boot.";
       };
+
+      allowUnbondedClassicHid = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Whether to allow unbonded classic Bluetooth input devices, such as Nintendo Switch Joy-Cons.";
+      };
     };
 
     fingerprint.enable = lib.mkEnableOption "fingerprint authentication for screen lock and sudo";
