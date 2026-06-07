@@ -45,6 +45,7 @@ let
     k = "0x4b";
     o = "0x4f";
     q = "0x51";
+    r = "0x52";
     s = "0x53";
     t = "0x54";
     volumeDown = "0x1008ff11";
@@ -110,6 +111,7 @@ let
   actionNames = builtins.attrNames actionDefinitions;
 
   profilePath = "${config.home.directory}/.config/antimicrox/profiles/${cfg.profile.fileName}";
+  gameProfilePath = "${config.home.directory}/.config/antimicrox/profiles/game-${cfg.profile.fileName}";
   settingsFilePath = "${config.home.directory}/.config/antimicrox/antimicrox_settings.ini";
   keyboardProgramPath = "${cfg.onScreenKeyboard.package}/bin/${cfg.onScreenKeyboard.program}";
   keyboardLaunchCommand = lib.escapeShellArgs ([ keyboardProgramPath ] ++ cfg.onScreenKeyboard.extraArgs);
@@ -318,6 +320,10 @@ let
       label = "Open Dolphin";
       slots = keyboardSlots cfg.openDolphin.keyCodes;
     };
+    openRyubing = {
+      label = "Open Ryubing";
+      slots = keyboardSlots cfg.openRyubing.keyCodes;
+    };
     openThunar = {
       label = "Open Thunar";
       slots = keyboardSlots cfg.openThunar.keyCodes;
@@ -353,58 +359,67 @@ let
   };
 
   configuredButtonNames = builtins.attrNames cfg.buttonActions;
-  mappedButtonNames = lib.filter (buttonName: lib.hasAttr buttonName cfg.buttonActions) controllerButtonOrder;
-  mappedTriggerNames = lib.filter (triggerName: lib.hasAttr triggerName cfg.buttonActions) controllerTriggerOrder;
-  unknownConfiguredButtons = lib.filter (buttonName: !(lib.hasAttr buttonName controllerInputIndexes)) configuredButtonNames;
-  configuredActions = builtins.attrValues cfg.buttonActions;
+  configuredGameButtonNames = builtins.attrNames cfg.gameButtonActions;
+  unknownConfiguredButtons =
+    lib.filter
+      (buttonName: !(lib.hasAttr buttonName controllerInputIndexes))
+      (configuredButtonNames ++ configuredGameButtonNames);
+  configuredActions = builtins.attrValues cfg.buttonActions ++ builtins.attrValues cfg.gameButtonActions;
 
   usesAction = actionName: lib.any (configuredAction: configuredAction == actionName) configuredActions;
   usesOpenKodi = usesAction "openKodi";
   usesOpenDolphin = usesAction "openDolphin";
+  usesOpenRyubing = usesAction "openRyubing";
   usesOpenThunar = usesAction "openThunar";
   usesOpenScrcpy = usesAction "openScrcpy";
 
-  controllerButtonNames =
+  mappedButtonNames = actions:
+    lib.filter (buttonName: lib.hasAttr buttonName actions) controllerButtonOrder;
+
+  mappedTriggerNames = actions:
+    lib.filter (triggerName: lib.hasAttr triggerName actions) controllerTriggerOrder;
+
+  controllerButtonNames = actions:
     map
       (mappedButtonName:
         let
-          actionName = cfg.buttonActions.${mappedButtonName};
+          actionName = actions.${mappedButtonName};
           action = actionDefinitions.${actionName};
         in
         buttonNameXml controllerButtonIndexes.${mappedButtonName} action.label)
-      mappedButtonNames;
+      (mappedButtonNames actions);
 
-  controllerTriggerNames =
+  controllerTriggerNames = actions:
     map
       (mappedTriggerName:
         let
-          actionName = cfg.buttonActions.${mappedTriggerName};
+          actionName = actions.${mappedTriggerName};
           action = actionDefinitions.${actionName};
         in
         ''
             <axisbuttonname index="${toString (controllerTriggerIndexes.${mappedTriggerName})}" button="2">${action.label}</axisbuttonname>
         '')
-      mappedTriggerNames;
+      (mappedTriggerNames actions);
 
-  controllerButtons =
+  controllerButtons = actions:
     map
       (mappedButtonName:
         let
-          actionName = cfg.buttonActions.${mappedButtonName};
+          actionName = actions.${mappedButtonName};
           action = actionDefinitions.${actionName};
         in
         button controllerButtonIndexes.${mappedButtonName} action.slots)
-      mappedButtonNames;
+      (mappedButtonNames actions);
 
-  controllerTriggers =
+  controllerTriggers = actions:
     map
       (mappedTriggerName:
         let
-          actionName = cfg.buttonActions.${mappedTriggerName};
+          actionName = actions.${mappedTriggerName};
           action = actionDefinitions.${actionName};
         in
         trigger controllerTriggerIndexes.${mappedTriggerName} action.slots)
-      mappedTriggerNames;
+      (mappedTriggerNames actions);
 
   makeMouseStickButtons = speedX: speedY: [
     (stickButton 1 { mousespeedx = speedX; mousespeedy = speedY; } [ (mouseMovementSlot mouseMovement.up) ])
@@ -448,7 +463,7 @@ let
   ${lib.concatStrings (scrollStickButtons ++ workspaceSwitchStickButtons)}                </stick>
                   <dpad index="1">
   ${lib.concatStrings dpadButtons}                </dpad>
-  ${lib.concatStrings controllerButtons}${lib.concatStrings controllerTriggers}${precisionButtonXml switchToSet}          </set>
+  ${lib.concatStrings (controllerButtons cfg.buttonActions)}${lib.concatStrings (controllerTriggers cfg.buttonActions)}${precisionButtonXml switchToSet}          </set>
   '';
 
   hasPrecisionMode = cfg.mouse.precisionButton != null;
@@ -464,6 +479,9 @@ let
     }
     // lib.optionalAttrs usesOpenDolphin {
       "${cfg.openDolphin.keybinding}" = "exec ${cfg.openDolphin.command}";
+    }
+    // lib.optionalAttrs usesOpenRyubing {
+      "${cfg.openRyubing.keybinding}" = "exec ${cfg.openRyubing.command}";
     }
     // lib.optionalAttrs usesOpenThunar {
       "${cfg.openThunar.keybinding}" = "exec ${openThunarCommand}";
@@ -482,11 +500,25 @@ let
         <guid>sdlgamecontroller</guid>
         <profilename>${cfg.profile.name}</profilename>
         <names>
-  ${lib.concatStrings controllerButtonNames}${lib.concatStrings controllerTriggerNames}            <controlstickname index="1">Mouse</controlstickname>
+  ${lib.concatStrings (controllerButtonNames cfg.buttonActions)}${lib.concatStrings (controllerTriggerNames cfg.buttonActions)}            <controlstickname index="1">Mouse</controlstickname>
             <controlstickname index="2">${if cfg.workspaceSwitching.enable then "Scroll / Workspaces" else "Scroll"}</controlstickname>
         </names>
         <sets>
   ${makeSet 1 cfg.mouse.speedX cfg.mouse.speedY 2}${lib.optionalString hasPrecisionMode (makeSet 2 cfg.mouse.precisionSpeedX cfg.mouse.precisionSpeedY 1)}    </sets>
+    </gamecontroller>
+  '';
+
+  gameProfile = ''<?xml version="1.0" encoding="UTF-8"?>
+    <gamecontroller configversion="19" appversion="3.5.1">
+        <sdlname>${cfg.profile.sdlName}</sdlname>
+        <guid>sdlgamecontroller</guid>
+        <profilename>${cfg.profile.name} Game</profilename>
+        <names>
+  ${lib.concatStrings (controllerButtonNames cfg.gameButtonActions)}${lib.concatStrings (controllerTriggerNames cfg.gameButtonActions)}        </names>
+        <sets>
+            <set index="1">
+  ${lib.concatStrings (controllerButtons cfg.gameButtonActions)}${lib.concatStrings (controllerTriggers cfg.gameButtonActions)}            </set>
+        </sets>
     </gamecontroller>
   '';
 in
@@ -729,6 +761,26 @@ in
       };
     };
 
+    openRyubing = {
+      keybinding = lib.mkOption {
+        type = types.str;
+        default = "Mod4+Ctrl+r";
+        description = "Sway keybinding used to open Ryubing.";
+      };
+
+      keyCodes = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ key.super key.control key.r ];
+        description = "AntiMicroX key codes to send for the open Ryubing shortcut.";
+      };
+
+      command = lib.mkOption {
+        type = types.str;
+        default = "ryubing";
+        description = "Command run by the Ryubing keybinding.";
+      };
+    };
+
     openThunar = {
       package = lib.mkOption {
         type = types.package;
@@ -832,6 +884,18 @@ in
       description = "Additional Wayland app_ids and extended regular expressions that identify active game-session window titles.";
     };
 
+    gameButtonActions = lib.mkOption {
+      type = types.attrsOf (types.enum actionNames);
+      default = { };
+      description = "Minimal AntiMicroX button mappings kept active while a detected game session has focus.";
+    };
+
+    gameButtonActionApps = lib.mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "Wayland app_ids whose detected game sessions use gameButtonActions instead of fully pausing AntiMicroX.";
+    };
+
     buttonActions = lib.mkOption {
       type = types.attrsOf (types.enum actionNames);
       default = {
@@ -865,7 +929,11 @@ in
       }
       {
         assertion = unknownConfiguredButtons == [ ];
-        message = "alanix.users.accounts.${name}.antimicrox.buttonActions contains unsupported inputs: ${lib.concatStringsSep ", " unknownConfiguredButtons}.";
+        message = "alanix.users.accounts.${name}.antimicrox button actions contain unsupported inputs: ${lib.concatStringsSep ", " unknownConfiguredButtons}.";
+      }
+      {
+        assertion = (cfg.gameButtonActions == { }) == (cfg.gameButtonActionApps == [ ]);
+        message = "alanix.users.accounts.${name}.antimicrox.gameButtonActions and gameButtonActionApps must be configured together.";
       }
       {
         assertion = cfg.launcher.enable || !(usesAction "launcher");
@@ -891,6 +959,8 @@ in
           ++ lib.optionals usesOpenScrcpy [ cfg.openScrcpy.package ];
 
         xdg.configFile."antimicrox/profiles/${cfg.profile.fileName}".text = profile;
+        xdg.configFile."antimicrox/profiles/game-${cfg.profile.fileName}".text =
+          lib.mkIf (cfg.gameButtonActions != { }) gameProfile;
 
         home.activation.antimicroxControllerMappings = lib.mkIf (cfg.controllerGuids != [ ]) (
           let
@@ -929,6 +999,7 @@ in
           let
             pauseAppIds = cfg.pauseForApps;
             pauseGameAppIds = cfg.pauseForGameApps;
+            gameButtonActionAppIds = cfg.gameButtonActionApps;
             customGameTitleChecks = lib.concatStringsSep "\n" (
               lib.flatten (
                 lib.mapAttrsToList
@@ -947,6 +1018,7 @@ in
             watcherScript = pkgs.writeShellScript "antimicrox-focus-watcher" ''
               pause_apps=${lib.escapeShellArg (lib.concatStringsSep "\n" pauseAppIds)}
               pause_game_apps=${lib.escapeShellArg (lib.concatStringsSep "\n" pauseGameAppIds)}
+              game_button_action_apps=${lib.escapeShellArg (lib.concatStringsSep "\n" gameButtonActionAppIds)}
               pause_dir="''${XDG_RUNTIME_DIR:-/tmp}/alanix-antimicrox-pause"
 
               normalize_app_id() {
@@ -1008,17 +1080,21 @@ in
                 title=$(printf '%s' "$focused" | ${pkgs.jq}/bin/jq -r '.title // ""')
                 is_pause_app=$(contains_app "$pause_apps" "$app_id" && echo yes || echo no)
                 is_game_session=$(is_game_title "$app_id" "$title" && echo yes || echo no)
+                is_game_button_action_app=$(contains_app "$game_button_action_apps" "$app_id" && echo yes || echo no)
                 is_manual_pause=$(manual_pause_active && echo yes || echo no)
-                if [ "$is_manual_pause" = "yes" ] || [ "$is_pause_app" = "yes" ] || [ "$is_game_session" = "yes" ]; then
-                  should_pause=yes
-                else
-                  should_pause=no
-                fi
+                echo "change=$change focused_app=$app_id is_manual_pause=$is_manual_pause is_pause_app=$is_pause_app is_game_session=$is_game_session is_game_button_action_app=$is_game_button_action_app title=$title"
 
-                echo "change=$change focused_app=$app_id is_manual_pause=$is_manual_pause is_pause_app=$is_pause_app is_game_session=$is_game_session title=$title"
-                if [ "$should_pause" = "yes" ]; then
+                if [ "$is_manual_pause" = "yes" ] || [ "$is_pause_app" = "yes" ]; then
+                  ${systemctl} --user stop antimicrox antimicrox-game
+                elif [ "$is_game_session" = "yes" ]; then
                   ${systemctl} --user stop antimicrox
+                  if [ "$is_game_button_action_app" = "yes" ]; then
+                    ${systemctl} --user start antimicrox-game
+                  else
+                    ${systemctl} --user stop antimicrox-game
+                  fi
                 else
+                  ${systemctl} --user stop antimicrox-game
                   ${systemctl} --user start antimicrox
                 fi
               }
@@ -1063,6 +1139,19 @@ in
             RestartSec = 2;
           };
           Install.WantedBy = [ "graphical-session.target" ];
+        };
+
+        systemd.user.services.antimicrox-game = lib.mkIf (swayActive && cfg.gameButtonActions != { }) {
+          Unit = {
+            Description = "AntiMicroX minimal game controller mapping";
+            After = [ "graphical-session.target" ];
+            PartOf = [ "graphical-session.target" ];
+          };
+          Service = {
+            ExecStart = "${lib.getExe cfg.package} --tray --hidden --eventgen uinput --log-level warn --profile ${lib.escapeShellArg gameProfilePath}";
+            Restart = "always";
+            RestartSec = 2;
+          };
         };
 
         wayland.windowManager.sway.config = lib.mkIf swayActive {

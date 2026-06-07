@@ -128,6 +128,16 @@ let
       relativePath = "games/Ryujinx";
       versioning = staggeredVersioning 90;
     };
+    "games-ryujinx-save-meta" = {
+      label = "games/Ryujinx-saveMeta";
+      relativePath = "games/Ryujinx-saveMeta";
+      versioning = staggeredVersioning 90;
+    };
+    "games-ryujinx-save-data-indexer" = {
+      label = "games/Ryujinx-saveDataIndexer";
+      relativePath = "games/Ryujinx-saveDataIndexer";
+      versioning = staggeredVersioning 90;
+    };
   };
 
   moviesFolders = {
@@ -287,6 +297,12 @@ let
   ryujinxLinks = {
     ".config/Ryujinx/bis/user/save" = {
       relativePath = "games/Ryujinx";
+    };
+    ".config/Ryujinx/bis/user/saveMeta" = {
+      relativePath = "games/Ryujinx-saveMeta";
+    };
+    ".config/Ryujinx/bis/system/save/8000000000000000" = {
+      relativePath = "games/Ryujinx-saveDataIndexer";
     };
   };
 
@@ -481,7 +497,24 @@ let
     lib.unique (map (linkCfg: "${cfg.syncRoot}/${linkCfg.relativePath}") (lib.attrValues selectedLinkAttrs));
 
   linkTargetInitScript =
-    lib.concatMapStringsSep "\n" (target: ''mkdir -p "${target}"'') selectedLinkTargets;
+    lib.concatMapStringsSep "\n"
+      (target: ''mkdir -p "${target}"'')
+      selectedLinkTargets;
+
+  existingLinkDataMigrationScript =
+    lib.concatStringsSep "\n"
+      (
+        lib.mapAttrsToList
+          (relativePath: linkCfg: ''
+            localPath="$HOME/${relativePath}"
+            targetPath="${cfg.syncRoot}/${linkCfg.relativePath}"
+
+            if [[ ! -L "$localPath" && -d "$localPath" ]]; then
+              cp -a --no-clobber "$localPath/." "$targetPath/"
+            fi
+          '')
+          selectedLinkAttrs
+      );
 
   managedLinkResetScript =
     lib.concatStringsSep "\n"
@@ -852,8 +885,11 @@ in
         home.activation.alanixSyncthingLinkTargets =
           lib.hm.dag.entryAfter [ "writeBoundary" ] linkTargetInitScript;
 
+        home.activation.alanixSyncthingMigrateExistingLinkData =
+          lib.hm.dag.entryAfter [ "alanixSyncthingLinkTargets" ] existingLinkDataMigrationScript;
+
         home.activation.alanixSyncthingResetManagedLinks =
-          lib.hm.dag.entryBetween [ "linkGeneration" ] [ "alanixSyncthingLinkTargets" ] ''
+          lib.hm.dag.entryBetween [ "linkGeneration" ] [ "alanixSyncthingMigrateExistingLinkData" ] ''
             ${managedLinkResetScript}
           '';
 

@@ -2,7 +2,14 @@
 
 let
   cfg = config.ryubing;
-  gameDirsJson = builtins.toJSON cfg.gameDirs;
+  ryubingCommand = pkgs.writeShellScriptBin "ryubing" ''
+    exec ${pkgs-unstable.ryubing}/bin/Ryujinx "$@"
+  '';
+  managedSettings = lib.filterAttrs (_: value: value != null) {
+    game_dirs = cfg.gameDirs;
+    start_fullscreen = cfg.startFullscreen;
+  };
+  managedSettingsJson = builtins.toJSON managedSettings;
 in
 {
   options.ryubing = {
@@ -13,25 +20,44 @@ in
       default = null;
       description = "Game directories written to Ryubing's game_dirs setting.";
     };
+
+    startFullscreen = lib.mkOption {
+      type = lib.types.nullOr lib.types.bool;
+      default = null;
+      description = "Whether Ryubing starts games in fullscreen mode.";
+    };
   };
 
   config.home.modules = lib.optionals cfg.enable [
     ({ config, lib, ... }: {
-      home.packages = [ pkgs-unstable.ryubing ];
+      home.packages = [
+        pkgs-unstable.ryubing
+        ryubingCommand
+      ];
 
-      home.activation.writeRyubingGameDirs = lib.mkIf (cfg.gameDirs != null) (lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      xdg.desktopEntries.ryubing = {
+        name = "Ryubing";
+        genericName = "Nintendo Switch Emulator";
+        comment = "Nintendo Switch emulator based on Ryujinx";
+        exec = "ryubing";
+        icon = "Ryujinx";
+        terminal = false;
+        categories = [ "Game" "Emulator" ];
+        settings.Keywords = "Ryubing;Ryujinx;Switch;Nintendo;Emulator;";
+      };
+
+      home.activation.writeRyubingSettings = lib.mkIf (managedSettings != { }) (lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         configDir="${config.home.homeDirectory}/.config/Ryujinx"
         configFile="$configDir/Config.json"
         mkdir -p "$configDir"
         tmpFile="$(mktemp "$configDir/.Config.json.XXXXXX")"
 
         if [ -f "$configFile" ]; then
-          ${pkgs.jq}/bin/jq --argjson game_dirs ${lib.escapeShellArg gameDirsJson} \
-            '.game_dirs = $game_dirs' "$configFile" > "$tmpFile"
+          ${pkgs.jq}/bin/jq --argjson settings ${lib.escapeShellArg managedSettingsJson} \
+            '. + $settings' "$configFile" > "$tmpFile"
           chmod --reference="$configFile" "$tmpFile"
         else
-          ${pkgs.jq}/bin/jq --null-input --argjson game_dirs ${lib.escapeShellArg gameDirsJson} \
-            '{ game_dirs: $game_dirs }' > "$tmpFile"
+          printf '%s\n' ${lib.escapeShellArg managedSettingsJson} > "$tmpFile"
           chmod 600 "$tmpFile"
         fi
 

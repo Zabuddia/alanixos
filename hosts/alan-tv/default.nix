@@ -107,16 +107,18 @@
           pauseForGameAppTitlePatterns.Ryujinx = [
             ''\([[:xdigit:]]{16}\) \([[:digit:]]+-bit\)$''
           ];
+          gameButtonActions.guide = "closeWindow";
+          gameButtonActionApps = [ "Ryujinx" ];
           buttonActions = {
             a = "leftClick";
             b = "rightClick";
             x = "openDolphin";
-            y = "keyboard";
+            y = "openRyubing";
             back = "escape";
             guide = "launcher";
             start = "enter";
             lb = "closeWindow";
-            leftStick = "altTab";
+            leftStick = "keyboard";
             rightStick = "middleClick";
             leftTrigger = "openScrcpy";
             rightTrigger = "openKodi";
@@ -177,6 +179,7 @@
         ryubing = {
           enable = true;
           gameDirs = [ "${config.alanix.syncthing.syncRoot}/games/roms/switch" ];
+          startFullscreen = true;
         };
         vscode.enable = true;
       };
