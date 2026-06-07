@@ -2,6 +2,16 @@
 
 let
   cfg = config.ryubing;
+
+  effectivePackage =
+    if cfg.sdlVideoDriver == null then cfg.package
+    else cfg.package.overrideAttrs (old: {
+      postFixup = (old.postFixup or "") + ''
+        sed -i "s|export SDL_VIDEODRIVER='x11'|export SDL_VIDEODRIVER='${cfg.sdlVideoDriver}'|" \
+          "$out/bin/Ryujinx" || true
+      '';
+    });
+
   managedSettings = lib.filterAttrs (_: value: value != null) {
     game_dirs = cfg.gameDirs;
     start_fullscreen = cfg.startFullscreen;
@@ -12,6 +22,23 @@ in
 {
   options.ryubing = {
     enable = lib.mkEnableOption "Ryubing for this user";
+
+    package = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs-unstable.ryubing;
+      description = "Ryubing package to install and launch.";
+    };
+
+    sdlVideoDriver = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "wayland";
+      description = ''
+        Override SDL_VIDEODRIVER when launching Ryubing. The nixpkgs wrapper
+        forces x11 (XWayland) by default; set to "wayland" to use the native
+        Wayland backend and avoid XWayland crashes on Wayland compositors.
+      '';
+    };
 
     gameDirs = lib.mkOption {
       type = lib.types.nullOr (lib.types.listOf lib.types.str);
@@ -32,9 +59,12 @@ in
     };
   };
 
+  config.antimicrox.openRyubing.command =
+    lib.mkIf cfg.enable (lib.mkDefault (lib.getExe effectivePackage));
+
   config.home.modules = lib.optionals cfg.enable [
     ({ config, lib, ... }: {
-      home.packages = [ pkgs-unstable.ryubing ];
+      home.packages = [ effectivePackage ];
 
       home.activation.writeRyubingSettings = lib.mkIf (managedSettings != { }) (lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         configDir="${config.home.homeDirectory}/.config/Ryujinx"

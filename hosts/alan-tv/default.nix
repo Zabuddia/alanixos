@@ -174,9 +174,11 @@
             "${config.alanix.syncthing.syncRoot}/games/roms/wii"
           ];
         };
+        evdevhook2.enable = true;
         melonds.enable = true;
         ryubing = {
           enable = true;
+          sdlVideoDriver = "wayland";
           confirmExit = false;
           gameDirs = [ "${config.alanix.syncthing.syncRoot}/games/roms/switch" ];
           startFullscreen = true;
