@@ -115,11 +115,10 @@
             x = "openDolphin";
             y = "openRyubing";
             back = "escape";
-            guide = "launcher";
             start = "enter";
             lb = "closeWindow";
             leftStick = "keyboard";
-            rightStick = "middleClick";
+            rightStick = "launcher";
             leftTrigger = "openScrcpy";
             rightTrigger = "openKodi";
           };
