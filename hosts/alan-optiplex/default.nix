@@ -124,7 +124,13 @@
           enable = true;
           betaKey = "T-sJ5R5BKxhD671U9s0teXbyP19MhCkkkB7rmnNbb1aEHaqveiVqyI3RXGMHDXhoyNUC";
         };
-        dolphin.enable = true;
+        dolphin = {
+          enable = true;
+          gameDirs = [
+            "${config.alanix.syncthing.syncRoot}/games/roms/gamecube"
+            "${config.alanix.syncthing.syncRoot}/games/roms/wii"
+          ];
+        };
         melonds.enable = true;
         vscode.enable = true;
       };

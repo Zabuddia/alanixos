@@ -179,11 +179,20 @@
             m3uUrl = "http://192.168.10.105/lineup.m3u";
           };
         };
-        dolphin.enable = true;
+        dolphin = {
+          enable = true;
+          gameDirs = [
+            "${config.alanix.syncthing.syncRoot}/games/roms/gamecube"
+            "${config.alanix.syncthing.syncRoot}/games/roms/wii"
+          ];
+        };
         librewolf.enable = true;
         melonds.enable = true;
         nextcloudClient.enable = true;
-        ryubing.enable = true;
+        ryubing = {
+          enable = true;
+          gameDirs = [ "${config.alanix.syncthing.syncRoot}/games/roms/switch" ];
+        };
         syncthingTray.enable = true;
         trayscale.enable = true;
         vscode.enable = true;

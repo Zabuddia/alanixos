@@ -91,9 +91,18 @@
           profile = "sway/default";
         };
         chromium.enable = true;
-        dolphin.enable = true;
+        dolphin = {
+          enable = true;
+          gameDirs = [
+            "${config.alanix.syncthing.syncRoot}/games/roms/gamecube"
+            "${config.alanix.syncthing.syncRoot}/games/roms/wii"
+          ];
+        };
         melonds.enable = true;
-        ryubing.enable = true;
+        ryubing = {
+          enable = true;
+          gameDirs = [ "${config.alanix.syncthing.syncRoot}/games/roms/switch" ];
+        };
         vscode.enable = true;
       };
     };

@@ -2,13 +2,25 @@
 
 let
   cfg = config.dolphin;
+  gameDirsConfig = lib.concatStringsSep "\n" (
+    (lib.imap0 (index: directory: "ISOPath${toString index} = ${directory}") cfg.gameDirs)
+    ++ [ "ISOPaths = ${toString (builtins.length cfg.gameDirs)}" ]
+  );
   mkDolphinConfig = text: {
     inherit text;
     force = true;
   };
 in
 {
-  options.dolphin.enable = lib.mkEnableOption "Dolphin Emulator for this user";
+  options.dolphin = {
+    enable = lib.mkEnableOption "Dolphin Emulator for this user";
+
+    gameDirs = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = "Game directories written to Dolphin's ISOPath settings.";
+    };
+  };
 
   config.home.modules = lib.optionals cfg.enable [
     {
@@ -20,8 +32,7 @@ in
         PermissionAsked = True
         [General]
         WirelessMac = 00:17:ab:bf:9e:37
-        ISOPath0 = /home/buddia/Syncthing/games/roms/wii
-        ISOPaths = 1
+        ${gameDirsConfig}
         [NetPlay]
         TraversalChoice = direct
         [BluetoothPassthrough]

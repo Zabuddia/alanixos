@@ -104,6 +104,9 @@
           openScrcpy.extraArgs = [ "--fullscreen" ];
           pauseForApps = [ "kodi" ];
           pauseForGameApps = [ "dolphin-emu" ];
+          pauseForGameAppTitlePatterns.Ryujinx = [
+            ''\([[:xdigit:]]{16}\) \([[:digit:]]+-bit\)$''
+          ];
           buttonActions = {
             a = "leftClick";
             b = "rightClick";
@@ -163,9 +166,18 @@
             requireAuthentication = false;
           };
         };
-        dolphin.enable = true;
+        dolphin = {
+          enable = true;
+          gameDirs = [
+            "${config.alanix.syncthing.syncRoot}/games/roms/gamecube"
+            "${config.alanix.syncthing.syncRoot}/games/roms/wii"
+          ];
+        };
         melonds.enable = true;
-        ryubing.enable = true;
+        ryubing = {
+          enable = true;
+          gameDirs = [ "${config.alanix.syncthing.syncRoot}/games/roms/switch" ];
+        };
         vscode.enable = true;
       };
     };

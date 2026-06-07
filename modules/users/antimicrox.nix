@@ -826,6 +826,12 @@ in
       description = "Wayland app_ids that should pause AntiMicroX only while their title looks like an active game session.";
     };
 
+    pauseForGameAppTitlePatterns = lib.mkOption {
+      type = types.attrsOf (types.listOf types.str);
+      default = { };
+      description = "Additional Wayland app_ids and extended regular expressions that identify active game-session window titles.";
+    };
+
     buttonActions = lib.mkOption {
       type = types.attrsOf (types.enum actionNames);
       default = {
@@ -919,10 +925,25 @@ in
           }
         );
 
-        systemd.user.services.antimicrox-focus-watcher = lib.mkIf (swayActive && (cfg.pauseForApps != [ ] || cfg.pauseForGameApps != [ ])) (
+        systemd.user.services.antimicrox-focus-watcher = lib.mkIf (swayActive && (cfg.pauseForApps != [ ] || cfg.pauseForGameApps != [ ] || cfg.pauseForGameAppTitlePatterns != { })) (
           let
             pauseAppIds = cfg.pauseForApps;
             pauseGameAppIds = cfg.pauseForGameApps;
+            customGameTitleChecks = lib.concatStringsSep "\n" (
+              lib.flatten (
+                lib.mapAttrsToList
+                  (appId: patterns:
+                    map
+                      (pattern: ''
+                        if contains_app ${lib.escapeShellArg appId} "$1" \
+                          && printf '%s' "$2" | ${pkgs.gnugrep}/bin/grep -Eq -- ${lib.escapeShellArg pattern}; then
+                          return 0
+                        fi
+                      '')
+                      patterns)
+                  cfg.pauseForGameAppTitlePatterns
+              )
+            );
             watcherScript = pkgs.writeShellScript "antimicrox-focus-watcher" ''
               pause_apps=${lib.escapeShellArg (lib.concatStringsSep "\n" pauseAppIds)}
               pause_game_apps=${lib.escapeShellArg (lib.concatStringsSep "\n" pauseGameAppIds)}
@@ -959,8 +980,13 @@ in
               }
 
               is_game_title() {
-                [ -n "$1" ] || return 1
-                printf '%s' "$1" | ${pkgs.gnugrep}/bin/grep -qF " | "
+                [ -n "$1" ] && [ -n "$2" ] || return 1
+                if contains_app "$pause_game_apps" "$1" \
+                  && printf '%s' "$2" | ${pkgs.gnugrep}/bin/grep -qF " | "; then
+                  return 0
+                fi
+                ${customGameTitleChecks}
+                return 1
               }
 
               focused_container() {
@@ -981,8 +1007,7 @@ in
                 app_id=$(printf '%s' "$focused" | ${pkgs.jq}/bin/jq -r '.app_id // ""')
                 title=$(printf '%s' "$focused" | ${pkgs.jq}/bin/jq -r '.title // ""')
                 is_pause_app=$(contains_app "$pause_apps" "$app_id" && echo yes || echo no)
-                is_game_app=$(contains_app "$pause_game_apps" "$app_id" && echo yes || echo no)
-                is_game_session=$([ "$is_game_app" = "yes" ] && is_game_title "$title" && echo yes || echo no)
+                is_game_session=$(is_game_title "$app_id" "$title" && echo yes || echo no)
                 is_manual_pause=$(manual_pause_active && echo yes || echo no)
                 if [ "$is_manual_pause" = "yes" ] || [ "$is_pause_app" = "yes" ] || [ "$is_game_session" = "yes" ]; then
                   should_pause=yes
