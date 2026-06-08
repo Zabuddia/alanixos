@@ -2,10 +2,63 @@
 
 let
   cfg = config.dolphin;
+  stopHotkeyControllerNames = [
+    "8BitDo Ultimate 2 Wireless Controller"
+    "Xbox 360 Controller"
+    "Nintendo Switch Pro Controller"
+    "Nintendo Switch Combined Joy-Cons"
+    "Nintendo Switch Joy-Con (L/R)"
+  ];
+  controllerIds = lib.genList (index: index) 8;
+  controllerStopHotkeys = lib.concatMap
+    (name: map (id: "`SDL/${toString id}/${name}:Guide`") controllerIds)
+    stopHotkeyControllerNames;
+  stopHotkeys = lib.concatStringsSep " | " ([
+    "Guide"
+  ] ++ controllerStopHotkeys);
   gameDirsConfig = lib.concatStringsSep "\n" (
     (lib.imap0 (index: directory: "ISOPath${toString index} = ${directory}") cfg.gameDirs)
     ++ [ "ISOPaths = ${toString (builtins.length cfg.gameDirs)}" ]
   );
+  mkMotionInputConfig = input: ''
+    IMUAccelerometer/Up = ${input "Accel Up"}
+    IMUAccelerometer/Down = ${input "Accel Down"}
+    IMUAccelerometer/Left = ${input "Accel Left"}
+    IMUAccelerometer/Right = ${input "Accel Right"}
+    IMUAccelerometer/Forward = ${input "Accel Forward"}
+    IMUAccelerometer/Backward = ${input "Accel Backward"}
+    IMUGyroscope/Pitch Up = ${input "Gyro Pitch Up"}
+    IMUGyroscope/Pitch Down = ${input "Gyro Pitch Down"}
+    IMUGyroscope/Roll Left = ${input "Gyro Roll Left"}
+    IMUGyroscope/Roll Right = ${input "Gyro Roll Right"}
+    IMUGyroscope/Yaw Left = ${input "Gyro Yaw Left"}
+    IMUGyroscope/Yaw Right = ${input "Gyro Yaw Right"}
+  '';
+  motionInputConfig = mkMotionInputConfig (control: "`${control}`");
+  dsuMotionInputConfig = slot:
+    mkMotionInputConfig (control: "`DSUClient/${toString slot}/${cfg.dsuClient.description}:${control}`");
+  dsuWiimoteProfileNames = [
+    "KirbyX360"
+    "LegoX360"
+    "MaddenX360"
+    "MarioKartKeyboard"
+    "NBAX360"
+    "NSMBWKeyboard"
+    "NSMBWXbox360"
+    "SMGalaxyX360"
+    "SportsMixX360"
+    "StrikersX360"
+  ];
+  dsuSlots = [ 0 1 2 3 ];
+  mkDsuProfileText =
+    slot: text:
+    lib.concatStringsSep "\n" (
+      lib.filter
+        (line: !(lib.hasPrefix "Device = " line))
+        (lib.splitString "\n" (
+          lib.replaceStrings [ motionInputConfig ] [ (dsuMotionInputConfig slot) ] text
+        ))
+    );
   mkDolphinConfig = text: {
     inherit text;
     force = true;
@@ -19,6 +72,32 @@ in
       type = lib.types.listOf lib.types.str;
       default = [ ];
       description = "Game directories written to Dolphin's ISOPath settings.";
+    };
+
+    dsuClient = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = config.evdevhook2.enable;
+        description = "Whether to enable Dolphin's DSU/CemuHook alternate input source.";
+      };
+
+      description = lib.mkOption {
+        type = lib.types.str;
+        default = "evdevhook2";
+        description = "Dolphin DSU server label.";
+      };
+
+      host = lib.mkOption {
+        type = lib.types.str;
+        default = "127.0.0.1";
+        description = "Dolphin DSU server host.";
+      };
+
+      port = lib.mkOption {
+        type = lib.types.port;
+        default = config.evdevhook2.port;
+        description = "Dolphin DSU server UDP port.";
+      };
     };
   };
 
@@ -62,8 +141,14 @@ in
       xdg.configFile."dolphin-emu/Hotkeys.ini" = mkDolphinConfig ''
         [Hotkeys]
         Device = SDL/0/8BitDo Ultimate 2 Wireless Controller
-        General/Stop = Guide
+        General/Stop = ${stopHotkeys}
       '';
+
+      xdg.configFile."dolphin-emu/DSUClient.ini" = lib.mkIf cfg.dsuClient.enable (mkDolphinConfig ''
+        [Server]
+        Entries = ${cfg.dsuClient.description}:${cfg.dsuClient.host}:${toString cfg.dsuClient.port};
+        Enabled = True
+      '');
 
       xdg.configFile."dolphin-emu/Profiles/GCPad/MarioKartX360.ini" = mkDolphinConfig ''
         [Profile]
@@ -126,6 +211,7 @@ in
         Nunchuk/Stick/Left = `Left X-`
         Nunchuk/Stick/Right = `Left X+`
         Nunchuk/Stick/Calibration = 100.00 141.42 100.00 141.42 100.00 141.42 100.00 141.42
+        ${motionInputConfig}
       '';
 
       xdg.configFile."dolphin-emu/Profiles/Wiimote/MarioKartKeyboard.ini" = mkDolphinConfig ''
@@ -159,6 +245,7 @@ in
         Nunchuk/Stick/Left = A
         Nunchuk/Stick/Right = D
         Nunchuk/Stick/Calibration = 100.00 141.42 100.00 141.42 100.00 141.42 100.00 141.42
+        ${motionInputConfig}
       '';
 
       xdg.configFile."dolphin-emu/Profiles/Wiimote/DSU-AlaniPhone.ini" = mkDolphinConfig ''
@@ -182,18 +269,7 @@ in
         Shake/X = `Click 2`
         Shake/Y = `Click 2`
         Shake/Z = `Click 2`
-        IMUAccelerometer/Up = `Accel Up`
-        IMUAccelerometer/Down = `Accel Down`
-        IMUAccelerometer/Left = `Accel Left`
-        IMUAccelerometer/Right = `Accel Right`
-        IMUAccelerometer/Forward = `Accel Forward`
-        IMUAccelerometer/Backward = `Accel Backward`
-        IMUGyroscope/Pitch Up = `Gyro Pitch Up`
-        IMUGyroscope/Pitch Down = `Gyro Pitch Down`
-        IMUGyroscope/Roll Left = `Gyro Roll Left`
-        IMUGyroscope/Roll Right = `Gyro Roll Right`
-        IMUGyroscope/Yaw Left = `Gyro Yaw Left`
-        IMUGyroscope/Yaw Right = `Gyro Yaw Right`
+        ${motionInputConfig}
       '';
 
       xdg.configFile."dolphin-emu/Profiles/GCPad/SmashBrawlX360.ini" = mkDolphinConfig ''
@@ -250,6 +326,7 @@ in
         Nunchuk/Stick/Left = `Left X-`
         Nunchuk/Stick/Right = `Left X+`
         Nunchuk/Stick/Calibration = 100.00 141.42 100.00 141.42 100.00 141.42 100.00 141.42
+        ${motionInputConfig}
       '';
 
       xdg.configFile."dolphin-emu/Profiles/Wiimote/NBAX360.ini" = mkDolphinConfig ''
@@ -276,6 +353,7 @@ in
         Classic/Left Stick/Left = `Left X-`
         Classic/Left Stick/Right = `Left X+`
         Classic/Left Stick/Calibration = 100.00 141.42 100.00 141.42 100.00 141.42 100.00 141.42
+        ${motionInputConfig}
       '';
 
       xdg.configFile."dolphin-emu/Profiles/Wiimote/NSMBWXbox360.ini" = mkDolphinConfig ''
@@ -293,6 +371,7 @@ in
         Shake/Y = `Shoulder R` | `Trigger R`
         Shake/Z = `Shoulder R` | `Trigger R`
         Options/Sideways Wiimote = True
+        ${motionInputConfig}
       '';
 
       xdg.configFile."dolphin-emu/Profiles/Wiimote/StrikersX360.ini" = mkDolphinConfig ''
@@ -317,6 +396,7 @@ in
         Nunchuk/Stick/Left = `Left X-`
         Nunchuk/Stick/Right = `Left X+`
         Nunchuk/Stick/Calibration = 100.00 141.42 100.00 141.42 100.00 141.42 100.00 141.42
+        ${motionInputConfig}
       '';
 
       xdg.configFile."dolphin-emu/Profiles/Wiimote/SportsMixX360.ini" = mkDolphinConfig ''
@@ -343,6 +423,7 @@ in
         Nunchuk/Stick/Left = `Left X-`
         Nunchuk/Stick/Right = `Left X+`
         Nunchuk/Stick/Calibration = 100.00 141.42 100.00 141.42 100.00 141.42 100.00 141.42
+        ${motionInputConfig}
       '';
 
       xdg.configFile."dolphin-emu/Profiles/Wiimote/KirbyX360.ini" = mkDolphinConfig ''
@@ -358,6 +439,7 @@ in
         D-Pad/Left = `Pad W` | `Left X-`
         D-Pad/Right = `Pad E` | `Left X+`
         Options/Sideways Wiimote = True
+        ${motionInputConfig}
       '';
 
       xdg.configFile."dolphin-emu/Profiles/Wiimote/MaddenX360.ini" = mkDolphinConfig ''
@@ -386,6 +468,7 @@ in
         Nunchuk/Stick/Left = `Left X-`
         Nunchuk/Stick/Right = `Left X+`
         Nunchuk/Stick/Calibration = 100.00 141.42 100.00 141.42 100.00 141.42 100.00 141.42
+        ${motionInputConfig}
       '';
 
       xdg.configFile."dolphin-emu/Profiles/Wiimote/NSMBWKeyboard.ini" = mkDolphinConfig ''
@@ -410,7 +493,28 @@ in
         Shake/Y = Shift
         Shake/Z = Shift
         Options/Sideways Wiimote = True
+        ${motionInputConfig}
       '';
     }
+
+    ({ config, ... }: {
+      xdg.configFile = lib.mkIf cfg.dsuClient.enable (
+        lib.listToAttrs (
+          lib.concatMap
+            (profileName:
+              map
+                (slot: {
+                  name = "dolphin-emu/Profiles/Wiimote/${profileName}-DSU${toString slot}.ini";
+                  value = mkDolphinConfig (
+                    mkDsuProfileText
+                      slot
+                      config.xdg.configFile."dolphin-emu/Profiles/Wiimote/${profileName}.ini".text
+                  );
+                })
+                dsuSlots)
+            dsuWiimoteProfileNames
+        )
+      );
+    })
   ];
 }
