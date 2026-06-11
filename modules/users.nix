@@ -11,6 +11,7 @@ let
     ./users/chromium.nix
     ./users/desktop.nix
     ./users/dolphin.nix
+    ./users/eden.nix
     ./users/evdevhook2.nix
     ./users/git.nix
     ./users/kodi.nix

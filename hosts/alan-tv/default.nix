@@ -79,7 +79,6 @@
           unstablePackages = with pkgs-unstable; [
             yt-dlp
             moonlight-qt
-            eden
           ];
           modules = [ ];
         };
@@ -107,7 +106,7 @@
           openThunar.path = "${config.alanix.users.accounts.buddia.home.directory}/Syncthing/media";
           openScrcpy.extraArgs = [ "--fullscreen" ];
           pauseForApps = [ "kodi" ];
-          pauseForGameApps = [ "dolphin-emu" ];
+          pauseForGameApps = [ "dolphin-emu" "eden" ];
           pauseForGameAppTitlePatterns.Ryujinx = [
             ''\([[:xdigit:]]{16}\) \([[:digit:]]+-bit\)$''
           ];
@@ -178,6 +177,13 @@
             "${config.alanix.syncthing.syncRoot}/games/roms/wii"
           ];
         };
+        eden = {
+          enable = true;
+          confirmExit = false;
+          gameDirs = [ "${config.alanix.syncthing.syncRoot}/games/roms/switch" ];
+          startFullscreen = true;
+          stopEmulationControllerHotkey = "Home";
+        };
         evdevhook2.enable = true;
         melonds.enable = true;
         ryubing = {
@@ -207,6 +213,15 @@
         };
         hideCursorMs = 1000;
       };
+    };
+
+    alanix.power = {
+      enable = true;
+      enablePowerProfilesDaemon = true;
+      enablePowertop = false;
+      enableThermald = false;
+      enableUpower = false;
+      profile = "performance";
     };
 
     alanix.ssh = {
@@ -239,6 +254,7 @@
       folderSets = [
         "emulation-azahar"
         "emulation-dolphin"
+        "emulation-eden"
         "emulation-melonds"
         "emulation-ryujinx"
         "movies"
@@ -251,6 +267,7 @@
       linkFolderSets = [
         "emulation-azahar"
         "emulation-dolphin"
+        "emulation-eden"
         "emulation-melonds"
         "emulation-ryujinx"
       ];

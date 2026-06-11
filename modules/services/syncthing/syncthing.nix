@@ -118,6 +118,19 @@ let
     };
   };
 
+  edenFolders = {
+    "games-eden" = {
+      label = "games/Eden";
+      relativePath = "games/Eden";
+      versioning = staggeredVersioning 90;
+    };
+    "games-eden-profile" = {
+      label = "games/Eden-profile";
+      relativePath = "games/Eden-profile";
+      versioning = staggeredVersioning 90;
+    };
+  };
+
   ryujinxFolders = {
     "games-roms-switch" = {
       label = "games/roms/switch";
@@ -254,6 +267,7 @@ let
   folderCatalog = {
     emulation-azahar = azaharFolders;
     emulation-dolphin = dolphinFolders;
+    emulation-eden = edenFolders;
     emulation-melonds = melondsFolders;
     emulation-ryujinx = ryujinxFolders;
     movies = moviesFolders;
@@ -294,6 +308,15 @@ let
     };
   };
 
+  edenLinks = {
+    ".local/share/eden/nand/user/save" = {
+      relativePath = "games/Eden";
+    };
+    ".local/share/eden/nand/system/save/8000000000000010" = {
+      relativePath = "games/Eden-profile";
+    };
+  };
+
   ryujinxLinks = {
     ".config/Ryujinx/bis/user/save" = {
       relativePath = "games/Ryujinx";
@@ -309,17 +332,18 @@ let
   linkCatalog = {
     emulation-azahar = azaharLinks;
     emulation-dolphin = dolphinLinks;
+    emulation-eden = edenLinks;
     emulation-melonds = melondsLinks;
     emulation-ryujinx = ryujinxLinks;
   };
 
   folderSetAliases = {
-    emulation = [ "emulation-azahar" "emulation-dolphin" "emulation-melonds" "emulation-ryujinx" ];
+    emulation = [ "emulation-azahar" "emulation-dolphin" "emulation-eden" "emulation-melonds" "emulation-ryujinx" ];
     filebrowser-files = filebrowserFolderSetNames;
   };
 
   linkFolderSetAliases = {
-    emulation = [ "emulation-azahar" "emulation-dolphin" "emulation-melonds" "emulation-ryujinx" ];
+    emulation = [ "emulation-azahar" "emulation-dolphin" "emulation-eden" "emulation-melonds" "emulation-ryujinx" ];
   };
 
   validFolderSets = lib.unique ((builtins.attrNames folderCatalog) ++ (builtins.attrNames folderSetAliases));
@@ -551,7 +575,13 @@ let
       (
         (selectedLinkAttrs ? ".local/share/melonDS/saves")
       )
-      [ ".local/share/melonDS" ];
+      [ ".local/share/melonDS" ]
+    ++ lib.optionals
+      (
+        (selectedLinkAttrs ? ".local/share/eden/nand/user/save")
+        || (selectedLinkAttrs ? ".local/share/eden/nand/system/save/8000000000000010")
+      )
+      [ ".local/share/eden" ];
 
   staleManagedLinkCleanupScript =
     lib.concatMapStringsSep "\n"

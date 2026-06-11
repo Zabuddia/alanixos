@@ -100,7 +100,6 @@
             firefox
             moonlight-qt
             sparrow
-            eden
           ];
           modules = [
             {
@@ -189,6 +188,10 @@
             "${config.alanix.syncthing.syncRoot}/games/roms/gamecube"
             "${config.alanix.syncthing.syncRoot}/games/roms/wii"
           ];
+        };
+        eden = {
+          enable = true;
+          gameDirs = [ "${config.alanix.syncthing.syncRoot}/games/roms/switch" ];
         };
         evdevhook2.enable = true;
         librewolf.enable = true;
@@ -287,6 +290,7 @@
       folderSets = [
         "emulation-azahar"
         "emulation-dolphin"
+        "emulation-eden"
         "emulation-melonds"
         "emulation-ryujinx"
         "videos"
@@ -298,6 +302,7 @@
       linkFolderSets = [
         "emulation-azahar"
         "emulation-dolphin"
+        "emulation-eden"
         "emulation-melonds"
         "emulation-ryujinx"
       ];

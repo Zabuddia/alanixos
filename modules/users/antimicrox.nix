@@ -226,7 +226,16 @@ let
                         </slot>
   '';
 
-  keyboardSlots = codes: map keyboardSlot codes;
+  pauseSlot = milliseconds: ''
+                        <slot>
+                            <code>${toString milliseconds}</code>
+                            <mode>pause</mode>
+                        </slot>
+  '';
+
+  # Pause 0 releases the shortcut after one pulse instead of holding it until
+  # the controller button is released, which would trigger keyboard repeat.
+  oneShotKeyboardSlots = codes: (map keyboardSlot codes) ++ [ (pauseSlot 0) ];
 
   mouseButtonSlot = code: ''
                         <slot>
@@ -302,59 +311,63 @@ let
     };
     altTab = {
       label = "Alt+Tab";
-      slots = keyboardSlots [ key.alt key.tab ];
+      slots = oneShotKeyboardSlots [ key.alt key.tab ];
     };
     launcher = {
       label = "Launcher";
-      slots = keyboardSlots cfg.launcher.keyCodes;
+      slots = oneShotKeyboardSlots cfg.launcher.keyCodes;
     };
     keyboard = {
       label = "Keyboard";
-      slots = keyboardSlots cfg.onScreenKeyboard.keyCodes;
+      slots = oneShotKeyboardSlots cfg.onScreenKeyboard.keyCodes;
     };
     openKodi = {
       label = "Open Kodi";
-      slots = keyboardSlots cfg.openKodi.keyCodes;
+      slots = oneShotKeyboardSlots cfg.openKodi.keyCodes;
     };
     openDolphin = {
       label = "Open Dolphin";
-      slots = keyboardSlots cfg.openDolphin.keyCodes;
+      slots = oneShotKeyboardSlots cfg.openDolphin.keyCodes;
+    };
+    openEden = {
+      label = "Open Eden";
+      slots = oneShotKeyboardSlots cfg.openEden.keyCodes;
     };
     openRyubing = {
       label = "Open Ryubing";
-      slots = keyboardSlots cfg.openRyubing.keyCodes;
+      slots = oneShotKeyboardSlots cfg.openRyubing.keyCodes;
     };
     openThunar = {
       label = "Open Thunar";
-      slots = keyboardSlots cfg.openThunar.keyCodes;
+      slots = oneShotKeyboardSlots cfg.openThunar.keyCodes;
     };
     openScrcpy = {
       label = "Open Scrcpy";
-      slots = keyboardSlots cfg.openScrcpy.keyCodes;
+      slots = oneShotKeyboardSlots cfg.openScrcpy.keyCodes;
     };
     volumeUp = {
       label = "Volume Up";
-      slots = keyboardSlots [ key.volumeUp ];
+      slots = oneShotKeyboardSlots [ key.volumeUp ];
     };
     volumeDown = {
       label = "Volume Down";
-      slots = keyboardSlots [ key.volumeDown ];
+      slots = oneShotKeyboardSlots [ key.volumeDown ];
     };
     muteVolume = {
       label = "Mute Volume";
-      slots = keyboardSlots [ key.volumeMute ];
+      slots = oneShotKeyboardSlots [ key.volumeMute ];
     };
     closeWindow = {
       label = "Close Window";
-      slots = keyboardSlots [ key.super key.shift key.q ];
+      slots = oneShotKeyboardSlots [ key.super key.shift key.q ];
     };
     enter = {
       label = "Enter";
-      slots = keyboardSlots [ key.return ];
+      slots = oneShotKeyboardSlots [ key.return ];
     };
     escape = {
       label = "Escape";
-      slots = keyboardSlots [ key.escape ];
+      slots = oneShotKeyboardSlots [ key.escape ];
     };
   };
 
@@ -369,6 +382,7 @@ let
   usesAction = actionName: lib.any (configuredAction: configuredAction == actionName) configuredActions;
   usesOpenKodi = usesAction "openKodi";
   usesOpenDolphin = usesAction "openDolphin";
+  usesOpenEden = usesAction "openEden";
   usesOpenRyubing = usesAction "openRyubing";
   usesOpenThunar = usesAction "openThunar";
   usesOpenScrcpy = usesAction "openScrcpy";
@@ -434,8 +448,8 @@ let
   ];
 
   workspaceSwitchStickButtons = lib.optionals cfg.workspaceSwitching.enable [
-    (stickButton 3 { } (keyboardSlots cfg.workspaceSwitching.nextKeyCodes))
-    (stickButton 7 { } (keyboardSlots cfg.workspaceSwitching.previousKeyCodes))
+    (stickButton 3 { } (oneShotKeyboardSlots cfg.workspaceSwitching.nextKeyCodes))
+    (stickButton 7 { } (oneShotKeyboardSlots cfg.workspaceSwitching.previousKeyCodes))
   ];
 
   dpadButtons = [
@@ -479,6 +493,9 @@ let
     }
     // lib.optionalAttrs usesOpenDolphin {
       "${cfg.openDolphin.keybinding}" = "exec ${cfg.openDolphin.command}";
+    }
+    // lib.optionalAttrs usesOpenEden {
+      "${cfg.openEden.keybinding}" = "exec ${cfg.openEden.command}";
     }
     // lib.optionalAttrs usesOpenRyubing {
       "${cfg.openRyubing.keybinding}" = "exec ${cfg.openRyubing.command}";
@@ -758,6 +775,26 @@ in
         type = types.str;
         default = "dolphin-emu";
         description = "Command run by the Dolphin keybinding.";
+      };
+    };
+
+    openEden = {
+      keybinding = lib.mkOption {
+        type = types.str;
+        default = "Mod4+Ctrl+e";
+        description = "Sway keybinding used to open Eden.";
+      };
+
+      keyCodes = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ key.super key.control key.e ];
+        description = "AntiMicroX key codes to send for the open Eden shortcut.";
+      };
+
+      command = lib.mkOption {
+        type = types.str;
+        default = lib.getExe pkgs-unstable.eden;
+        description = "Command run by the Eden keybinding.";
       };
     };
 
@@ -1159,7 +1196,7 @@ in
         };
 
         wayland.windowManager.sway.extraConfig = lib.mkIf (swayActive && swayKeybindings != { }) (
-          lib.concatStringsSep "\n" (lib.mapAttrsToList (key: cmd: "bindsym ${key} ${cmd}") swayKeybindings)
+          lib.concatStringsSep "\n" (lib.mapAttrsToList (key: cmd: "bindsym --no-repeat ${key} ${cmd}") swayKeybindings)
         );
       }
     ];

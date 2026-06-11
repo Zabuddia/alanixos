@@ -28,6 +28,12 @@ in
       description = "Whether to enable power-profiles-daemon.";
     };
 
+    profile = lib.mkOption {
+      type = lib.types.nullOr (lib.types.enum [ "power-saver" "balanced" "performance" ]);
+      default = null;
+      description = "Power profile applied declaratively through power-profiles-daemon.";
+    };
+
     enableUpower = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -133,6 +139,10 @@ in
             || (cfg.hibernate.resumeDevice != null && cfg.hibernate.resumeOffset != null);
           message = "alanix.power.hibernate resumeDevice and resumeOffset must be set together.";
         }
+        {
+          assertion = cfg.profile == null || cfg.enablePowerProfilesDaemon;
+          message = "alanix.power.profile requires enablePowerProfilesDaemon = true.";
+        }
       ];
 
       services.power-profiles-daemon.enable = cfg.enablePowerProfilesDaemon;
@@ -140,6 +150,20 @@ in
       services.thermald.enable = cfg.enableThermald;
       powerManagement.powertop.enable = cfg.enablePowertop;
     }
+
+    (lib.mkIf (cfg.profile != null) {
+      systemd.services.alanix-power-profile = {
+        description = "Apply the declarative alanix power profile";
+        requires = [ "power-profiles-daemon.service" ];
+        after = [ "power-profiles-daemon.service" ];
+        wantedBy = [ "graphical.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = "${lib.getExe' config.services.power-profiles-daemon.package "powerprofilesctl"} set ${lib.escapeShellArg cfg.profile}";
+        };
+      };
+    })
 
     (lib.mkIf cfg.lidSwitch.enable {
       services.logind.settings.Login = {
