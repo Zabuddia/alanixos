@@ -43,6 +43,7 @@
         nano
         imagemagick
         unzip
+        zip
         p7zip
         parted
         dosfstools

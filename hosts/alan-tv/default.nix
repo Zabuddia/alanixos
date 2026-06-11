@@ -37,6 +37,7 @@
         sops
         tree
         unzip
+        zip
         p7zip
         parted
         dosfstools
@@ -78,6 +79,7 @@
           unstablePackages = with pkgs-unstable; [
             yt-dlp
             moonlight-qt
+            eden
           ];
           modules = [ ];
         };

@@ -36,6 +36,7 @@
         sops
         tree
         unzip
+        zip
         p7zip
         parted
         dosfstools

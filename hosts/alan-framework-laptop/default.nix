@@ -46,6 +46,7 @@
         nano
         imagemagick
         unzip
+        zip
         p7zip
         parted
         dosfstools
@@ -99,6 +100,7 @@
             firefox
             moonlight-qt
             sparrow
+            eden
           ];
           modules = [
             {
