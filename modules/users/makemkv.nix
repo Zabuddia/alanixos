@@ -14,15 +14,22 @@ in
     };
   };
 
-  config.home.modules = lib.optionals cfg.enable [
-    {
-      home.packages = [ pkgs-unstable.makemkv ];
+  config = lib.mkIf cfg.enable {
+    _systemRequirements = {
+      extraGroups = [ "cdrom" ];
+      kernelModules = [ "sg" ];
+    };
 
-      home.file.".MakeMKV/settings.conf" = lib.mkIf (cfg.betaKey != null) {
-        text = ''
-          app_Key = "${cfg.betaKey}"
-        '';
-      };
-    }
-  ];
+    home.modules = [
+      {
+        home.packages = [ pkgs-unstable.makemkv ];
+
+        home.file.".MakeMKV/settings.conf" = lib.mkIf (cfg.betaKey != null) {
+          text = ''
+            app_Key = "${cfg.betaKey}"
+          '';
+        };
+      }
+    ];
+  };
 }

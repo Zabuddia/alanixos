@@ -74,6 +74,7 @@
           packages = with pkgs; [
             handbrake
             tmux
+            libaacs
             vlc
           ];
           unstablePackages = with pkgs-unstable; [

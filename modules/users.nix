@@ -173,6 +173,24 @@ let
           visible = false;
           description = "Internal assertions contributed by account feature modules.";
         };
+
+        _systemRequirements = {
+          extraGroups = lib.mkOption {
+            type = types.listOf types.str;
+            default = [ ];
+            internal = true;
+            visible = false;
+            description = "System groups required by enabled account feature modules.";
+          };
+
+          kernelModules = lib.mkOption {
+            type = types.listOf types.str;
+            default = [ ];
+            internal = true;
+            visible = false;
+            description = "Kernel modules required by enabled account feature modules.";
+          };
+        };
       };
 
       config._assertions =
@@ -216,6 +234,11 @@ let
   enabledAccounts = lib.filterAttrs (_: userCfg: userCfg.enable) cfg.accounts;
   homeEnabledAccounts = lib.filterAttrs (_: userCfg: userCfg.enable && userCfg.home.enable) cfg.accounts;
   antimicroxEnabledAccounts = lib.filterAttrs (_: userCfg: userCfg.enable && userCfg.antimicrox.enable) cfg.accounts;
+  requiredKernelModules = lib.unique (
+    lib.concatMap
+      (userCfg: userCfg._systemRequirements.kernelModules)
+      (builtins.attrValues enabledAccounts)
+  );
   sshPublicKeyAccounts =
     lib.filterAttrs
       (_: userCfg:
@@ -285,7 +308,7 @@ in
         (username: userCfg:
           lib.filterAttrs (_: value: value != null) {
             isNormalUser = userCfg.isNormalUser;
-            extraGroups = userCfg.extraGroups;
+            extraGroups = lib.unique (userCfg.extraGroups ++ userCfg._systemRequirements.extraGroups);
             hashedPasswordFile = userCfg.hashedPasswordFile;
           } // {
             openssh.authorizedKeys.keys =
@@ -313,6 +336,10 @@ in
     (lib.mkIf (antimicroxEnabledAccounts != { }) {
       hardware.uinput.enable = true;
       users.groups.uinput.members = builtins.attrNames antimicroxEnabledAccounts;
+    })
+
+    (lib.mkIf (requiredKernelModules != [ ]) {
+      boot.kernelModules = requiredKernelModules;
     })
 
     (lib.mkIf (sshPublicKeyAccounts != { }) {
