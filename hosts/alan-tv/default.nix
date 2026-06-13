@@ -63,6 +63,7 @@
           "alan-laptop-nixos"
           "alan-node"
           "alan-optiplex"
+          "fife-tv"
           "randy-big-nixos"
         ];
 

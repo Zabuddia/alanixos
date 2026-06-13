@@ -55,7 +55,7 @@
         extraGroups = [ "wheel" "networkmanager" "input" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
-        sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJhIOpVi6T5JO3hzG/OOtKwZscOBBbwSD1WOoBh012RL fife.alan@protonmail.com";
+        sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBrubxri9l5fkzTpcBDPZ282glPwLgZ4ctWTiGy9drAe fife-tv";
         authorizedHosts = [
           "alan-big-nixos"
           "alan-framework"
@@ -63,6 +63,7 @@
           "alan-laptop-nixos"
           "alan-node"
           "alan-optiplex"
+          "alan-tv"
           "randy-big-nixos"
         ];
 
@@ -72,9 +73,7 @@
           stateVersion = "26.05";
           files = { };
           packages = with pkgs; [
-            handbrake
             tmux
-            libaacs
             vlc
           ];
           unstablePackages = with pkgs-unstable; [
@@ -131,10 +130,6 @@
           ];
         };
         chromium.enable = true;
-        makemkv = {
-          enable = true;
-          betaKey = "T-sJ5R5BKxhD671U9s0teXbyP19MhCkkkB7rmnNbb1aEHaqveiVqyI3RXGMHDXhoyNUC";
-        };
         kodi = {
           enable = true;
           invidious = {
@@ -229,12 +224,12 @@
       enable = true;
       openFirewallOnTailscale = true;
       startAgent = true;
-      hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGL6zUAG5IhWFdlcfxcOSAEzTTmf0nRwEh4gPg+/TrJM alan-tv";
+      hostPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJmneW6ltIDbSig5EvMqC13yClQe0riPGvjxu4z/ogFQ fife-tv";
     };
     alanix.tailscale = {
       enable = true;
       loginServer = "https://headscale.fifefin.com";
-      address = "alan-tv";
+      address = "fife-tv";
       acceptRoutes = true;
       operator = "buddia";
     };
@@ -256,7 +251,7 @@
       webUi = {
         port = 47990;
         username = "buddia";
-        passwordFile = config.sops.secrets."sunshine-web-ui-passwords/alan-tv".path;
+        passwordFile = config.sops.secrets."sunshine-web-ui-passwords/fife-tv".path;
       };
     };
   };

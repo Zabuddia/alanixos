@@ -20,13 +20,15 @@
     owner = "root";
     group = "root";
     mode = "0400";
-  };  sops.secrets."wifi-passwords/OpenWrt" = {
+  };
+
+  sops.secrets."wifi-passwords/WIN_005356" = {
     sopsFile = (import ../../secrets/files.nix).network;
     owner = "root";
     mode = "0400";
   };
 
-  sops.secrets."ssh-private-keys/alan-tv" = {
+  sops.secrets."ssh-private-keys/fife-tv" = {
     sopsFile = (import ../../secrets/files.nix).users;
     owner = "buddia";
     group = "users";
@@ -34,7 +36,7 @@
     path = "/home/buddia/.ssh/id_ed25519";
   };
 
-  sops.secrets."ssh-host-keys/alan-tv" = {
+  sops.secrets."ssh-host-keys/fife-tv" = {
     sopsFile = (import ../../secrets/files.nix).network;
     owner = "root";
     group = "root";
@@ -42,7 +44,7 @@
     path = "/etc/ssh/ssh_host_ed25519_key";
   };
 
-  sops.secrets."sunshine-web-ui-passwords/alan-tv" = {
+  sops.secrets."sunshine-web-ui-passwords/fife-tv" = {
     sopsFile = (import ../../secrets/files.nix).servicePasswords;
     owner = "buddia";
     group = "users";
