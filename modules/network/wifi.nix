@@ -57,9 +57,9 @@ in
       };
     })
 
-    (lib.mkIf (!cfg.radio.enable) {
-      systemd.services.alanix-wifi-radio-off = {
-        description = "Disable Wi-Fi radio";
+    (lib.mkIf config.networking.networkmanager.enable {
+      systemd.services.alanix-wifi-radio = {
+        description = "Set Wi-Fi radio state";
         wantedBy = [ "multi-user.target" ];
         after = [ "NetworkManager.service" ];
         wants = [ "NetworkManager.service" ];
@@ -68,7 +68,7 @@ in
           RemainAfterExit = true;
         };
         script = ''
-          ${pkgs.networkmanager}/bin/nmcli radio wifi off || true
+          ${pkgs.networkmanager}/bin/nmcli radio wifi ${if cfg.radio.enable then "on" else "off"}
         '';
       };
     })
