@@ -254,6 +254,19 @@
 
     services.avahi.enable = true;
 
+    services.pipewire.wireplumber.extraConfig."51-prefer-epson-hdmi" = {
+      "monitor.alsa.rules" = [
+        {
+          matches = [
+            {
+              "node.name" = "alsa_output.pci-0000_0b_00.1.hdmi-stereo-extra3";
+            }
+          ];
+          actions.update-props."priority.session" = 1500;
+        }
+      ];
+    };
+
     alanix.sunshine = {
       enable = true;
       autoStart = true;
