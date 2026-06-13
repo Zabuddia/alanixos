@@ -11,9 +11,14 @@
 
     services.joycond.enable = true;
 
+    hardware.graphics = {
+      enable = true;
+      enable32Bit = true;
+    };
+
     alanix.system = {
       stateVersion = "26.05";
-      timeZone = "America/Chicago";
+      timeZone = "America/New_York";
       locale = "en_US.UTF-8";
       enableSystemdBoot = true;
       canTouchEfiVariables = true;
@@ -31,12 +36,18 @@
         git
         htop
         jq
+        libva-utils
+        mesa-demos
+        nvtopPackages.amd
+        pciutils
+        radeontop
         ripgrep
         python3
         restic
         sops
         tree
         unzip
+        vulkan-tools
         zip
         p7zip
         parted
