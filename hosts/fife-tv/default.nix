@@ -33,6 +33,7 @@
         bind
         caddy
         curl
+        dtv-scan-tables
         git
         htop
         jq
@@ -47,6 +48,7 @@
         sops
         tree
         unzip
+        v4l-utils
         vulkan-tools
         zip
         p7zip
