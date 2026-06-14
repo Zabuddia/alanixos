@@ -169,10 +169,12 @@
           mediaSources.music = [
             { name = "Music"; path = "${config.alanix.users.accounts.buddia.home.directory}/Music"; }
           ];
-          iptvSimple = {
-            enable = true;
-            m3uUrl = "http://192.168.10.105/lineup.m3u";
-          };
+          tvheadend.servers = [
+            {
+              name = "Hauppauge";
+              host = "127.0.0.1";
+            }
+          ];
           remoteControl = {
             enable = true;
             port = 8080;
@@ -255,6 +257,22 @@
     };
 
     services.avahi.enable = true;
+
+    alanix.tvheadend = {
+      enable = true;
+      listenAddress = "127.0.0.1";
+      port = 9981;
+      dataDir = "/var/lib/tvheadend";
+      recordingsDir = "/srv/tvheadend/recordings";
+      devicePaths = [ "/dev/dvb" ];
+      timeZone = "America/New_York";
+      epg.disableOverTheAirGrabbers = false;
+      htsp = {
+        enable = true;
+        listenAddress = "127.0.0.1";
+        port = 9982;
+      };
+    };
 
     services.pipewire.wireplumber.extraConfig."51-prefer-epson-hdmi" = {
       "monitor.alsa.rules" = [
