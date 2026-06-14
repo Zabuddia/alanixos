@@ -131,14 +131,18 @@ in
 
       services.greetd = {
         enable = true;
-        settings.default_session =
-          if swayCfg.autoLogin.enable then {
-            command = "${pkgs.sway}/bin/sway";
-            user = swayCfg.autoLogin.user;
-          } else {
+        settings = {
+          default_session = {
             command = "${pkgs.tuigreet}/bin/tuigreet --time --cmd sway";
             user = "greeter";
           };
+        }
+        // lib.optionalAttrs swayCfg.autoLogin.enable {
+          initial_session = {
+            command = "${pkgs.sway}/bin/sway";
+            user = swayCfg.autoLogin.user;
+          };
+        };
       };
 
       services.gnome.gcr-ssh-agent.enable = false;
