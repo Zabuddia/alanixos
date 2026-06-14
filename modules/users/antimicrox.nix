@@ -1007,19 +1007,17 @@ in
                 prefix = "Controller${guid}";
               in
               ''
-                if ! ${pkgs.gnugrep}/bin/grep -q ${f "^${prefix}ConfigFile1="} ${f settingsFilePath} 2>/dev/null; then
-                  ${pkgs.gnused}/bin/sed -i ${f "/^${prefix}/d"} ${f settingsFilePath} 2>/dev/null || true
-                  printf '%s\n' \
-                    ${f "${prefix}ConfigFile1=${profilePath}"} \
-                    ${f "${prefix}LastSelected=${profilePath}"} \
-                    ${f "${prefix}ProfileName1=${cfg.profile.name}"} \
-                    >> ${f settingsFilePath}
-                fi
+                ${pkgs.gnused}/bin/sed -i ${f "/^${prefix}/d"} ${f settingsFilePath} 2>/dev/null || true
+                printf '%s\n' \
+                  ${f "${prefix}ConfigFile1=${profilePath}"} \
+                  ${f "${prefix}LastSelected=${profilePath}"} \
+                  ${f "${prefix}ProfileName1=${cfg.profile.name}"} \
+                  >> ${f settingsFilePath}
               '';
           in
           {
-            after = [ "writeBoundary" ];
-            before = [ ];
+            after = [ "linkGeneration" ];
+            before = [ "reloadSystemd" ];
             data = ''
               mkdir -p ${f (builtins.dirOf settingsFilePath)}
               if [ ! -f ${f settingsFilePath} ]; then
@@ -1168,6 +1166,12 @@ in
             Description = "AntiMicroX controller mapping daemon";
             After = [ "graphical-session.target" ];
             PartOf = [ "graphical-session.target" ];
+            X-Restart-Triggers = [
+              (builtins.hashString "sha256" (builtins.toJSON {
+                inherit (cfg) controllerGuids;
+                inherit profile;
+              }))
+            ];
           };
           Service = {
             ExecStartPre = "${waitForStatusNotifierHost}";
@@ -1183,6 +1187,9 @@ in
             Description = "AntiMicroX minimal game controller mapping";
             After = [ "graphical-session.target" ];
             PartOf = [ "graphical-session.target" ];
+            X-Restart-Triggers = [
+              (builtins.hashString "sha256" gameProfile)
+            ];
           };
           Service = {
             ExecStart = "${lib.getExe cfg.package} --tray --hidden --eventgen uinput --log-level warn --profile ${lib.escapeShellArg gameProfilePath}";
