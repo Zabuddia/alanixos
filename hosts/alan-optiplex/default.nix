@@ -30,6 +30,7 @@
         git
         htop
         jq
+        lm_sensors
         ripgrep
         python3
         restic

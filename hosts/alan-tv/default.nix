@@ -31,6 +31,7 @@
         git
         htop
         jq
+        lm_sensors
         ripgrep
         python3
         restic
@@ -134,7 +135,7 @@
         chromium.enable = true;
         makemkv = {
           enable = true;
-          betaKey = "T-sJ5R5BKxhD671U9s0teXbyP19MhCkkkB7rmnNbb1aEHaqveiVqyI3RXGMHDXhoyNUC";
+          betaKey = "T-BSaJ6gwgMx4eIggWkVYXiVP_6zehm7WAO9dEydvzOHFHoZ6YQ82BL5cGpYDxvyRWnS";
         };
         kodi = {
           enable = true;

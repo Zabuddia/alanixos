@@ -28,6 +28,7 @@
         git
         htop
         jq
+        lm_sensors
         lsof
         nak
         nodejs

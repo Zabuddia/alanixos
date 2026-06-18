@@ -37,6 +37,7 @@
         git
         htop
         jq
+        lm_sensors
         libva-utils
         mesa-demos
         nvtopPackages.amd
