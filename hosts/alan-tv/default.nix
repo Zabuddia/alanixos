@@ -74,10 +74,27 @@
           stateVersion = "26.05";
           files = { };
           packages = with pkgs; [
+            abcde
+            asunder
+            cdparanoia
+            cuetools
+            easytag
+            ffmpeg
+            flac
+            freac
+            glyr
             handbrake
+            kid3
+            lame
+            mediainfo
+            mp3val
+            opus-tools
+            picard
             tmux
             libaacs
             vlc
+            vorbis-tools
+            whipper
           ];
           unstablePackages = with pkgs-unstable; [
             yt-dlp
