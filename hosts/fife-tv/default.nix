@@ -259,6 +259,13 @@
 
     services.avahi.enable = true;
 
+    # The Mayflash DolphinBar exposes paired Wii Remotes as hidraw devices in
+    # mode 4. Dolphin needs direct access to those endpoints for "Real Wii
+    # Remote" input.
+    services.udev.extraRules = ''
+      SUBSYSTEM=="hidraw", KERNEL=="hidraw*", ATTRS{idVendor}=="057e", ATTRS{idProduct}=="0306", GROUP="input", MODE="0660", TAG+="uaccess"
+    '';
+
     alanix.tvheadend = {
       enable = true;
       listenAddress = "127.0.0.1";
