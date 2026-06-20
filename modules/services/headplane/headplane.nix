@@ -7,6 +7,10 @@ let
   serviceExposure = import ../../../lib/mkServiceExposure.nix { inherit lib pkgs; };
   serviceIdentity = import ../../../lib/mkServiceIdentity.nix { inherit lib; };
 
+  patchedPackage = cfg.package.overrideAttrs (oldAttrs: {
+    patches = (oldAttrs.patches or [ ]) ++ [ ./ui-compat.patch ];
+  });
+
   exposeCfg = cfg.expose;
   inherit (serviceIdentity) hasValue;
 
@@ -185,7 +189,7 @@ in
 
       services.headplane = {
         enable = true;
-        package = cfg.package;
+        package = patchedPackage;
         settings = lib.recursiveUpdate defaultSettings cfg.settings;
       };
     }

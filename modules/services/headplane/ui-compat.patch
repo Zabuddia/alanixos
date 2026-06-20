@@ -1,0 +1,30 @@
+diff --git a/app/routes/dns/overview.tsx b/app/routes/dns/overview.tsx
+index 663b808..e8d7a34 100644
+--- a/app/routes/dns/overview.tsx
++++ b/app/routes/dns/overview.tsx
+@@ -42,7 +42,7 @@ export async function loader({
+ 		magicDns: config.dns.magic_dns,
+ 		baseDomain: config.dns.base_domain,
+ 		nameservers: config.dns.nameservers.global,
+-		splitDns: config.dns.nameservers.split,
++		splitDns: config.dns.nameservers.split ?? {},
+ 		searchDomains: config.dns.search_domains,
+ 		overrideDns: config.dns.override_local_dns,
+ 		extraRecords: context.hs.d,
+diff --git a/app/routes/machines/components/machine-row.tsx b/app/routes/machines/components/machine-row.tsx
+index 045d0fb..3ec5ee9 100644
+--- a/app/routes/machines/components/machine-row.tsx
++++ b/app/routes/machines/components/machine-row.tsx
+@@ -159,7 +159,11 @@ export function uiTagsForNode(node: PopulatedNode, isAgent?: boolean) {
+     uiTags.push("expired");
+   }
+ 
+-  if (node.expiry === null) {
++  if (
++    node.expiry === null ||
++    node.expiry === "0001-01-01 00:00:00" ||
++    node.expiry === "0001-01-01T00:00:00Z"
++  ) {
+     uiTags.push("no-expiry");
+   }
+ 
