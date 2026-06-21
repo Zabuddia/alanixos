@@ -14,6 +14,7 @@
     ./immich
     ./invidious
     ./jellyfin
+    ./jitsi-meet
     ./kavita
     ./llm
     ./mail

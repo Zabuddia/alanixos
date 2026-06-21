@@ -108,6 +108,7 @@ in
           "invidious.fifefin.com"
           "vaultwarden.fifefin.com"
           "jellyfin.fifefin.com"
+          "jitsi.fifefin.com"
           "mail.fifefin.com"
           "mqtt.fifefin.com"
           "navidrome.fifefin.com"
@@ -948,6 +949,25 @@ in
         enable = true;
         backupInterval = "12h";
         maxBackupAge = "48h";
+      };
+    };
+
+    alanix.jitsi-meet = {
+      enable = true;
+      hostName = "jitsi.fifefin.com";
+      listenAddress = "127.0.0.1";
+      port = 8095;
+      backupDir = "/var/backup/jitsi-meet";
+
+      expose.wan = {
+        enable = true;
+        domain = "jitsi.fifefin.com";
+      };
+
+      cluster = {
+        enable = true;
+        backupInterval = "1h";
+        maxBackupAge = "6h";
       };
     };
 
