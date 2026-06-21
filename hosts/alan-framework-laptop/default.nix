@@ -9,6 +9,47 @@
       ./secrets.nix
     ];
 
+    # BIOS 3.05 exposes an unwired AMD ACP/PDM microphone on the Framework 13
+    # Ryzen AI 300. Prevent it from hiding the real ALC285 analog microphone.
+    # https://github.com/FrameworkComputer/SoftwareFirmwareIssueTracker/issues/166
+    boot.blacklistedKernelModules = [
+      "snd_acp70"
+      "snd_acp_pci"
+    ];
+
+    # Keep PipeWire/WebRTC from driving the ALC285 hardware mixer back to its
+    # noisy +30 dB capture and +30 dB boost defaults when recording starts.
+    services.pipewire.wireplumber.extraConfig."51-framework-internal-mic" = {
+      "monitor.alsa.rules" = [
+        {
+          matches = [
+            {
+              "node.name" = "alsa_input.pci-0000_c1_00.6.analog-stereo";
+            }
+          ];
+          actions.update-props = {
+            "api.alsa.soft-mixer" = true;
+            "api.alsa.disable-mixer-path" = true;
+          };
+        }
+      ];
+    };
+
+    # Pin the internal microphone path to conservative hardware gain. PipeWire
+    # handles any further volume adjustment in software.
+    systemd.user.services.framework-internal-mic-gain = {
+      description = "Set sane Framework internal microphone gain";
+      wantedBy = [ "default.target" ];
+      wants = [ "wireplumber.service" ];
+      after = [ "wireplumber.service" ];
+      serviceConfig.Type = "oneshot";
+      script = ''
+        ${pkgs.alsa-utils}/bin/amixer --card Generic_1 set 'Internal Mic' cap
+        ${pkgs.alsa-utils}/bin/amixer --card Generic_1 cset name='Internal Mic Boost Volume' 0,0
+        ${pkgs.alsa-utils}/bin/amixer --card Generic_1 cset name='Capture Volume' 30,30
+      '';
+    };
+
     services.joycond.enable = true;
 
     alanix.system = {
