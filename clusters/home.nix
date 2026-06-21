@@ -959,6 +959,18 @@ in
       port = 8095;
       backupDir = "/var/backup/jitsi-meet";
 
+      jicofo.restPort = 8889;
+      videobridge = {
+        privateHttpPort = 9091;
+        allowedAddresses = lib.optionals (hostname == "alan-big-nixos") [ "192.168.10.225" ];
+      };
+
+      turn = {
+        enable = true;
+        # Headscale's embedded DERP server already uses UDP 3478 for STUN.
+        port = 3479;
+      };
+
       expose.wan = {
         enable = true;
         domain = "jitsi.fifefin.com";

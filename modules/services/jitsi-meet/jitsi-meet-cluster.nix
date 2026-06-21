@@ -102,7 +102,10 @@ in
             label = "Jitsi Meet";
             backupInterval = cfg.cluster.backupInterval;
             maxBackupAge = cfg.cluster.maxBackupAge;
-            activeUnits = daemonUnits ++ lib.optional cfg.excalidraw.enable "jitsi-excalidraw.service";
+            activeUnits =
+              daemonUnits
+              ++ lib.optional cfg.turn.enable "coturn.service"
+              ++ lib.optional cfg.excalidraw.enable "jitsi-excalidraw.service";
             backupPaths = [ cfg.backupDir ];
             preBackupCommand = [ backupPrepScript ];
             postBackupCommand = [
@@ -113,11 +116,15 @@ in
             postRestoreCommand = [ restoreScript ];
             restoreTarget = "/";
           };
-          targetUnits = managedUnits ++ lib.optional cfg.excalidraw.enable "jitsi-excalidraw.service";
+          targetUnits =
+            managedUnits
+            ++ lib.optional cfg.turn.enable "coturn.service"
+            ++ lib.optional cfg.excalidraw.enable "jitsi-excalidraw.service";
           exposureUnits = [
             "nginx.service"
           ]
           ++ daemonUnits
+          ++ lib.optional cfg.turn.enable "coturn.service"
           ++ lib.optional cfg.excalidraw.enable "jitsi-excalidraw.service";
           tmpfiles = [
             "d ${cfg.backupDir} 0750 root ${backupRepoUserGroup} - -"
@@ -138,6 +145,7 @@ in
       }
 
       (helpers.mkActiveTargetUnits managedUnits)
+      (lib.mkIf cfg.turn.enable (helpers.mkActiveTargetUnits [ "coturn.service" ]))
       (lib.mkIf cfg.excalidraw.enable (helpers.mkActiveTargetUnits [ "jitsi-excalidraw.service" ]))
     ]
   );
