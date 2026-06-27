@@ -135,6 +135,7 @@
           ];
         };
         melonds.enable = true;
+        retroarch.enable = true;
         vscode.enable = true;
       };
     };
@@ -193,6 +194,8 @@
         "emulation-azahar"
         "emulation-dolphin"
         "emulation-melonds"
+        "emulation-n64"
+        "emulation-retroarch"
         "movies"
         "shows"
         "videos"
@@ -221,6 +224,8 @@
           "emulation-azahar"
           "emulation-dolphin"
           "emulation-melonds"
+          "emulation-n64"
+          "emulation-retroarch"
           "videos"
         ];
       };

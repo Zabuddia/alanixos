@@ -19,6 +19,7 @@ let
     ./users/makemkv.nix
     ./users/melonds.nix
     ./users/nextcloud-client.nix
+    ./users/retroarch.nix
     ./users/ryubing.nix
     ./users/sh.nix
     ./users/ssh.nix

@@ -206,6 +206,10 @@
         };
         evdevhook2.enable = true;
         melonds.enable = true;
+        retroarch = {
+          enable = true;
+          startFullscreen = true;
+        };
         ryubing = {
           enable = true;
           confirmExit = false;
@@ -283,6 +287,8 @@
         "emulation-dolphin"
         "emulation-eden"
         "emulation-melonds"
+        "emulation-n64"
+        "emulation-retroarch"
         "emulation-ryujinx"
         "movies"
         "shows"
@@ -314,6 +320,8 @@
           "emulation-azahar"
           "emulation-dolphin"
           "emulation-melonds"
+          "emulation-n64"
+          "emulation-retroarch"
           "videos"
         ];
       };

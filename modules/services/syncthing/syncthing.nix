@@ -118,6 +118,45 @@ let
     };
   };
 
+  n64Folders = {
+    "games-roms-n64" = {
+      label = "games/roms/n64";
+      relativePath = "games/roms/n64";
+    };
+  };
+
+  retroarchFolders = {
+    "games-roms-nes" = {
+      label = "games/roms/nes";
+      relativePath = "games/roms/nes";
+    };
+    "games-roms-snes" = {
+      label = "games/roms/snes";
+      relativePath = "games/roms/snes";
+    };
+    "games-roms-gb" = {
+      label = "games/roms/gb";
+      relativePath = "games/roms/gb";
+    };
+    "games-roms-gbc" = {
+      label = "games/roms/gbc";
+      relativePath = "games/roms/gbc";
+    };
+    "games-roms-gba" = {
+      label = "games/roms/gba";
+      relativePath = "games/roms/gba";
+    };
+    "games-roms-genesis" = {
+      label = "games/roms/genesis";
+      relativePath = "games/roms/genesis";
+    };
+    "games-retroarch" = {
+      label = "games/retroarch";
+      relativePath = "games/retroarch";
+      versioning = staggeredVersioning 90;
+    };
+  };
+
   edenFolders = {
     "games-eden" = {
       label = "games/Eden";
@@ -269,6 +308,8 @@ let
     emulation-dolphin = dolphinFolders;
     emulation-eden = edenFolders;
     emulation-melonds = melondsFolders;
+    emulation-n64 = n64Folders;
+    emulation-retroarch = retroarchFolders;
     emulation-ryujinx = ryujinxFolders;
     movies = moviesFolders;
     shows = showsFolders;
@@ -338,7 +379,15 @@ let
   };
 
   folderSetAliases = {
-    emulation = [ "emulation-azahar" "emulation-dolphin" "emulation-eden" "emulation-melonds" "emulation-ryujinx" ];
+    emulation = [
+      "emulation-azahar"
+      "emulation-dolphin"
+      "emulation-eden"
+      "emulation-melonds"
+      "emulation-n64"
+      "emulation-retroarch"
+      "emulation-ryujinx"
+    ];
     filebrowser-files = filebrowserFolderSetNames;
   };
 

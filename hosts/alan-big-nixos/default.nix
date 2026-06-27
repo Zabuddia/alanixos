@@ -101,6 +101,7 @@
           ];
         };
         melonds.enable = true;
+        retroarch.enable = true;
         ryubing = {
           enable = true;
           gameDirs = [ "${config.alanix.syncthing.syncRoot}/games/roms/switch" ];
@@ -161,6 +162,8 @@
         "emulation-azahar"
         "emulation-dolphin"
         "emulation-melonds"
+        "emulation-n64"
+        "emulation-retroarch"
         "emulation-ryujinx"
       ];
       linkFolderSets = [
@@ -176,6 +179,8 @@
           "emulation-azahar"
           "emulation-dolphin"
           "emulation-melonds"
+          "emulation-n64"
+          "emulation-retroarch"
         ];
       };
     };

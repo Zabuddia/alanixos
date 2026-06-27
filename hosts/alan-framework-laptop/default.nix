@@ -239,6 +239,7 @@
         librewolf.enable = true;
         melonds.enable = true;
         nextcloudClient.enable = true;
+        retroarch.enable = true;
         ryubing = {
           enable = true;
           gameDirs = [ "${config.alanix.syncthing.syncRoot}/games/roms/switch" ];
@@ -334,6 +335,8 @@
         "emulation-dolphin"
         "emulation-eden"
         "emulation-melonds"
+        "emulation-n64"
+        "emulation-retroarch"
         "emulation-ryujinx"
         "videos"
         "music"
@@ -357,6 +360,8 @@
           "emulation-azahar"
           "emulation-dolphin"
           "emulation-melonds"
+          "emulation-n64"
+          "emulation-retroarch"
           "videos"
         ];
       };
