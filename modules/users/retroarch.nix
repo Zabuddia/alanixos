@@ -104,6 +104,9 @@ in
     };
   };
 
+  config.antimicrox.openRetroarch.command =
+    lib.mkIf cfg.enable (lib.mkDefault (lib.getExe cfg.package));
+
   config.home.modules = lib.optionals cfg.enable [
     ({ lib, ... }: {
       home.packages = [ cfg.package ];

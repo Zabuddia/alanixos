@@ -40,6 +40,7 @@ let
     control = "0x1000021";
     super = "0x1000022";
     alt = "0x1000023";
+    a = "0x41";
     d = "0x44";
     e = "0x45";
     k = "0x4b";
@@ -337,6 +338,10 @@ let
       label = "Open Ryubing";
       slots = oneShotKeyboardSlots cfg.openRyubing.keyCodes;
     };
+    openRetroarch = {
+      label = "Open RetroArch";
+      slots = oneShotKeyboardSlots cfg.openRetroarch.keyCodes;
+    };
     openThunar = {
       label = "Open Thunar";
       slots = oneShotKeyboardSlots cfg.openThunar.keyCodes;
@@ -384,6 +389,7 @@ let
   usesOpenDolphin = usesAction "openDolphin";
   usesOpenEden = usesAction "openEden";
   usesOpenRyubing = usesAction "openRyubing";
+  usesOpenRetroarch = usesAction "openRetroarch";
   usesOpenThunar = usesAction "openThunar";
   usesOpenScrcpy = usesAction "openScrcpy";
 
@@ -499,6 +505,9 @@ let
     }
     // lib.optionalAttrs usesOpenRyubing {
       "${cfg.openRyubing.keybinding}" = "exec ${cfg.openRyubing.command}";
+    }
+    // lib.optionalAttrs usesOpenRetroarch {
+      "${cfg.openRetroarch.keybinding}" = "exec ${cfg.openRetroarch.command}";
     }
     // lib.optionalAttrs usesOpenThunar {
       "${cfg.openThunar.keybinding}" = "exec ${openThunarCommand}";
@@ -815,6 +824,26 @@ in
         type = types.str;
         default = lib.getExe pkgs-unstable.ryubing;
         description = "Command run by the Ryubing keybinding.";
+      };
+    };
+
+    openRetroarch = {
+      keybinding = lib.mkOption {
+        type = types.str;
+        default = "Mod4+Ctrl+a";
+        description = "Sway keybinding used to open RetroArch.";
+      };
+
+      keyCodes = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ key.super key.control key.a ];
+        description = "AntiMicroX key codes to send for the open RetroArch shortcut.";
+      };
+
+      command = lib.mkOption {
+        type = types.str;
+        default = "retroarch";
+        description = "Command run by the RetroArch keybinding.";
       };
     };
 

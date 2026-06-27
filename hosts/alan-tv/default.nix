@@ -125,7 +125,7 @@
           workspaceSwitching.enable = true;
           openThunar.path = "${config.alanix.users.accounts.buddia.home.directory}/Syncthing/media";
           openScrcpy.extraArgs = [ "--fullscreen" ];
-          pauseForApps = [ "kodi" ];
+          pauseForApps = [ "kodi" "retroarch" ];
           pauseForGameApps = [ "dolphin-emu" "eden" ];
           pauseForGameAppTitlePatterns.Ryujinx = [
             ''\([[:xdigit:]]{16}\) \([[:digit:]]+-bit\)$''
@@ -142,7 +142,7 @@
             lb = "closeWindow";
             leftStick = "keyboard";
             rightStick = "launcher";
-            leftTrigger = "openScrcpy";
+            leftTrigger = "openRetroarch";
             rightTrigger = "openKodi";
           };
           controllerGuids = [

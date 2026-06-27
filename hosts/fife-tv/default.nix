@@ -119,7 +119,7 @@
           workspaceSwitching.enable = true;
           openThunar.path = config.alanix.users.accounts.buddia.home.directory;
           openScrcpy.extraArgs = [ "--fullscreen" ];
-          pauseForApps = [ "kodi" ];
+          pauseForApps = [ "kodi" "retroarch" ];
           pauseForGameApps = [ "dolphin-emu" "eden" ];
           pauseForGameAppTitlePatterns.Ryujinx = [
             ''\([[:xdigit:]]{16}\) \([[:digit:]]+-bit\)$''
@@ -136,7 +136,7 @@
             lb = "closeWindow";
             leftStick = "keyboard";
             rightStick = "launcher";
-            leftTrigger = "openScrcpy";
+            leftTrigger = "openRetroarch";
             rightTrigger = "openKodi";
           };
           controllerGuids = [
@@ -198,6 +198,12 @@
         };
         evdevhook2.enable = true;
         melonds.enable = true;
+        retroarch = {
+          enable = true;
+          startFullscreen = true;
+          romRoot = "${config.alanix.users.accounts.buddia.home.directory}/Games/roms";
+          dataDir = "${config.alanix.users.accounts.buddia.home.directory}/Games/retroarch";
+        };
         ryubing = {
           enable = true;
           confirmExit = false;
