@@ -15,6 +15,13 @@ let
 
   defaultCores = coreNames;
 
+  libretroDatabase = pkgs.fetchFromGitHub {
+    owner = "libretro";
+    repo = "libretro-database";
+    rev = "e450a478c793569255cbbb7a510f1d63bc97b996";
+    hash = "sha256-j0k7Kyov9zxGZnTDbIJidTvh61LRwwHkfIHoGMpBwzE=";
+  };
+
   package =
     pkgs.retroarch.withCores (cores: map (core: cores.${core}) cfg.cores);
 
@@ -123,6 +130,8 @@ in
 
           rgui_browser_directory = ${retroarchString cfg.romRoot}
           libretro_directory = ${retroarchString "${cfg.package}/lib/retroarch/cores"}
+          content_database_path = ${retroarchString "${libretroDatabase}/rdb"}
+          cheat_database_path = ${retroarchString "${libretroDatabase}/cht"}
           system_directory = ${retroarchString "${cfg.dataDir}/system"}
           savefile_directory = ${retroarchString "${cfg.dataDir}/saves"}
           savestate_directory = ${retroarchString "${cfg.dataDir}/states"}
