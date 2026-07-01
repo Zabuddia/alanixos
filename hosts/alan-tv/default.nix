@@ -100,7 +100,16 @@
             yt-dlp
             moonlight-qt
           ];
-          modules = [ ];
+          modules = [
+            ({ ... }: {
+              wayland.windowManager.sway.extraConfig = ''
+                # Steam Big Picture can keep focus over newly launched games unless
+                # the game window is promoted above it.
+                for_window [class="^steam_app_[0-9]+$"] fullscreen enable, focus
+                for_window [app_id="^steam_app_[0-9]+$"] fullscreen enable, focus
+              '';
+            })
+          ];
         };
 
         git = {
@@ -130,14 +139,9 @@
             };
           };
           workspaceSwitching.enable = true;
-          openSteam = {
-            command = "${lib.getExe pkgs.gamescope} -f -e -W 3840 -H 2160 -w 3840 -h 2160 --force-windows-fullscreen -- steam -gamepadui";
-            processNames = [ "gamescope" ];
-          };
           openThunar.path = "${config.alanix.users.accounts.buddia.home.directory}/Syncthing/media";
           openScrcpy.extraArgs = [ "--fullscreen" ];
           pauseForApps = [
-            "gamescope"
             "kodi"
             "retroarch"
             "steam"
@@ -248,7 +252,6 @@
         enable = true;
         steam.enable = true;
         packages = with pkgs; [
-          gamescope
           heroic
           mangohud
           mesa-demos
