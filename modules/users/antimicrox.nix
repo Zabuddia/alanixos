@@ -1115,6 +1115,12 @@ in
       description = "Wayland app_ids (e.g. \"dolphin-emu\") that should pause AntiMicroX while focused so the controller passes through to the app directly.";
     };
 
+    pauseForAppPatterns = lib.mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "Extended regular expressions for Wayland app_ids that should pause AntiMicroX while focused.";
+    };
+
     pauseForGameApps = lib.mkOption {
       type = types.listOf types.str;
       default = [ ];
@@ -1252,9 +1258,10 @@ in
           }
         );
 
-        systemd.user.services.antimicrox-focus-watcher = lib.mkIf (swayActive && (cfg.pauseForApps != [ ] || cfg.pauseForGameApps != [ ] || cfg.pauseForGameAppTitlePatterns != { })) (
+        systemd.user.services.antimicrox-focus-watcher = lib.mkIf (swayActive && (cfg.pauseForApps != [ ] || cfg.pauseForAppPatterns != [ ] || cfg.pauseForGameApps != [ ] || cfg.pauseForGameAppTitlePatterns != { })) (
           let
             pauseAppIds = cfg.pauseForApps;
+            pauseAppPatterns = cfg.pauseForAppPatterns;
             pauseGameAppIds = cfg.pauseForGameApps;
             gameButtonActionAppIds = cfg.gameButtonActionApps;
             customGameTitleChecks = lib.concatStringsSep "\n" (
@@ -1274,6 +1281,7 @@ in
             );
             watcherScript = pkgs.writeShellScript "antimicrox-focus-watcher" ''
               pause_apps=${lib.escapeShellArg (lib.concatStringsSep "\n" pauseAppIds)}
+              pause_app_patterns=${lib.escapeShellArg (lib.concatStringsSep "\n" pauseAppPatterns)}
               pause_game_apps=${lib.escapeShellArg (lib.concatStringsSep "\n" pauseGameAppIds)}
               game_button_action_apps=${lib.escapeShellArg (lib.concatStringsSep "\n" gameButtonActionAppIds)}
               pause_dir="''${XDG_RUNTIME_DIR:-/tmp}/alanix-antimicrox-pause"
@@ -1292,6 +1300,17 @@ in
                     return 0
                   fi
                 done <<< "$1"
+                return 1
+              }
+
+              matches_pause_app_pattern() {
+                [ -n "$1" ] || return 1
+                while IFS= read -r pattern; do
+                  [ -n "$pattern" ] || continue
+                  if printf '%s' "$1" | ${pkgs.gnugrep}/bin/grep -Eq -- "$pattern"; then
+                    return 0
+                  fi
+                done <<< "$pause_app_patterns"
                 return 1
               }
 
@@ -1335,7 +1354,7 @@ in
                 focused=$(focused_container 2>/dev/null || printf '%s\n' '{ "app_id": "", "title": "" }')
                 app_id=$(printf '%s' "$focused" | ${pkgs.jq}/bin/jq -r '.app_id // ""')
                 title=$(printf '%s' "$focused" | ${pkgs.jq}/bin/jq -r '.title // ""')
-                is_pause_app=$(contains_app "$pause_apps" "$app_id" && echo yes || echo no)
+                is_pause_app=$({ contains_app "$pause_apps" "$app_id" || matches_pause_app_pattern "$app_id"; } && echo yes || echo no)
                 is_game_session=$(is_game_title "$app_id" "$title" && echo yes || echo no)
                 is_game_button_action_app=$(contains_app "$game_button_action_apps" "$app_id" && echo yes || echo no)
                 is_manual_pause=$(manual_pause_active && echo yes || echo no)

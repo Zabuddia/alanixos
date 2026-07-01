@@ -149,6 +149,9 @@
             "heroic"
             "com.heroicgameslauncher.hgl"
           ];
+          pauseForAppPatterns = [
+            "^steam_app_[0-9]+$"
+          ];
           pauseForGameApps = [ "dolphin-emu" "eden" ];
           pauseForGameAppTitlePatterns.Ryujinx = [
             ''\([[:xdigit:]]{16}\) \([[:digit:]]+-bit\)$''
