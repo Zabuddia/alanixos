@@ -43,6 +43,8 @@ let
     a = "0x41";
     d = "0x44";
     e = "0x45";
+    g = "0x47";
+    h = "0x48";
     k = "0x4b";
     o = "0x4f";
     q = "0x51";
@@ -114,6 +116,10 @@ let
   profilePath = "${config.home.directory}/.config/antimicrox/profiles/${cfg.profile.fileName}";
   gameProfilePath = "${config.home.directory}/.config/antimicrox/profiles/game-${cfg.profile.fileName}";
   settingsFilePath = "${config.home.directory}/.config/antimicrox/antimicrox_settings.ini";
+  processNamesOption = default: description: lib.mkOption {
+    type = types.listOf types.str;
+    inherit default description;
+  };
   keyboardProgramPath = "${cfg.onScreenKeyboard.package}/bin/${cfg.onScreenKeyboard.program}";
   keyboardLaunchCommand = lib.escapeShellArgs ([ keyboardProgramPath ] ++ cfg.onScreenKeyboard.extraArgs);
   keyboardToggleCommand = pkgs.writeShellScript "alanix-toggle-${cfg.onScreenKeyboard.program}" ''
@@ -139,12 +145,8 @@ let
 
     exec ${lib.getExe cfg.openScrcpy.package} ${lib.escapeShellArgs cfg.openScrcpy.extraArgs}
   '';
-  pauseAntimicroxCommand = name: command: processNames: pkgs.writeShellScript "alanix-${name}" ''
-    set -u
-
+  processRunningShell = processNames: ''
     process_names=${lib.escapeShellArg (lib.concatStringsSep "\n" processNames)}
-    pause_dir="''${XDG_RUNTIME_DIR:-/tmp}/alanix-antimicrox-pause"
-    pause_token="$pause_dir/${name}-$$"
 
     process_is_running() {
       while IFS= read -r process_name; do
@@ -155,8 +157,66 @@ let
       done <<< "$process_names"
       return 1
     }
+  '';
+  launchOnceCommand = name: command: processNames: pkgs.writeShellScript "alanix-${name}" ''
+    set -u
 
+    ${processRunningShell processNames}
+
+    launch_lock_dir="''${XDG_RUNTIME_DIR:-/tmp}/alanix-antimicrox-launch-locks"
+    ${pkgs.coreutils}/bin/mkdir -p "$launch_lock_dir"
+    exec 9>"$launch_lock_dir/${name}.lock"
+
+    if ! ${pkgs.util-linux}/bin/flock -n 9; then
+      exit 0
+    fi
+
+    if process_is_running; then
+      exit 0
+    fi
+
+    ${command} &
+    command_pid=$!
+    command_status=0
+    attempts=0
+
+    while [ "$attempts" -lt 40 ]; do
+      if process_is_running; then
+        exit 0
+      fi
+
+      if ! kill -0 "$command_pid" 2>/dev/null; then
+        wait "$command_pid" || command_status=$?
+        exit "$command_status"
+      fi
+
+      attempts=$((attempts + 1))
+      ${pkgs.coreutils}/bin/sleep 0.25
+    done
+
+    exit 0
+  '';
+  pauseAntimicroxCommand = name: command: processNames: pkgs.writeShellScript "alanix-${name}" ''
+    set -u
+
+    ${processRunningShell processNames}
+
+    launch_lock_dir="''${XDG_RUNTIME_DIR:-/tmp}/alanix-antimicrox-launch-locks"
+    pause_dir="''${XDG_RUNTIME_DIR:-/tmp}/alanix-antimicrox-pause"
+    pause_token="$pause_dir/${name}-$$"
+
+    ${pkgs.coreutils}/bin/mkdir -p "$launch_lock_dir"
     ${pkgs.coreutils}/bin/mkdir -p "$pause_dir"
+    exec 9>"$launch_lock_dir/${name}.lock"
+
+    if ! ${pkgs.util-linux}/bin/flock -n 9; then
+      exit 0
+    fi
+
+    if process_is_running; then
+      exit 0
+    fi
+
     printf '%s\n' "$$" > "$pause_token"
 
     was_active=0
@@ -269,6 +329,16 @@ let
   ${slots slotList}                </button>
   '';
 
+  setSelectXml = setIndex: condition: ''
+                    <setselect>${toString setIndex}</setselect>
+                    <setselectcondition>${condition}</setselectcondition>
+  '';
+
+  buttonWithSetSelect = index: targetSet: condition: ''
+                <button index="${toString index}">
+  ${slots [ ]}${setSelectXml targetSet condition}                </button>
+  '';
+
   buttonNameXml = index: label: ''
             <buttonname index="${toString index}">${label}</buttonname>
   '';
@@ -342,6 +412,14 @@ let
       label = "Open RetroArch";
       slots = oneShotKeyboardSlots cfg.openRetroarch.keyCodes;
     };
+    openSteam = {
+      label = "Open Steam";
+      slots = oneShotKeyboardSlots cfg.openSteam.keyCodes;
+    };
+    openHeroic = {
+      label = "Open Heroic";
+      slots = oneShotKeyboardSlots cfg.openHeroic.keyCodes;
+    };
     openThunar = {
       label = "Open Thunar";
       slots = oneShotKeyboardSlots cfg.openThunar.keyCodes;
@@ -377,12 +455,16 @@ let
   };
 
   configuredButtonNames = builtins.attrNames cfg.buttonActions;
+  configuredModeShiftButtonNames = builtins.attrNames cfg.modeShift.buttonActions;
   configuredGameButtonNames = builtins.attrNames cfg.gameButtonActions;
   unknownConfiguredButtons =
     lib.filter
       (buttonName: !(lib.hasAttr buttonName controllerInputIndexes))
-      (configuredButtonNames ++ configuredGameButtonNames);
-  configuredActions = builtins.attrValues cfg.buttonActions ++ builtins.attrValues cfg.gameButtonActions;
+      (configuredButtonNames ++ configuredModeShiftButtonNames ++ configuredGameButtonNames);
+  configuredActions =
+    builtins.attrValues cfg.buttonActions
+    ++ builtins.attrValues cfg.modeShift.buttonActions
+    ++ builtins.attrValues cfg.gameButtonActions;
 
   usesAction = actionName: lib.any (configuredAction: configuredAction == actionName) configuredActions;
   usesOpenKodi = usesAction "openKodi";
@@ -390,6 +472,8 @@ let
   usesOpenEden = usesAction "openEden";
   usesOpenRyubing = usesAction "openRyubing";
   usesOpenRetroarch = usesAction "openRetroarch";
+  usesOpenSteam = usesAction "openSteam";
+  usesOpenHeroic = usesAction "openHeroic";
   usesOpenThunar = usesAction "openThunar";
   usesOpenScrcpy = usesAction "openScrcpy";
 
@@ -469,7 +553,16 @@ let
     lib.optionalString (cfg.mouse.precisionButton != null)
       (button controllerButtonIndexes.${cfg.mouse.precisionButton} [ (changeSetSlot switchToSet) ]);
 
-  makeSet = setIndex: mouseSpeedX: mouseSpeedY: switchToSet: ''
+  hasPrecisionMode = cfg.mouse.precisionButton != null;
+  hasModeShift = cfg.modeShift.button != null;
+  shiftedButtonActions = cfg.buttonActions // cfg.modeShift.buttonActions;
+  shiftedMouseSpeedX = if cfg.modeShift.precisionMouse then cfg.mouse.precisionSpeedX else cfg.mouse.speedX;
+  shiftedMouseSpeedY = if cfg.modeShift.precisionMouse then cfg.mouse.precisionSpeedY else cfg.mouse.speedY;
+  modeShiftButtonXml =
+    lib.optionalString hasModeShift
+      (buttonWithSetSelect controllerButtonIndexes.${cfg.modeShift.button} 2 "while-held");
+
+  makeSet = setIndex: mouseSpeedX: mouseSpeedY: setButtonXml: actions: ''
               <set index="${toString setIndex}">
                   <stick index="1">
                       <deadZone>${toString cfg.mouse.deadZone}</deadZone>
@@ -483,10 +576,31 @@ let
   ${lib.concatStrings (scrollStickButtons ++ workspaceSwitchStickButtons)}                </stick>
                   <dpad index="1">
   ${lib.concatStrings dpadButtons}                </dpad>
-  ${lib.concatStrings (controllerButtons cfg.buttonActions)}${lib.concatStrings (controllerTriggers cfg.buttonActions)}${precisionButtonXml switchToSet}          </set>
+${lib.concatStrings (controllerButtons actions)}${lib.concatStrings (controllerTriggers actions)}${setButtonXml}          </set>
   '';
 
-  hasPrecisionMode = cfg.mouse.precisionButton != null;
+  normalSetButtonXml =
+    if hasModeShift then modeShiftButtonXml else precisionButtonXml 2;
+
+  alternateSetButtonXml =
+    if hasPrecisionMode then precisionButtonXml 1 else "";
+
+  alternateSetActions =
+    if hasModeShift then shiftedButtonActions else cfg.buttonActions;
+
+  alternateSetMouseSpeedX =
+    if hasModeShift then shiftedMouseSpeedX else cfg.mouse.precisionSpeedX;
+
+  alternateSetMouseSpeedY =
+    if hasModeShift then shiftedMouseSpeedY else cfg.mouse.precisionSpeedY;
+
+  alternateSetXml =
+    lib.optionalString (hasPrecisionMode || hasModeShift)
+      (makeSet 2 alternateSetMouseSpeedX alternateSetMouseSpeedY alternateSetButtonXml alternateSetActions);
+
+  profileSets =
+    (makeSet 1 cfg.mouse.speedX cfg.mouse.speedY normalSetButtonXml cfg.buttonActions)
+    + alternateSetXml;
 
   # Launcher is handled via config.menu so Sway's built-in Mod4+d binding runs the right command.
   # All remaining bindings use extraConfig so they never conflict with or replace Sway's defaults.
@@ -498,22 +612,28 @@ let
       "${cfg.openKodi.keybinding}" = "exec ${pauseAntimicroxCommand "open-kodi" cfg.openKodi.command cfg.openKodi.processNames}";
     }
     // lib.optionalAttrs usesOpenDolphin {
-      "${cfg.openDolphin.keybinding}" = "exec ${cfg.openDolphin.command}";
+      "${cfg.openDolphin.keybinding}" = "exec ${launchOnceCommand "open-dolphin" cfg.openDolphin.command cfg.openDolphin.processNames}";
     }
     // lib.optionalAttrs usesOpenEden {
-      "${cfg.openEden.keybinding}" = "exec ${cfg.openEden.command}";
+      "${cfg.openEden.keybinding}" = "exec ${launchOnceCommand "open-eden" cfg.openEden.command cfg.openEden.processNames}";
     }
     // lib.optionalAttrs usesOpenRyubing {
-      "${cfg.openRyubing.keybinding}" = "exec ${cfg.openRyubing.command}";
+      "${cfg.openRyubing.keybinding}" = "exec ${launchOnceCommand "open-ryubing" cfg.openRyubing.command cfg.openRyubing.processNames}";
     }
     // lib.optionalAttrs usesOpenRetroarch {
-      "${cfg.openRetroarch.keybinding}" = "exec ${cfg.openRetroarch.command}";
+      "${cfg.openRetroarch.keybinding}" = "exec ${launchOnceCommand "open-retroarch" cfg.openRetroarch.command cfg.openRetroarch.processNames}";
+    }
+    // lib.optionalAttrs usesOpenSteam {
+      "${cfg.openSteam.keybinding}" = "exec ${launchOnceCommand "open-steam" cfg.openSteam.command cfg.openSteam.processNames}";
+    }
+    // lib.optionalAttrs usesOpenHeroic {
+      "${cfg.openHeroic.keybinding}" = "exec ${launchOnceCommand "open-heroic" cfg.openHeroic.command cfg.openHeroic.processNames}";
     }
     // lib.optionalAttrs usesOpenThunar {
-      "${cfg.openThunar.keybinding}" = "exec ${openThunarCommand}";
+      "${cfg.openThunar.keybinding}" = "exec ${launchOnceCommand "open-thunar" openThunarCommand cfg.openThunar.processNames}";
     }
     // lib.optionalAttrs usesOpenScrcpy {
-      "${cfg.openScrcpy.keybinding}" = "exec ${scrcpyLaunchCommand}";
+      "${cfg.openScrcpy.keybinding}" = "exec ${launchOnceCommand "open-scrcpy" scrcpyLaunchCommand cfg.openScrcpy.processNames}";
     }
     // lib.optionalAttrs cfg.workspaceSwitching.enable {
       "${cfg.workspaceSwitching.nextKeybinding}" = "workspace next";
@@ -530,7 +650,7 @@ let
             <controlstickname index="2">${if cfg.workspaceSwitching.enable then "Scroll / Workspaces" else "Scroll"}</controlstickname>
         </names>
         <sets>
-  ${makeSet 1 cfg.mouse.speedX cfg.mouse.speedY 2}${lib.optionalString hasPrecisionMode (makeSet 2 cfg.mouse.precisionSpeedX cfg.mouse.precisionSpeedY 1)}    </sets>
+${profileSets}    </sets>
     </gamecontroller>
   '';
 
@@ -671,6 +791,26 @@ in
       };
     };
 
+    modeShift = {
+      button = lib.mkOption {
+        type = types.nullOr (types.enum (builtins.attrNames controllerButtonIndexes));
+        default = null;
+        description = "Controller button that activates the shifted action layer while held.";
+      };
+
+      precisionMouse = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether the shifted action layer should use the precision mouse speed.";
+      };
+
+      buttonActions = lib.mkOption {
+        type = types.attrsOf (types.enum actionNames);
+        default = { };
+        description = "Button and trigger actions used while modeShift.button is held.";
+      };
+    };
+
     launcher = {
       enable = lib.mkOption {
         type = types.bool;
@@ -785,6 +925,8 @@ in
         default = "dolphin-emu";
         description = "Command run by the Dolphin keybinding.";
       };
+
+      processNames = processNamesOption [ "dolphin-emu" ] "Process names that prevent launching another Dolphin instance.";
     };
 
     openEden = {
@@ -805,6 +947,8 @@ in
         default = lib.getExe pkgs-unstable.eden;
         description = "Command run by the Eden keybinding.";
       };
+
+      processNames = processNamesOption [ "eden" "eden-emu" "Eden" ] "Process names that prevent launching another Eden instance.";
     };
 
     openRyubing = {
@@ -825,6 +969,8 @@ in
         default = lib.getExe pkgs-unstable.ryubing;
         description = "Command run by the Ryubing keybinding.";
       };
+
+      processNames = processNamesOption [ "Ryujinx" "ryubing" ] "Process names that prevent launching another Ryubing instance.";
     };
 
     openRetroarch = {
@@ -845,6 +991,52 @@ in
         default = "retroarch";
         description = "Command run by the RetroArch keybinding.";
       };
+
+      processNames = processNamesOption [ "retroarch" ] "Process names that prevent launching another RetroArch instance.";
+    };
+
+    openSteam = {
+      keybinding = lib.mkOption {
+        type = types.str;
+        default = "Mod4+Ctrl+g";
+        description = "Sway keybinding used to open Steam.";
+      };
+
+      keyCodes = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ key.super key.control key.g ];
+        description = "AntiMicroX key codes to send for the open Steam shortcut.";
+      };
+
+      command = lib.mkOption {
+        type = types.str;
+        default = "steam -gamepadui";
+        description = "Command run by the Steam keybinding.";
+      };
+
+      processNames = processNamesOption [ "steam" "steamwebhelper" ] "Process names that prevent launching another Steam instance.";
+    };
+
+    openHeroic = {
+      keybinding = lib.mkOption {
+        type = types.str;
+        default = "Mod4+Ctrl+h";
+        description = "Sway keybinding used to open Heroic.";
+      };
+
+      keyCodes = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ key.super key.control key.h ];
+        description = "AntiMicroX key codes to send for the open Heroic shortcut.";
+      };
+
+      command = lib.mkOption {
+        type = types.str;
+        default = "heroic --console --fullscreen";
+        description = "Command run by the Heroic keybinding.";
+      };
+
+      processNames = processNamesOption [ "heroic" ] "Process names that prevent launching another Heroic instance.";
     };
 
     openThunar = {
@@ -871,6 +1063,8 @@ in
         default = null;
         description = "Optional path Thunar opens to. When null, Thunar uses its default location.";
       };
+
+      processNames = processNamesOption [ "thunar" "Thunar" ] "Process names that prevent launching another Thunar instance.";
     };
 
     openScrcpy = {
@@ -898,6 +1092,8 @@ in
         default = [ ];
         description = "Extra arguments passed to scrcpy (e.g. [ \"--fullscreen\" ]).";
       };
+
+      processNames = processNamesOption [ "scrcpy" ] "Process names that prevent launching another scrcpy instance.";
     };
 
     workspaceSwitching = {
@@ -1012,6 +1208,22 @@ in
       {
         assertion = cfg.mouse.precisionButton == null || !(lib.hasAttr cfg.mouse.precisionButton cfg.buttonActions);
         message = "alanix.users.accounts.${name}.antimicrox.mouse.precisionButton \"${toString cfg.mouse.precisionButton}\" must not also appear in buttonActions.";
+      }
+      {
+        assertion = cfg.modeShift.button == null || cfg.mouse.precisionButton == null;
+        message = "alanix.users.accounts.${name}.antimicrox.modeShift.button cannot be used with mouse.precisionButton.";
+      }
+      {
+        assertion = cfg.modeShift.button != null || cfg.modeShift.buttonActions == { };
+        message = "alanix.users.accounts.${name}.antimicrox.modeShift.buttonActions requires modeShift.button to be set.";
+      }
+      {
+        assertion = cfg.modeShift.button == null || !(lib.hasAttr cfg.modeShift.button cfg.buttonActions);
+        message = "alanix.users.accounts.${name}.antimicrox.modeShift.button \"${toString cfg.modeShift.button}\" must not also appear in buttonActions.";
+      }
+      {
+        assertion = cfg.modeShift.button == null || !(lib.hasAttr cfg.modeShift.button cfg.modeShift.buttonActions);
+        message = "alanix.users.accounts.${name}.antimicrox.modeShift.button \"${toString cfg.modeShift.button}\" must not also appear in modeShift.buttonActions.";
       }
     ];
 

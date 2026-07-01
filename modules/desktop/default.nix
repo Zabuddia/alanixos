@@ -14,6 +14,7 @@ in
     ./bluetooth.nix
     ./flatpak.nix
     ./fingerprint.nix
+    ./gaming.nix
     ./printing.nix
   ];
 

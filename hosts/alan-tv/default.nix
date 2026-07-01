@@ -121,11 +121,25 @@
         azahar.enable = true;
         antimicrox = {
           enable = true;
-          mouse.precisionButton = "rb";
+          modeShift = {
+            button = "rb";
+            precisionMouse = true;
+            buttonActions = {
+              x = "openRyubing";
+              y = "openHeroic";
+            };
+          };
           workspaceSwitching.enable = true;
           openThunar.path = "${config.alanix.users.accounts.buddia.home.directory}/Syncthing/media";
           openScrcpy.extraArgs = [ "--fullscreen" ];
-          pauseForApps = [ "kodi" "retroarch" ];
+          pauseForApps = [
+            "kodi"
+            "retroarch"
+            "steam"
+            "steamwebhelper"
+            "heroic"
+            "com.heroicgameslauncher.hgl"
+          ];
           pauseForGameApps = [ "dolphin-emu" "eden" ];
           pauseForGameAppTitlePatterns.Ryujinx = [
             ''\([[:xdigit:]]{16}\) \([[:digit:]]+-bit\)$''
@@ -136,7 +150,7 @@
             a = "leftClick";
             b = "rightClick";
             x = "openDolphin";
-            y = "openRyubing";
+            y = "openSteam";
             back = "escape";
             start = "enter";
             lb = "closeWindow";
@@ -225,6 +239,18 @@
       profile = "sway";
       bluetooth.enable = true;
       bluetooth.allowUnbondedClassicHid = true;
+      gaming = {
+        enable = true;
+        steam.enable = true;
+        packages = with pkgs; [
+          gamescope
+          heroic
+          mangohud
+          mesa-demos
+          protonup-qt
+          vulkan-tools
+        ];
+      };
       profiles.sway = {
         autoLogin = {
           enable = true;

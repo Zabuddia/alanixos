@@ -256,6 +256,18 @@
       bluetooth.enable = true;
       bluetooth.allowUnbondedClassicHid = true;
       fingerprint.enable = true;
+      gaming = {
+        enable = true;
+        steam.enable = true;
+        packages = with pkgs; [
+          gamescope
+          heroic
+          mangohud
+          mesa-demos
+          protonup-qt
+          vulkan-tools
+        ];
+      };
       printing.enable = true;
       profiles.sway = {
         loginKeyring.enable = true;
