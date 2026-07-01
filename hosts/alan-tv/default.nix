@@ -131,12 +131,13 @@
           };
           workspaceSwitching.enable = true;
           openSteam = {
-            command = "${lib.getExe pkgs.gamescope} -f -e --force-windows-fullscreen -- steam -gamepadui";
+            command = "${lib.getExe pkgs.gamescope} -f -e -W 3840 -H 2160 -w 3840 -h 2160 --force-windows-fullscreen -- steam -gamepadui";
             processNames = [ "gamescope" ];
           };
           openThunar.path = "${config.alanix.users.accounts.buddia.home.directory}/Syncthing/media";
           openScrcpy.extraArgs = [ "--fullscreen" ];
           pauseForApps = [
+            "gamescope"
             "kodi"
             "retroarch"
             "steam"
