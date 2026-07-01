@@ -132,7 +132,7 @@
           workspaceSwitching.enable = true;
           openSteam = {
             command = "${lib.getExe pkgs.gamescope} -f -e --force-windows-fullscreen -- steam -gamepadui";
-            processNames = [ "gamescope" "steam" "steamwebhelper" ];
+            processNames = [ "gamescope" ];
           };
           openThunar.path = "${config.alanix.users.accounts.buddia.home.directory}/Syncthing/media";
           openScrcpy.extraArgs = [ "--fullscreen" ];
