@@ -3,7 +3,7 @@
 {
   system = "x86_64-linux";
 
-  module = { config, pkgs, pkgs-unstable, ... }: {
+  module = { config, lib, pkgs, pkgs-unstable, ... }: {
     imports = [
       ./hardware-configuration.nix
       ./secrets.nix
@@ -130,6 +130,10 @@
             };
           };
           workspaceSwitching.enable = true;
+          openSteam = {
+            command = "${lib.getExe pkgs.gamescope} -f -e --force-windows-fullscreen -- steam -gamepadui";
+            processNames = [ "gamescope" "steam" "steamwebhelper" ];
+          };
           openThunar.path = "${config.alanix.users.accounts.buddia.home.directory}/Syncthing/media";
           openScrcpy.extraArgs = [ "--fullscreen" ];
           pauseForApps = [

@@ -175,26 +175,7 @@ let
       exit 0
     fi
 
-    ${command} &
-    command_pid=$!
-    command_status=0
-    attempts=0
-
-    while [ "$attempts" -lt 40 ]; do
-      if process_is_running; then
-        exit 0
-      fi
-
-      if ! kill -0 "$command_pid" 2>/dev/null; then
-        wait "$command_pid" || command_status=$?
-        exit "$command_status"
-      fi
-
-      attempts=$((attempts + 1))
-      ${pkgs.coreutils}/bin/sleep 0.25
-    done
-
-    exit 0
+    exec ${command}
   '';
   pauseAntimicroxCommand = name: command: processNames: pkgs.writeShellScript "alanix-${name}" ''
     set -u
