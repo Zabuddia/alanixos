@@ -100,16 +100,7 @@
             yt-dlp
             moonlight-qt
           ];
-          modules = [
-            ({ ... }: {
-              wayland.windowManager.sway.extraConfig = ''
-                # Steam Big Picture can keep focus over newly launched games unless
-                # the game window is promoted above it.
-                for_window [class="^steam_app_[0-9]+$"] fullscreen enable, focus
-                for_window [app_id="^steam_app_[0-9]+$"] fullscreen enable, focus
-              '';
-            })
-          ];
+          modules = [ ];
         };
 
         git = {
@@ -126,6 +117,18 @@
         desktop = {
           enable = true;
           profile = "sway/default";
+          sway.gameFocus = {
+            enable = true;
+            cursorHideMs = 1000;
+            cursorVisibleAppPatterns = [ "^steam_app_[0-9]+$" ];
+            fullscreenApps = [
+              "steam"
+              "heroic"
+              "com.heroicgameslauncher.hgl"
+            ];
+            fullscreenAppPatterns = [ "^steam_app_[0-9]+$" ];
+            fullscreenClassPatterns = [ "^steam_app_[0-9]+$" ];
+          };
         };
         azahar.enable = true;
         antimicrox = {
@@ -272,7 +275,6 @@
           displayOffSeconds = null;
           suspendSeconds = null;
         };
-        hideCursorMs = 1000;
       };
     };
 

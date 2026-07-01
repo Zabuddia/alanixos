@@ -1,11 +1,20 @@
 { config, lib, name, nixosConfig, pkgs, pkgs-unstable, ... }:
 
 let
+  inherit (lib) types;
+
   cfg = config.desktop;
   active = cfg.enable && cfg.profile == "sway/default";
+  gameFocusCfg = cfg.sway.gameFocus;
   idleCfg = nixosConfig.alanix.desktop.profiles.sway.idle;
   terminalEmulator = lib.getExe pkgs-unstable.foot;
   powerProfileMenuFile = "${config.home.directory}/.config/waybar/power-profile-menu.xml";
+  newlineShellList = values: lib.escapeShellArg (lib.concatStringsSep "\n" values);
+  exactAppPatterns = map (app: "^${lib.escapeRegex app}$") gameFocusCfg.fullscreenApps;
+  allFullscreenAppPatterns = gameFocusCfg.fullscreenAppPatterns ++ exactAppPatterns;
+  fullscreenRuleLines =
+    (map (pattern: ''for_window [app_id="${pattern}"] fullscreen enable, focus'') allFullscreenAppPatterns)
+    ++ (map (pattern: ''for_window [class="${pattern}"] fullscreen enable, focus'') gameFocusCfg.fullscreenClassPatterns);
   volumeFeedbackWav = pkgs.runCommand "alanix-volume-feedback.wav" { } ''
     ${pkgs.ffmpeg}/bin/ffmpeg -loglevel error \
       -f lavfi -i "sine=frequency=1046.5:duration=0.05" \
@@ -29,6 +38,112 @@ let
   '';
   brightnessLowerCommand = pkgs.writeShellScript "alanix-brightness-lower" ''
     exec ${pkgs.swayosd}/bin/swayosd-client --brightness -5
+  '';
+  gameFocusScript = pkgs.writeShellScript "alanix-sway-game-focus" ''
+    set -u
+
+    manage_cursor=${if gameFocusCfg.cursorHideMs == null then "0" else "1"}
+    cursor_hide_ms=${if gameFocusCfg.cursorHideMs == null then "0" else toString gameFocusCfg.cursorHideMs}
+    cursor_visible_app_patterns=${newlineShellList gameFocusCfg.cursorVisibleAppPatterns}
+    fullscreen_apps=${newlineShellList gameFocusCfg.fullscreenApps}
+    fullscreen_app_patterns=${newlineShellList gameFocusCfg.fullscreenAppPatterns}
+    fullscreen_class_patterns=${newlineShellList gameFocusCfg.fullscreenClassPatterns}
+    current_cursor_mode=""
+
+    normalize_app_id() {
+      printf '%s' "$1" | ${pkgs.coreutils}/bin/tr '[:upper:]' '[:lower:]'
+    }
+
+    contains_app() {
+      [ -n "$1" ] && [ -n "$2" ] || return 1
+      needle="$(normalize_app_id "$2")"
+      while IFS= read -r configured_app; do
+        configured_app="$(normalize_app_id "$configured_app")"
+        [ -n "$configured_app" ] || continue
+        if [ "$needle" = "$configured_app" ] || [ "''${needle##*.}" = "$configured_app" ]; then
+          return 0
+        fi
+      done <<< "$1"
+      return 1
+    }
+
+    matches_pattern() {
+      [ -n "$1" ] && [ -n "$2" ] || return 1
+      while IFS= read -r pattern; do
+        [ -n "$pattern" ] || continue
+        if printf '%s' "$2" | ${pkgs.gnugrep}/bin/grep -Eq -- "$pattern"; then
+          return 0
+        fi
+      done <<< "$1"
+      return 1
+    }
+
+    focused_container() {
+      ${pkgs.sway}/bin/swaymsg -t get_tree | ${pkgs.jq}/bin/jq -c '
+        [
+          .. | objects | select(.focused? == true) |
+          {
+            id: (.id // ""),
+            app_id: (.app_id // .window_properties.class // ""),
+            title: (.name // ""),
+            fullscreen_mode: (.fullscreen_mode // 0)
+          }
+        ][0] // { id: "", app_id: "", title: "", fullscreen_mode: 0 }
+      '
+    }
+
+    set_cursor_mode() {
+      mode="$1"
+      [ "$mode" != "$current_cursor_mode" ] || return 0
+
+      if [ "$mode" = "visible" ]; then
+        ${pkgs.sway}/bin/swaymsg 'seat * hide_cursor 0' >/dev/null || return 0
+      else
+        ${pkgs.sway}/bin/swaymsg "seat * hide_cursor $cursor_hide_ms" >/dev/null || return 0
+      fi
+
+      current_cursor_mode="$mode"
+    }
+
+    reconcile_focus() {
+      change="$1"
+      focused="$(focused_container 2>/dev/null || printf '%s\n' '{ "id": "", "app_id": "", "title": "", "fullscreen_mode": 0 }')"
+      con_id="$(printf '%s' "$focused" | ${pkgs.jq}/bin/jq -r '.id // ""')"
+      app_id="$(printf '%s' "$focused" | ${pkgs.jq}/bin/jq -r '.app_id // ""')"
+      title="$(printf '%s' "$focused" | ${pkgs.jq}/bin/jq -r '.title // ""')"
+      fullscreen_mode="$(printf '%s' "$focused" | ${pkgs.jq}/bin/jq -r '.fullscreen_mode // 0')"
+
+      cursor_mode="unmanaged"
+      if [ "$manage_cursor" = "1" ]; then
+        cursor_mode="hide"
+        if matches_pattern "$cursor_visible_app_patterns" "$app_id"; then
+          cursor_mode="visible"
+        fi
+        set_cursor_mode "$cursor_mode"
+      fi
+
+      if { contains_app "$fullscreen_apps" "$app_id" \
+        || matches_pattern "$fullscreen_app_patterns" "$app_id" \
+        || matches_pattern "$fullscreen_class_patterns" "$app_id"; } \
+        && [ "$fullscreen_mode" != "1" ] \
+        && [ -n "$con_id" ]; then
+        ${pkgs.sway}/bin/swaymsg "[con_id=$con_id] fullscreen enable" >/dev/null || true
+      fi
+
+      echo "change=$change focused_app=$app_id cursor_mode=$cursor_mode fullscreen_mode=$fullscreen_mode title=$title"
+    }
+
+    reconcile_focus startup
+
+    while true; do
+      while IFS= read -r event; do
+        change="$(printf '%s' "$event" | ${pkgs.jq}/bin/jq -r '.change // ""')"
+        reconcile_focus "$change"
+      done < <(${pkgs.coreutils}/bin/timeout 10 ${pkgs.sway}/bin/swaymsg -t subscribe '["window"]')
+
+      ${pkgs.coreutils}/bin/sleep 1
+      reconcile_focus resubscribe
+    done
   '';
   setPowerProfileCommand =
     profile:
@@ -124,8 +239,49 @@ Power profile: $powerProfileLabel"
   '';
 in
 {
+  options.desktop.sway.gameFocus = {
+    enable = lib.mkEnableOption "focus-aware Sway adjustments for controller-first game launchers";
+
+    cursorHideMs = lib.mkOption {
+      type = types.nullOr types.int;
+      default = null;
+      description = "Hide the Sway cursor after this many milliseconds except while focused app_ids match cursorVisibleAppPatterns.";
+    };
+
+    cursorVisibleAppPatterns = lib.mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "Extended regular expressions for app_ids that should disable Sway cursor hiding while focused.";
+    };
+
+    fullscreenApps = lib.mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "Exact app_ids that should be forced fullscreen whenever focused.";
+    };
+
+    fullscreenAppPatterns = lib.mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "Extended regular expressions for app_ids that should be forced fullscreen.";
+    };
+
+    fullscreenClassPatterns = lib.mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "Extended regular expressions for XWayland classes that should be forced fullscreen.";
+    };
+  };
+
   config = {
-    _assertions = lib.optionals active [
+    _assertions =
+      lib.optionals (gameFocusCfg.enable && !active) [
+        {
+          assertion = false;
+          message = "alanix.users.accounts.${name}.desktop.sway.gameFocus requires desktop.enable = true and desktop.profile = \"sway/default\".";
+        }
+      ]
+      ++ lib.optionals active [
       {
         assertion = nixosConfig.alanix.desktop.profile == "sway";
         message = "alanix.users.accounts.${name}.desktop.profile = \"sway/default\" requires alanix.desktop.profile = \"sway\".";
@@ -223,6 +379,20 @@ in
           };
           Service = {
             ExecStart = "${pkgs.swayosd}/bin/swayosd-server";
+            Restart = "always";
+            RestartSec = 2;
+          };
+          Install.WantedBy = [ "graphical-session.target" ];
+        };
+
+        systemd.user.services.alanix-sway-game-focus = lib.mkIf gameFocusCfg.enable {
+          Unit = {
+            Description = "Focus-aware Sway tweaks for game launchers";
+            After = [ "graphical-session.target" ];
+            PartOf = [ "graphical-session.target" ];
+          };
+          Service = {
+            ExecStart = "${gameFocusScript}";
             Restart = "always";
             RestartSec = 2;
           };
@@ -438,6 +608,10 @@ in
             bindgesture swipe:3:right workspace prev
           '' + lib.optionalString (nixosConfig.alanix.desktop.profiles.sway.hideCursorMs != null) ''
             seat * hide_cursor ${toString nixosConfig.alanix.desktop.profiles.sway.hideCursorMs}
+          '' + lib.optionalString (gameFocusCfg.enable && gameFocusCfg.cursorHideMs != null) ''
+            seat * hide_cursor ${toString gameFocusCfg.cursorHideMs}
+          '' + lib.optionalString (gameFocusCfg.enable && fullscreenRuleLines != [ ]) ''
+            ${lib.concatStringsSep "\n" fullscreenRuleLines}
           '';
         };
       }
