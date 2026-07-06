@@ -12,7 +12,6 @@ let
     ++ lib.optional (dataDir != cfg.stateDir) dataDir
   );
   stagedDatabaseDump = "${cfg.backupDir}/database/nextcloud.pgcustom";
-  prepStepCount = builtins.length clusteredPaths + 1;
 
   backupPrepScript = pkgs.writeShellScript "alanix-nextcloud-cluster-backup-runtime" ''
     set -euo pipefail
@@ -29,17 +28,7 @@ let
     mkdir -p "$backup_dir" "$(dirname "$staged_dump")"
     chown -R nextcloud:nextcloud "$backup_dir"
 
-    ${lib.concatStringsSep "\n" (builtins.genList
-      (index:
-        let
-          path = builtins.elemAt clusteredPaths index;
-        in
-        ''
-          rsync_prep_step ${toString (index + 1)} ${toString prepStepCount} ${lib.escapeShellArg "staging ${path}"} ${lib.escapeShellArg path} ${lib.escapeShellArg "${cfg.backupDir}${path}"}
-        '')
-      (builtins.length clusteredPaths))}
-
-    emit_prep_step ${toString prepStepCount} ${toString prepStepCount} ${lib.escapeShellArg "dumping nextcloud database"}
+    emit_prep_step 1 1 ${lib.escapeShellArg "dumping nextcloud database"}
     runuser -u postgres -- env \
       PGHOST="$pg_host" \
       pg_dump \
@@ -67,27 +56,6 @@ let
       rm -rf "$backup_dir"
     }
     trap cleanup EXIT
-
-    restore_dir() {
-      local target="$1"
-      local staged_dir="$backup_dir$target"
-
-      if [[ -e "$target" && ! -d "$target" ]]; then
-        rm -rf "$target"
-      fi
-      mkdir -p "$target"
-
-      if [[ -d "$staged_dir" ]]; then
-        rsync -a --delete "$staged_dir"/ "$target"/
-      else
-        rm -rf "$target"
-        mkdir -p "$target"
-      fi
-    }
-
-    ${lib.concatMapStringsSep "\n" (path: ''
-      restore_dir ${lib.escapeShellArg path}
-    '') clusteredPaths}
 
     chown -R nextcloud:nextcloud ${lib.escapeShellArg cfg.stateDir}
     ${lib.optionalString (dataDir != cfg.stateDir) ''
@@ -167,7 +135,7 @@ in
             "nextcloud-cron.timer"
           ]
           ++ lib.optionals collaboraCfg.enable [ "coolwsd.service" ];
-        backupPaths = [ cfg.backupDir ];
+        backupPaths = clusteredPaths ++ [ cfg.backupDir ];
         preBackupCommand = [ backupPrepScript ];
         postBackupCommand = [ "rm" "-rf" cfg.backupDir ];
         postRestoreCommand = [ restoreScript ];
@@ -220,6 +188,8 @@ in
           }
         ];
     };
+
+    users.groups.nextcloud.members = [ config.alanix.cluster.backup.repoUser ];
     }
     (helpers.mkActiveTargetUnits (
       [

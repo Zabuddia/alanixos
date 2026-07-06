@@ -299,6 +299,53 @@ in
 
       users.users.${config.services.kavita.user}.extraGroups = cfg.extraGroups;
 
+      systemd.services.kavita = lib.mkIf baseConfigReady {
+        unitConfig = {
+          StartLimitIntervalSec = "10min";
+          StartLimitBurst = 3;
+        };
+
+        serviceConfig.RestartSec = "30s";
+        path = [ pkgs.coreutils pkgs.sqlite ];
+
+        preStart = lib.mkBefore ''
+          set -euo pipefail
+          shopt -s nullglob
+          for db_path in ${lib.escapeShellArg cfg.dataDir}/config/*.db ${lib.escapeShellArg cfg.dataDir}/config/*.sqlite ${lib.escapeShellArg cfg.dataDir}/config/*.sqlite3; do
+            result="$(sqlite3 "$db_path" 'PRAGMA quick_check;' 2>&1 || true)"
+            if [ "$result" != "ok" ]; then
+              echo "Kavita sqlite integrity check failed for $db_path: $result" >&2
+              repair_dir=${lib.escapeShellArg cfg.dataDir}/config/corrupt-db-repairs
+              stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+              corrupt_copy="$repair_dir/$(basename "$db_path").$stamp.corrupt"
+              repaired_db="$repair_dir/$(basename "$db_path").$stamp.recovered"
+
+              install -d -m 0700 -o ${config.services.kavita.user} -g ${config.services.kavita.user} "$repair_dir"
+              cp -a "$db_path" "$corrupt_copy"
+              echo "Attempting sqlite recovery for $db_path; corrupt copy saved to $corrupt_copy" >&2
+
+              if ! sqlite3 "$db_path" '.recover' | sqlite3 "$repaired_db"; then
+                rm -f "$repaired_db"
+                echo "Kavita sqlite recovery command failed for $db_path" >&2
+                exit 1
+              fi
+
+              repaired_result="$(sqlite3 "$repaired_db" 'PRAGMA quick_check;' 2>&1 || true)"
+              if [ "$repaired_result" != "ok" ]; then
+                rm -f "$repaired_db"
+                echo "Kavita sqlite recovery produced an invalid database for $db_path: $repaired_result" >&2
+                exit 1
+              fi
+
+              chown --reference="$db_path" "$repaired_db"
+              chmod --reference="$db_path" "$repaired_db"
+              mv "$repaired_db" "$db_path"
+              echo "Kavita sqlite recovery replaced $db_path; original saved at $corrupt_copy" >&2
+            fi
+          done
+        '';
+      };
+
       system.activationScripts.alanixKavitaTokenKey = lib.mkIf baseConfigReady {
         deps = [ "users" ];
         text = ''

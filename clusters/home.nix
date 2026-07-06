@@ -55,6 +55,7 @@ in
         repoUser = "buddia";
         repoBaseDir = "/var/lib/alanix-backups";
         passwordSecret = "cluster/restic-password";
+        retainTargetAges = [ "0s" "1d" "7d" "30d" ];
       };
 
       dashboard = {

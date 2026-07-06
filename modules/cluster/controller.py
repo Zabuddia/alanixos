@@ -1366,14 +1366,68 @@ class Controller:
         except Exception:
             return None
 
-    def _prune_local_manifests(self, manifest_dir: str, retain_days: int, service_name: str) -> None:
-        cutoff = time.time() - retain_days * 86400
+    def backup_retention(self, service: dict) -> tuple[int, list[float]]:
+        backup_cfg = self.cluster.get("backup", {})
+        retain_days = int(service.get("retainDays", backup_cfg.get("retainDays", 7)))
+        retain_target_ages = service.get("retainTargetAges", backup_cfg.get("retainTargetAges", []))
+        return retain_days, [parse_duration_seconds(age) for age in retain_target_ages]
+
+    def manifest_sort_timestamp(self, manifest_path: Path, fallback: float) -> float:
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return fallback
+
+        completed_at = parse_iso_timestamp(payload.get("completedAt"))
+        if completed_at is None:
+            return fallback
+        return completed_at.timestamp()
+
+    def _prune_local_manifests(
+        self,
+        manifest_dir: str,
+        retain_days: int,
+        retain_target_ages: list[float],
+        service_name: str,
+    ) -> None:
+        now = time.time()
+        cutoff = now - retain_days * 86400
+        manifests: list[tuple[float, str, Path]] = []
+        delete_paths: set[Path] = set()
+
         for p in Path(manifest_dir).glob("manifest-*.json"):
             try:
-                if p.stat().st_mtime >= cutoff:
-                    continue
-                if self.read_pin_record(service_name, str(p)) is not None:
-                    continue
+                stat_result = p.stat()
+            except OSError:
+                continue
+            if self.read_pin_record(service_name, str(p)) is not None:
+                continue
+
+            sort_timestamp = self.manifest_sort_timestamp(p, stat_result.st_mtime)
+            manifests.append((sort_timestamp, str(p), p))
+
+        protected_by_age = set()
+        for target_age in retain_target_ages:
+            target_timestamp = now - target_age
+            selected = min(
+                manifests,
+                key=lambda item: (abs(item[0] - target_timestamp), -item[0], item[1]),
+                default=None,
+            )
+            if selected is not None:
+                protected_by_age.add(selected[2])
+
+        if retain_target_ages:
+            for _, _, path in manifests:
+                if path not in protected_by_age:
+                    delete_paths.add(path)
+        else:
+            for sort_timestamp, _, path in manifests:
+                if sort_timestamp < cutoff:
+                    delete_paths.add(path)
+
+        for p in sorted(delete_paths, key=lambda path: str(path)):
+            try:
                 p.unlink()
                 log(f"pruned old manifest: {p}")
             except OSError:
@@ -1416,8 +1470,8 @@ class Controller:
                 keep_ids.add(snapshot_id)
         return keep_ids
 
-    def prune_local_repo_snapshots(self, service_name: str, repo_path: str, keep_ids: set[str]) -> int:
-        snapshots = self.repo_snapshot_ids(repo_path)
+    def prune_repo_snapshots(self, service_name: str, repo_uri: str, keep_ids: set[str], label: str | None = None) -> int:
+        snapshots = self.repo_snapshot_ids(repo_uri)
         delete_ids = []
         for snapshot in snapshots:
             snapshot_id = snapshot["id"]
@@ -1429,18 +1483,155 @@ class Controller:
         if not delete_ids:
             return 0
 
-        log(f"{service_name}: pruning {len(delete_ids)} old snapshot(s) from {repo_path}")
+        repo_label = label or repo_uri
+        log(f"{service_name}: pruning {len(delete_ids)} old snapshot(s) from {repo_label}")
         proc = self.run_as_backup_user(
-            ["restic", "-r", repo_path, "forget", "--prune"] + delete_ids,
+            ["restic", "-r", repo_uri, "forget", "--prune"] + delete_ids,
             check=False,
         )
         if proc.returncode != 0:
             detail = summarize_error(proc.stderr or proc.stdout or "restic forget failed")
-            raise RuntimeError(f"failed to prune old snapshots from {repo_path}: {detail}")
+            raise RuntimeError(f"failed to prune old snapshots from {repo_label}: {detail}")
 
         return len(delete_ids)
 
-    def prune_service_local_repos(self, service_name: str, retain_days: int) -> int:
+    def prune_remote_manifests(
+        self,
+        service_name: str,
+        target: dict,
+        manifest_dir: str,
+        retain_days: int,
+        retain_target_ages: list[float],
+    ) -> set[str]:
+        script = r'''
+import json
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+
+def parse_iso_timestamp(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def sort_timestamp(path, fallback):
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return fallback
+    completed_at = parse_iso_timestamp(payload.get("completedAt"))
+    if completed_at is None:
+        return fallback
+    return completed_at.timestamp()
+
+
+manifest_dir = Path(sys.argv[1])
+retain_days = int(sys.argv[2])
+retain_target_ages = json.loads(sys.argv[3])
+now = time.time()
+cutoff = now - retain_days * 86400
+manifests = []
+delete_paths = set()
+
+if manifest_dir.exists():
+    for path in manifest_dir.glob("manifest-*.json"):
+        try:
+            stat_result = path.stat()
+        except OSError:
+            continue
+        manifests.append((sort_timestamp(path, stat_result.st_mtime), str(path), path))
+
+newest_first = sorted(manifests, key=lambda item: (item[0], item[1]), reverse=True)
+protected_by_age = set()
+for target_age in retain_target_ages:
+    target_timestamp = now - float(target_age)
+    selected = min(
+        manifests,
+        key=lambda item: (abs(item[0] - target_timestamp), -item[0], item[1]),
+        default=None,
+    )
+    if selected is not None:
+        protected_by_age.add(selected[2])
+
+if retain_target_ages:
+    for _, _, path in manifests:
+        if path not in protected_by_age:
+            delete_paths.add(path)
+else:
+    for sort_ts, _, path in manifests:
+        if sort_ts < cutoff:
+            delete_paths.add(path)
+
+removed = 0
+for path in sorted(delete_paths, key=lambda item: str(item)):
+    try:
+        path.unlink()
+        removed += 1
+    except OSError:
+        pass
+
+for _, _, path in newest_first:
+    if path in delete_paths:
+        continue
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        continue
+    snapshot_id = payload.get("snapshotId")
+    if snapshot_id:
+        print(f"KEEP {snapshot_id}")
+
+if removed:
+    print(f"pruned {removed} remote manifest(s)", file=sys.stderr)
+'''
+        remote_cmd = "python3 - " + " ".join(
+            shlex.quote(arg)
+            for arg in [manifest_dir, str(retain_days), json.dumps(retain_target_ages)]
+        )
+        proc = self.run_as_backup_user(
+            ["ssh", target["address"], remote_cmd],
+            input_text=script,
+            check=False,
+        )
+        if proc.returncode != 0:
+            detail = summarize_error(proc.stderr or proc.stdout or "remote manifest pruning failed")
+            raise RuntimeError(f"{target['host']}: failed to prune remote manifests for {service_name}: {detail}")
+        if proc.stderr.strip():
+            log(f"{service_name}: {target['host']} {summarize_error(proc.stderr.strip())}")
+
+        keep_ids = set()
+        for line in proc.stdout.splitlines():
+            if line.startswith("KEEP "):
+                keep_ids.add(line[5:].strip())
+        return keep_ids
+
+    def prune_remote_repo_snapshots(
+        self,
+        service_name: str,
+        target: dict,
+        repo_uri: str,
+        manifest_dir: str,
+        retain_days: int,
+        retain_target_ages: list[float],
+    ) -> int:
+        keep_ids = self.prune_remote_manifests(service_name, target, manifest_dir, retain_days, retain_target_ages)
+        if not keep_ids:
+            log(f"{service_name}: skipping remote snapshot pruning on {target['host']} because no kept manifests were found")
+            return 0
+        return self.prune_repo_snapshots(
+            service_name,
+            repo_uri,
+            keep_ids,
+            label=f"remote repo on {target['host']}",
+        )
+
+    def prune_service_local_repos(self, service_name: str, retain_days: int, retain_target_ages: list[float]) -> int:
         manifest_dir = self.cluster_data_dir / service_name
         if not manifest_dir.exists():
             return 0
@@ -1453,12 +1644,12 @@ class Controller:
                 active_ids.add(snapshot_id)
 
         total_deleted = 0
-        self._prune_local_manifests(str(manifest_dir), retain_days, service_name)
+        self._prune_local_manifests(str(manifest_dir), retain_days, retain_target_ages, service_name)
         keep_ids = self.repo_manifest_snapshot_ids(manifest_dir) | active_ids
 
         repo_path = manifest_dir / "repo"
         if repo_path.exists():
-            total_deleted += self.prune_local_repo_snapshots(service_name, str(repo_path), keep_ids)
+            total_deleted += self.prune_repo_snapshots(service_name, str(repo_path), keep_ids)
 
         return total_deleted
 
@@ -1469,7 +1660,7 @@ class Controller:
     def backup_service(self, service_name, generation, *, origin="automatic", requested_by=None):
         service = self.services[service_name]
         backup_started_at = time.monotonic()
-        retain_days = self.cluster.get("backup", {}).get("retainDays", 7)
+        retain_days, retain_target_ages = self.backup_retention(service)
         prep_base_percent = 1.0
         prep_end_percent = 20.0
         work_end_percent = 95.0
@@ -1495,6 +1686,8 @@ class Controller:
         log(f"starting backup for {service_name} to {target_count} target{'s' if target_count != 1 else ''}")
         successful_targets: list[str] = []
         failed_targets: list[dict] = []
+        maintenance_errors: list[dict] = []
+        pruned_snapshot_count = 0
         target_span = (work_end_percent - work_start_percent) / max(1, target_count)
         cleanup_error = None
 
@@ -1580,7 +1773,20 @@ class Controller:
                             mode=0o644,
                         )
                         self.write_active_snapshot(service_name, manifest)
-                        self._prune_local_manifests(manifest_dir, retain_days, service_name)
+                        try:
+                            self.update_service_operation(
+                                service_name,
+                                phase="pruning old local backups",
+                                percent=min(work_end_percent, base_percent + target_span * 0.95),
+                                currentTarget="local",
+                                currentTargetIndex=target_index + 1,
+                                totalTargets=target_count,
+                            )
+                            pruned_snapshot_count += self.prune_service_local_repos(service_name, retain_days, retain_target_ages)
+                        except Exception as exc:
+                            maintenance_error = summarize_error(str(exc))
+                            maintenance_errors.append({"target": "local", "error": maintenance_error})
+                            log(f"{service_name}: local backup maintenance failed: {maintenance_error}")
                     else:
                         phase = f"replicating to {target['host']}"
                         remote_uri = f"sftp:{self.repo_user}@{target['address']}:{repo_path}"
@@ -1641,11 +1847,27 @@ class Controller:
                             ],
                             input_text=json.dumps(manifest, indent=2) + "\n",
                         )
-                        prune_cmd = (
-                            f"find {shlex.quote(manifest_dir)} -name 'manifest-*.json' "
-                            f"-mtime +{retain_days} -delete 2>/dev/null || true"
-                        )
-                        self.run_as_backup_user(["ssh", target["address"], prune_cmd], check=False)
+                        try:
+                            self.update_service_operation(
+                                service_name,
+                                phase=f"pruning old backups on {target['host']}",
+                                percent=min(work_end_percent, base_percent + target_span * 0.95),
+                                currentTarget=target["host"],
+                                currentTargetIndex=target_index + 1,
+                                totalTargets=target_count,
+                            )
+                            pruned_snapshot_count += self.prune_remote_repo_snapshots(
+                                service_name,
+                                target,
+                                remote_uri,
+                                manifest_dir,
+                                retain_days,
+                                retain_target_ages,
+                            )
+                        except Exception as exc:
+                            maintenance_error = summarize_error(str(exc))
+                            maintenance_errors.append({"target": target["host"], "error": maintenance_error})
+                            log(f"{service_name}: remote backup maintenance failed on {target['host']}: {maintenance_error}")
 
                     self.update_service_operation(
                         service_name,
@@ -1747,14 +1969,15 @@ class Controller:
             if cleanup_error:
                 result["cleanupError"] = cleanup_error
             try:
-                pruned_snapshot_count = self.prune_service_local_repos(service_name, retain_days)
+                pruned_snapshot_count += self.prune_service_local_repos(service_name, retain_days, retain_target_ages)
             except Exception as exc:
                 maintenance_error = summarize_error(str(exc))
-                result["maintenanceError"] = maintenance_error
+                maintenance_errors.append({"target": "local", "error": maintenance_error})
                 log(f"{service_name}: local backup maintenance failed: {maintenance_error}")
-            else:
-                if pruned_snapshot_count > 0:
-                    result["prunedSnapshotCount"] = pruned_snapshot_count
+            if pruned_snapshot_count > 0:
+                result["prunedSnapshotCount"] = pruned_snapshot_count
+            if maintenance_errors:
+                result["maintenanceErrors"] = maintenance_errors
             if failed_targets:
                 if successful_targets:
                     message = f"backed up to {len(successful_targets)}/{target_count} targets"
@@ -2023,6 +2246,126 @@ class Controller:
             "updatedAt": iso_timestamp(),
         }
 
+    def previous_mode_before_resume(self, mode_state):
+        previous_mode = mode_state.get("previousMode")
+        if previous_mode not in self.RUNTIME_MODES or previous_mode in {self.HA_MODE, "resume-pending", "resume-seeding"}:
+            previous_mode = mode_state.get("mode")
+        if previous_mode not in self.RUNTIME_MODES or previous_mode in {self.HA_MODE, "resume-pending", "resume-seeding"}:
+            previous_mode = "planned-standalone"
+
+        previous_state = {
+            "mode": previous_mode,
+            "standaloneHost": mode_state.get("previousStandaloneHost") or mode_state.get("standaloneHost") or self.hostname,
+        }
+        if mode_state.get("previousGeneration"):
+            previous_state["generation"] = mode_state.get("previousGeneration")
+        elif mode_state.get("mode") not in {"resume-pending", "resume-seeding"} and mode_state.get("generation"):
+            previous_state["generation"] = mode_state.get("generation")
+
+        if mode_state.get("previousSource"):
+            previous_state["source"] = mode_state.get("previousSource")
+        elif mode_state.get("source"):
+            previous_state["source"] = mode_state.get("source")
+
+        if mode_state.get("previousFencingConfirmation"):
+            previous_state["fencingConfirmation"] = mode_state.get("previousFencingConfirmation")
+        elif previous_mode == "emergency-standalone" and mode_state.get("fencingConfirmation"):
+            previous_state["fencingConfirmation"] = mode_state.get("fencingConfirmation")
+
+        if mode_state.get("previousReason"):
+            previous_state["reason"] = mode_state.get("previousReason")
+        elif previous_mode == mode_state.get("mode") and mode_state.get("reason"):
+            previous_state["reason"] = mode_state.get("reason")
+
+        return previous_state
+
+    def add_resume_previous_fields(self, payload, previous_state, current_state):
+        payload["previousMode"] = previous_state.get("mode")
+        payload["previousStandaloneHost"] = previous_state.get("standaloneHost")
+        if current_state.get("generation"):
+            payload["previousGeneration"] = current_state.get("generation")
+        if current_state.get("source"):
+            payload["previousSource"] = current_state.get("source")
+        if previous_state.get("fencingConfirmation"):
+            payload["previousFencingConfirmation"] = previous_state.get("fencingConfirmation")
+        if previous_state.get("reason"):
+            payload["previousReason"] = previous_state.get("reason")
+
+    def rollback_failed_resume(self, previous_state, active_resume_state, exc, *, requested_by=None):
+        error = summarize_error(str(exc))
+        rollback_payload = self.new_runtime_mode_payload(
+            previous_state.get("mode") or "planned-standalone",
+            requested_by=requested_by,
+            standalone_host=previous_state.get("standaloneHost") or self.hostname,
+        )
+        rollback_payload["resumeStatus"] = "failed"
+        rollback_payload["resumeFailedAt"] = iso_timestamp()
+        rollback_payload["resumeError"] = error
+        rollback_payload["failedResumeMode"] = active_resume_state.get("mode")
+        rollback_payload["failedResumeGeneration"] = active_resume_state.get("generation")
+        if previous_state.get("fencingConfirmation"):
+            rollback_payload["fencingConfirmation"] = previous_state.get("fencingConfirmation")
+        if previous_state.get("reason"):
+            rollback_payload["reason"] = previous_state.get("reason")
+
+        log(
+            "HA resume failed; rolling back to "
+            f"{rollback_payload['mode']} on {rollback_payload['standaloneHost']}: {error}"
+        )
+
+        rollback_error = None
+        rollback_state = None
+        try:
+            self.write_local_runtime_mode(rollback_payload)
+            rollback_state = self.put_etcd_runtime_mode(rollback_payload)
+            self.ack_runtime_mode(rollback_state)
+            try:
+                self.wait_for_runtime_mode_acks(
+                    rollback_state,
+                    required_hosts=self.voters,
+                    timeout=min(self.mode_ack_timeout, 30.0),
+                )
+            except Exception as ack_exc:
+                rollback_error = summarize_error(str(ack_exc))
+                log(f"failed resume rollback did not reach every voter acknowledgement: {rollback_error}")
+        except Exception as rollback_exc:
+            rollback_error = summarize_error(str(rollback_exc))
+            fallback_payload = dict(rollback_payload)
+            fallback_payload["rollbackWarning"] = rollback_error
+            try:
+                rollback_state = self.write_local_runtime_mode(fallback_payload)
+                log(f"failed to publish resume rollback to etcd; local rollback marker written: {rollback_error}")
+            except Exception as local_exc:
+                local_error = summarize_error(str(local_exc))
+                rollback_error = "; ".join(filter(None, [rollback_error, f"failed local marker: {local_error}"]))
+                log(f"failed to write local resume rollback marker: {local_error}")
+
+        if rollback_payload["standaloneHost"] == self.hostname and not self.target_is_active():
+            try:
+                self.start_target()
+            except Exception as start_exc:
+                start_error = summarize_error(str(start_exc))
+                rollback_error = "; ".join(filter(None, [rollback_error, f"failed to restart workloads: {start_error}"]))
+                log(f"failed to keep workloads active after resume rollback: {start_error}")
+
+        details = {
+            "error": error,
+            "rolledBackTo": rollback_payload["mode"],
+            "standaloneHost": rollback_payload["standaloneHost"],
+        }
+        if rollback_error:
+            details["rollbackWarning"] = rollback_error
+        self.record_operation_history(
+            {
+                "action": "resume-ha",
+                "status": "failed",
+                "requestedBy": requested_by,
+                "message": f"HA resume failed; rolled back to {rollback_payload['mode']}",
+                "details": details,
+            }
+        )
+        return rollback_state
+
     def require_no_backups_running(self):
         if self.running_backups:
             running = ", ".join(sorted(self.running_backups))
@@ -2106,42 +2449,51 @@ class Controller:
         if standalone_host != self.hostname:
             raise RuntimeError(f"resume HA must be started from standalone host {standalone_host}")
 
+        previous_state = self.previous_mode_before_resume(mode_state)
         pending_payload = self.new_runtime_mode_payload(
             "resume-pending",
             requested_by=requested_by,
             standalone_host=self.hostname,
         )
-        self.write_local_runtime_mode(pending_payload)
+        self.add_resume_previous_fields(pending_payload, previous_state, mode_state)
+        active_resume_state = pending_payload
 
-        seeding_payload = dict(pending_payload)
-        seeding_payload["mode"] = "resume-seeding"
-        seeding_payload["updatedAt"] = iso_timestamp()
-        log(f"starting HA resume seeding from {self.hostname}")
-        seeding_state = self.put_etcd_runtime_mode(seeding_payload)
-        self.ack_runtime_mode(seeding_state)
-        self.wait_for_runtime_mode_acks(seeding_state, required_hosts=self.voters)
-        results = self.seed_resume_backups(requested_by=requested_by)
+        try:
+            self.write_local_runtime_mode(pending_payload)
 
-        ha_payload = self.new_runtime_mode_payload(
-            self.HA_MODE,
-            requested_by=requested_by,
-            standalone_host=self.hostname,
-        )
-        ha_state = self.put_etcd_runtime_mode(ha_payload)
-        self.clear_local_runtime_mode()
-        self.ack_runtime_mode(ha_state)
-        self.wait_for_runtime_mode_acks(ha_state, required_hosts=self.voters)
-        self.delete_etcd_runtime_mode()
-        self.record_operation_history(
-            {
-                "action": "resume-ha",
-                "status": "completed",
-                "requestedBy": requested_by,
-                "message": "normal HA resumed after fresh backup seeding",
-                "details": {"services": results},
-            }
-        )
-        return {"mode": self.HA_MODE, "seededServices": sorted(results)}
+            seeding_payload = dict(pending_payload)
+            seeding_payload["mode"] = "resume-seeding"
+            seeding_payload["updatedAt"] = iso_timestamp()
+            log(f"starting HA resume seeding from {self.hostname}")
+            seeding_state = self.put_etcd_runtime_mode(seeding_payload)
+            active_resume_state = seeding_state
+            self.ack_runtime_mode(seeding_state)
+            self.wait_for_runtime_mode_acks(seeding_state, required_hosts=self.voters)
+            results = self.seed_resume_backups(requested_by=requested_by)
+
+            ha_payload = self.new_runtime_mode_payload(
+                self.HA_MODE,
+                requested_by=requested_by,
+                standalone_host=self.hostname,
+            )
+            ha_state = self.put_etcd_runtime_mode(ha_payload)
+            self.clear_local_runtime_mode()
+            self.ack_runtime_mode(ha_state)
+            self.wait_for_runtime_mode_acks(ha_state, required_hosts=self.voters)
+            self.delete_etcd_runtime_mode()
+            self.record_operation_history(
+                {
+                    "action": "resume-ha",
+                    "status": "completed",
+                    "requestedBy": requested_by,
+                    "message": "normal HA resumed after fresh backup seeding",
+                    "details": {"services": results},
+                }
+            )
+            return {"mode": self.HA_MODE, "seededServices": sorted(results)}
+        except Exception as exc:
+            self.rollback_failed_resume(previous_state, active_resume_state, exc, requested_by=requested_by)
+            raise
 
     def execute_admin_request(self, request):
         action = request["action"]
