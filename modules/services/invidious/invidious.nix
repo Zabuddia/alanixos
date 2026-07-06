@@ -358,6 +358,10 @@ in
       systemd.services.invidious.unitConfig.StartLimitIntervalSec = 0;
       systemd.services.invidious.after = lib.mkIf cfg.companion.enable [ "invidious-companion.service" ];
       systemd.services.invidious.wants = lib.mkIf cfg.companion.enable [ "invidious-companion.service" ];
+      systemd.services.invidious.restartTriggers =
+        lib.optionals (cfg.companion.enable || cfg.hmacKeySecret != null) [
+          (builtins.hashString "sha256" config.sops.templates."alanix-invidious-extra-settings".content)
+        ];
 
       systemd.tmpfiles.rules = [
         "d /var/lib/invidious 0750 invidious invidious - -"
