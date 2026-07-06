@@ -3,7 +3,7 @@
 {
   system = "x86_64-linux";
 
-  module = { config, pkgs, pkgs-unstable, ... }: {
+  module = { config, lib, pkgs, pkgs-unstable, ... }: {
     imports = [
       ./hardware-configuration.nix
       ./secrets.nix
@@ -141,6 +141,7 @@
         "alan-tv"
         "randy-big-nixos"
       ];
+      folderSets = lib.mkForce [ "filebrowser-files" ];
     };
 
     alanix.remote-desktop = {
