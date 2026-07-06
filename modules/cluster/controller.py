@@ -1250,14 +1250,7 @@ class Controller:
         return (datetime.now(timezone.utc) - completed_at).total_seconds()
 
     def manifest_is_fresh(self, service_name, manifest):
-        if manifest is None:
-            return False
-        max_age = self.services[service_name].get("maxBackupAge")
-        if not max_age:
-            return True
-        max_age_seconds = parse_duration_seconds(max_age)
-        age = self.manifest_age_seconds(manifest)
-        return age <= max_age_seconds
+        return manifest is not None
 
     def active_snapshot_path(self, service_name):
         return self.cluster_data_dir / service_name / "active-snapshot.json"
@@ -2547,19 +2540,6 @@ if removed:
                     log(f"{service_name}: no local backup found, allowing bootstrap on preferred host")
                     continue
                 raise RuntimeError(f"{service_name}: no local backup available")
-            if not self.manifest_is_fresh(service_name, manifest):
-                if bootstrap:
-                    log(
-                        f"{service_name}: freshest backup is older than maxBackupAge, "
-                        "allowing stale bootstrap on preferred host"
-                    )
-                elif allow_stale:
-                    log(
-                        f"{service_name}: freshest backup is older than maxBackupAge, "
-                        "allowing stale recovery based on local backup recency"
-                    )
-                else:
-                    raise RuntimeError(f"{service_name}: freshest backup is older than maxBackupAge")
             active = self.read_active_snapshot(service_name)
             if active is not None and active.get("snapshotId") == manifest.get("snapshotId"):
                 log(f"{service_name}: local state matches snapshot {manifest['snapshotId'][:8]}; skipping restore")

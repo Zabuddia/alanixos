@@ -312,8 +312,7 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "15m";
-        maxBackupAge = "2h";
+        backupInterval = "12h";
       };
     };
 
@@ -357,8 +356,7 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "15m";
-        maxBackupAge = "2h";
+        backupInterval = "12h";
       };
     };
 
@@ -395,8 +393,7 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "1h";
-        maxBackupAge = "6h";
+        backupInterval = "12h";
         sameTorAddress = true;
       };
     };
@@ -433,8 +430,7 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "1h";
-        maxBackupAge = "6h";
+        backupInterval = "12h";
       };
     };
 
@@ -466,8 +462,7 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "1h";
-        maxBackupAge = "6h";
+        backupInterval = "12h";
       };
 
       users.buddia = {
@@ -510,8 +505,7 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "2h";
-        maxBackupAge = "12h";
+        backupInterval = "12h";
       };
 
       users = {
@@ -562,8 +556,7 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "1h";
-        maxBackupAge = "6h";
+        backupInterval = "12h";
       };
     };
 
@@ -601,8 +594,7 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "1h";
-        maxBackupAge = "6h";
+        backupInterval = "12h";
       };
     };
 
@@ -634,8 +626,7 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "1h";
-        maxBackupAge = "6h";
+        backupInterval = "12h";
       };
 
       users.buddia.passwordSecret = "radicale-passwords/buddia";
@@ -674,8 +665,7 @@ in
       cluster = {
         enable = true;
         backupDir = "/var/backup/mail";
-        backupInterval = "15m";
-        maxBackupAge = "1h";
+        backupInterval = "12h";
       };
     };
 
@@ -715,7 +705,6 @@ in
       cluster = {
         enable = true;
         backupInterval = "12h";
-        maxBackupAge = "24h";
       };
     };
 
@@ -761,8 +750,7 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "1h";
-        maxBackupAge = "2h";
+        backupInterval = "12h";
       };
 
       users.buddia = {
@@ -803,8 +791,7 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "1h";
-        maxBackupAge = "6h";
+        backupInterval = "12h";
       };
 
       users.buddia = {
@@ -840,8 +827,7 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "4h";
-        maxBackupAge = "24h";
+        backupInterval = "12h";
       };
 
       users.buddia = {
@@ -952,7 +938,6 @@ in
       cluster = {
         enable = true;
         backupInterval = "12h";
-        maxBackupAge = "48h";
       };
     };
 
@@ -982,8 +967,7 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "1h";
-        maxBackupAge = "6h";
+        backupInterval = "12h";
       };
     };
 
@@ -1036,7 +1020,6 @@ in
       cluster = {
         enable = true;
         backupInterval = "12h";
-        maxBackupAge = "48h";
       };
     };
 
@@ -1089,7 +1072,6 @@ in
       cluster = {
         enable = true;
         backupInterval = "12h";
-        maxBackupAge = "48h";
       };
     };
 
@@ -1141,7 +1123,6 @@ in
       cluster = {
         enable = true;
         backupInterval = "12h";
-        maxBackupAge = "48h";
       };
     };
 
@@ -1213,7 +1194,6 @@ in
       cluster = {
         enable = true;
         backupInterval = "12h";
-        maxBackupAge = "24h";
       };
 
       users = {
@@ -1319,8 +1299,7 @@ in
 
       cluster = {
         enable = true;
-        backupInterval = "1h";
-        maxBackupAge = "6h";
+        backupInterval = "12h";
       };
     };
   };
