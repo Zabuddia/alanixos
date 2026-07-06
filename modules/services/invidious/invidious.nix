@@ -408,7 +408,7 @@ in
           export SERVER_ENCRYPT_QUERY_PARAMS=${if cfg.companion.encryptQueryParams then "true" else "false"}
           export CACHE_DIRECTORY=/var/lib/invidious-companion
           export DENO_DIR=/var/lib/invidious-companion/deno
-          export DENO_KV_DEFAULT_PATH=/var/lib/invidious-companion/kv.sqlite3
+          export DENO_KV_DEFAULT_PATH=:memory:
 
           exec ${lib.getExe companionPackage}
         '';
