@@ -379,6 +379,7 @@ in
           LoadCredential = [ "server_secret_key:${config.sops.secrets.${cfg.companion.secretKeySecret}.path}" ];
           StateDirectory = "invidious-companion";
           StateDirectoryMode = "0750";
+          WorkingDirectory = "/var/lib/invidious-companion";
           NoNewPrivileges = true;
           PrivateDevices = true;
           PrivateTmp = true;
@@ -406,6 +407,7 @@ in
           export SERVER_VERIFY_REQUESTS=${if cfg.companion.verifyRequests then "true" else "false"}
           export SERVER_ENCRYPT_QUERY_PARAMS=${if cfg.companion.encryptQueryParams then "true" else "false"}
           export CACHE_DIRECTORY=/var/lib/invidious-companion
+          export DENO_DIR=/var/lib/invidious-companion/deno
 
           exec ${lib.getExe companionPackage}
         '';
