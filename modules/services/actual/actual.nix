@@ -25,19 +25,17 @@ let
     then config.sops.secrets.${cfg.passwordSecret}.path
     else "";
 
-  # ESM script that runs migrations then bootstraps/updates the server password
-  # using actual-server's internal functions. Node.js resolves bcrypt,
-  # better-sqlite3, and convict via upward node_modules traversal from the
-  # imported source paths inside the package.
+  # ESM script that bootstraps/updates the server password using actual-server's
+  # compiled account-db chunk. The chunk filename is content-hashed by upstream's
+  # build, so the shell wrapper discovers it at runtime.
   reconcileScript = pkgs.writeTextFile {
     name = "actual-reconcile.mjs";
     text = ''
       import { readFileSync } from 'node:fs';
-      import { run as runMigrations } from '${cfg.package}/lib/actual/packages/sync-server/src/migrations.js';
-      import { needsBootstrap } from '${cfg.package}/lib/actual/packages/sync-server/src/account-db.js';
-      import { bootstrapPassword, changePassword } from '${cfg.package}/lib/actual/packages/sync-server/src/accounts/password.js';
+      import { pathToFileURL } from 'node:url';
 
       const passFile = process.argv[2];
+      const accountDbChunk = process.argv[3];
       const password = readFileSync(passFile, 'utf8').trimEnd();
 
       if (!password) {
@@ -45,10 +43,14 @@ let
         process.exit(1);
       }
 
-      await runMigrations('up');
+      const {
+        _: changePassword,
+        d: needsBootstrap,
+        t: bootstrap,
+      } = await import(pathToFileURL(accountDbChunk).href);
 
       if (needsBootstrap()) {
-        const { error } = bootstrapPassword(password);
+        const { error } = await bootstrap({ password });
         if (error) {
           process.stderr.write('Actual bootstrap failed: ' + error + '\n');
           process.exit(1);
@@ -70,11 +72,21 @@ let
 
     server_files=${lib.escapeShellArg "${dataDir}/server-files"}
     pass_file=${lib.escapeShellArg passfilePath}
+    sync_server=${lib.escapeShellArg "${cfg.package}/lib/actual/packages/sync-server"}
 
     mkdir -p "$server_files"
 
+    account_db_chunk="$(${pkgs.findutils}/bin/find "$sync_server/chunks" -maxdepth 1 -type f -name 'account-db-*.js' -print -quit)"
+    if [ -z "$account_db_chunk" ]; then
+      echo "Could not find Actual account-db chunk in $sync_server/chunks" >&2
+      exit 1
+    fi
+
     ACTUAL_DATA_DIR=${lib.escapeShellArg dataDir} \
-      ${pkgs.nodejs_22}/bin/node ${reconcileScript} "$pass_file"
+      ${pkgs.nodejs_22}/bin/node "$sync_server/scripts/run-migrations.js" up
+
+    ACTUAL_DATA_DIR=${lib.escapeShellArg dataDir} \
+      ${pkgs.nodejs_22}/bin/node ${reconcileScript} "$pass_file" "$account_db_chunk"
 
     chown -R actual:actual ${lib.escapeShellArg dataDir}
     chmod -R u=rwX,go= ${lib.escapeShellArg dataDir}
