@@ -776,7 +776,10 @@ in
       port = 3001;
       backupDir = "/var/backup/invidious";
       hmacKeySecret = "invidious/hmac-key";
-      companion.secretKeySecret = "invidious/companion-secret-key";
+      companion = {
+        publicUrl = "https://invidious.fifefin.com/companion";
+        secretKeySecret = "invidious/companion-secret-key";
+      };
 
       expose = {
         wan = {

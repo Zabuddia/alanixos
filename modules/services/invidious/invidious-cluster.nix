@@ -149,6 +149,16 @@ in
             port = cfg.port;
             protocol = "http";
           };
+          extraCaddyConfig = lib.optionalString cfg.companion.enable ''
+            handle ${cfg.companion.basePath}* {
+              reverse_proxy http://${cfg.companion.listenAddress}:${toString cfg.companion.port}
+            }
+
+            handle {
+              reverse_proxy http://${cfg.listenAddress}:${toString cfg.port}
+            }
+          '';
+          disableDefaultCaddyReverseProxy = cfg.companion.enable;
           expose = cfg.expose;
         }
       ];

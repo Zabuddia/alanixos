@@ -711,11 +711,15 @@ in
           tlsLine = lib.optionalString tls "  tls internal\n";
           extra = endpointExtraCaddy endpoint;
           extraLines = lib.optionalString (extra != "") "${extra}\n";
+          defaultProxyLine =
+            lib.optionalString
+              (!(endpoint.disableDefaultCaddyReverseProxy or false))
+              "  reverse_proxy ${mkUpstream endpoint.endpoint}\n";
         in
         ''
           cat >> "$caddy_file" <<EOF
           ${site} {
-          ${bindLine}${tlsLine}${extraLines}  reverse_proxy ${mkUpstream endpoint.endpoint}
+          ${bindLine}${tlsLine}${extraLines}${defaultProxyLine}
           }
 
           EOF
