@@ -610,7 +610,7 @@ in
             refresh_database_collation_if_needed
             wait_for_users_table
 
-            run_sql "UPDATE users SET preferences = preferences || '{\"quality\":\"hd720\"}'::jsonb, updated = NOW() WHERE preferences->>'quality' IN ('medium', 'small', 'tiny') OR (preferences->>'quality') IS NULL;"
+            run_sql "UPDATE users SET preferences = (preferences::jsonb || '{\"quality\":\"hd720\"}'::jsonb)::text, updated = NOW() WHERE (preferences::jsonb)->>'quality' IN ('medium', 'small', 'tiny') OR (preferences::jsonb)->>'quality' IS NULL;"
 
             ${ensureLines}
 
