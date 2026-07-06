@@ -43,32 +43,110 @@ let
 
   companionEndpoint = "http://${cfg.companion.listenAddress}:${toString cfg.companion.port}${cfg.companion.basePath}";
 
+  companionVersion = "2026.06.29-5652eda";
+  companionSource = pkgs.fetchFromGitHub {
+    owner = "iv-org";
+    repo = "invidious-companion";
+    rev = "5652eda97c3e799eae4cceb6ad6cd185667fa6f1";
+    hash = "sha256-NTiRgTNMBwXQdnE/DCg4Q4Z848NsyFybGK2ZcGVhadA=";
+  };
+  companionVendor = pkgs.stdenvNoCC.mkDerivation {
+    pname = "invidious-companion-vendor";
+    version = companionVersion;
+    src = companionSource;
+
+    nativeBuildInputs = [
+      pkgs.cacert
+      pkgs-unstable.deno
+    ];
+
+    outputHashAlgo = "sha256";
+    outputHashMode = "recursive";
+    outputHash = "sha256-VIYquMYTPwTc7nt8/Uz8/kGz+n9mBNHzFaca5b6Nuco=";
+
+    buildPhase = "";
+
+    installPhase = ''
+      export HOME="$TMPDIR/home"
+      export DENO_DIR="$TMPDIR/deno-cache"
+      export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+      mkdir -p "$HOME" "$DENO_DIR"
+
+      deno cache \
+        --vendor=true \
+        --allow-import=github.com:443,jsr.io:443,cdn.jsdelivr.net:443,esm.sh:443,deno.land:443 \
+        --lock=deno.lock \
+        src/main.ts
+
+      mkdir -p "$out"
+      cp -R vendor node_modules "$out/"
+    '';
+  };
+  companionPlatform =
+    {
+      x86_64-linux = {
+        denoTarget = "x86_64-unknown-linux-gnu";
+        denortHash = "sha256-IU0KQBDJxEMmqC6n/DeFwYmkPNg1Z9kaqk3OOWR1mVQ=";
+      };
+      aarch64-linux = {
+        denoTarget = "aarch64-unknown-linux-gnu";
+        denortHash = "sha256-Wsx0pLGhkaiKnOC2bPp+B3tQNSwSRinVGGxXEd9GJBU=";
+      };
+    }.${pkgs.stdenv.hostPlatform.system}
+      or (throw "alanix.invidious: unsupported platform for invidious-companion package.");
+  companionDenort = pkgs.fetchurl {
+    url = "https://dl.deno.land/release/v${pkgs-unstable.deno.version}/denort-${companionPlatform.denoTarget}.zip";
+    hash = companionPlatform.denortHash;
+  };
+
   companionPackage =
-    let
-      assets = {
-        x86_64-linux = {
-          url = "https://github.com/iv-org/invidious-companion/releases/download/release-master/invidious_companion-x86_64-unknown-linux-gnu.tar.gz";
-          hash = "sha256-qh4O7H9BFc2uT++0aTFGAG4d0r21V5BXsTvt3obwTEs=";
-        };
-        aarch64-linux = {
-          url = "https://github.com/iv-org/invidious-companion/releases/download/release-master/invidious_companion-aarch64-unknown-linux-gnu.tar.gz";
-          hash = "sha256-8mVTV2grTYj8h4Hh+4GTf4ksABmtH2W1nZ9WFd4o73o=";
-        };
-      }.${pkgs.stdenv.hostPlatform.system} or (throw "alanix.invidious: unsupported platform for invidious-companion prebuilt package.");
-    in
     pkgs.stdenvNoCC.mkDerivation {
       pname = "invidious-companion";
-      version = "release-master";
+      version = companionVersion;
 
-      src = pkgs.fetchurl assets;
+      src = companionSource;
 
-      dontUnpack = true;
+      nativeBuildInputs = [ pkgs-unstable.deno ];
+
+      buildPhase = ''
+        runHook preBuild
+
+        cp -R ${companionVendor}/vendor vendor
+        cp -R ${companionVendor}/node_modules node_modules
+        chmod -R u+w vendor node_modules
+
+        export HOME="$TMPDIR/home"
+        export DENO_DIR="$PWD/deno-cache"
+        export DENO_NO_UPDATE_CHECK=1
+        mkdir -p "$HOME" "$DENO_DIR/dl/release/v${pkgs-unstable.deno.version}"
+        cp ${companionDenort} \
+          "$DENO_DIR/dl/release/v${pkgs-unstable.deno.version}/denort-${companionPlatform.denoTarget}.zip"
+
+        deno compile \
+          --cached-only \
+          --vendor=true \
+          --lock=deno.lock \
+          --include ./src/lib/helpers/youtubePlayerReq.ts \
+          --include ./src/lib/helpers/getFetchClient.ts \
+          --allow-import=github.com:443,jsr.io:443,cdn.jsdelivr.net:443,esm.sh:443,deno.land:443 \
+          --allow-net \
+          --allow-env \
+          --allow-sys=hostname \
+          --allow-read=.,/var/tmp/youtubei.js,/tmp/invidious-companion.sock \
+          --allow-write=/var/tmp/youtubei.js,/tmp/invidious-companion.sock \
+          --target=${companionPlatform.denoTarget} \
+          --output invidious_companion \
+          src/main.ts \
+          --_version_date=2026.06.29 \
+          --_version_commit=5652eda
+
+        runHook postBuild
+      '';
 
       installPhase = ''
         runHook preInstall
 
         mkdir -p "$out/bin"
-        tar -xzf "$src"
         install -m0755 invidious_companion "$out/bin/invidious-companion"
 
         runHook postInstall
@@ -79,10 +157,7 @@ let
         homepage = "https://github.com/iv-org/invidious-companion";
         license = licenses.agpl3Plus;
         mainProgram = "invidious-companion";
-        platforms = builtins.attrNames {
-          x86_64-linux = null;
-          aarch64-linux = null;
-        };
+        platforms = [ "x86_64-linux" "aarch64-linux" ];
       };
     };
 
