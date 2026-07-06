@@ -43,26 +43,6 @@ let
 
   companionEndpoint = "http://${cfg.companion.listenAddress}:${toString cfg.companion.port}${cfg.companion.basePath}";
 
-  patchedPlayerJs = pkgs.runCommand "invidious-player-js-patched" {
-    nativeBuildInputs = [ pkgs.python3 ];
-  } ''
-    mkdir -p "$out/js"
-    python3 ${pkgs.writeText "patch-player-js.py" ''
-      import sys
-      src, dst = sys.argv[1], sys.argv[2]
-      with open(src) as f:
-          content = f.read()
-      target = "videojs.Vhs.xhr.beforeRequest = function(options) {"
-      replacement = target + "\n    options.uri = options.uri.replace(/&amp;/g, '&');"
-      patched = content.replace(target, replacement, 1)
-      assert patched != content, "patch target not found in player.js"
-      with open(dst, "w") as f:
-          f.write(patched)
-    ''} \
-      "${pkgs-unstable.invidious}/share/invidious/assets/js/player.js" \
-      "$out/js/player.js"
-  '';
-
   companionPackage =
     let
       assets = {
@@ -115,8 +95,7 @@ let
     external_port = effectiveExternalPort;
     https_only = effectiveHttpsOnly;
     admins = adminUsers;
-    default_user_preferences.quality = "dash";
-    default_user_preferences.quality_dash = "hd1080";
+    default_user_preferences.quality = "medium";
   };
 
   sanitizedUsersForRestart = passwordUsers.sanitizeForRestart {
@@ -631,7 +610,7 @@ in
             refresh_database_collation_if_needed
             wait_for_users_table
 
-            run_sql "UPDATE users SET preferences = (preferences::jsonb || '{\"quality\":\"dash\",\"quality_dash\":\"hd1080\"}'::jsonb)::text, updated = NOW() WHERE (preferences::jsonb)->>'quality' != 'dash';"
+            run_sql "UPDATE users SET preferences = (preferences::jsonb || '{\"quality\":\"medium\"}'::jsonb)::text, updated = NOW() WHERE (preferences::jsonb)->>'quality' != 'medium';"
 
             ${ensureLines}
 
@@ -672,17 +651,5 @@ in
         serviceDescription = "Invidious";
       }
     ))
-
-    (lib.mkIf (baseConfigReady && !clusterCfg.enable && exposeCfg.wan.enable) {
-      services.caddy.virtualHosts."alanix-wan-invidious".extraConfig = lib.mkForce ''
-        handle /js/player.js {
-          root * ${patchedPlayerJs}
-          file_server
-        }
-        handle {
-          reverse_proxy ${cfg.listenAddress}:${toString cfg.port}
-        }
-      '';
-    })
   ]);
 }
