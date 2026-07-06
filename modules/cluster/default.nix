@@ -1209,8 +1209,8 @@ in
             description = "Alanix cluster runtime exposure manager";
             wantedBy = [ "alanix-cluster-active.target" ];
             partOf = [ "alanix-cluster-active.target" ];
-            after = exposureUnits;
-            wants = exposureUnits;
+            after = exposureUnits ++ lib.optionals anyTailscaleCaddyExposure [ "alanix-tailscale-ready.service" ];
+            wants = exposureUnits ++ lib.optionals anyTailscaleCaddyExposure [ "alanix-tailscale-ready.service" ];
             path =
               [ pkgs.coreutils pkgs.systemd ]
               ++ lib.optionals anyCaddyExposure [ config.services.caddy.package ]
@@ -1221,6 +1221,8 @@ in
               RemainAfterExit = true;
               SuccessExitStatus = [ "SIGTERM" ];
               ExecStop = "${exposureScript} stop";
+              Restart = "on-failure";
+              RestartSec = "5s";
             };
           };
         })
