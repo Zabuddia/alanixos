@@ -95,7 +95,8 @@ let
     external_port = effectiveExternalPort;
     https_only = effectiveHttpsOnly;
     admins = adminUsers;
-    default_user_preferences.quality = "hd720";
+    default_user_preferences.quality = "dash";
+    default_user_preferences.quality_dash = "hd1080";
   };
 
   sanitizedUsersForRestart = passwordUsers.sanitizeForRestart {
@@ -610,7 +611,7 @@ in
             refresh_database_collation_if_needed
             wait_for_users_table
 
-            run_sql "UPDATE users SET preferences = (preferences::jsonb || '{\"quality\":\"hd720\"}'::jsonb)::text, updated = NOW() WHERE (preferences::jsonb)->>'quality' IN ('medium', 'small', 'tiny') OR (preferences::jsonb)->>'quality' IS NULL;"
+            run_sql "UPDATE users SET preferences = (preferences::jsonb || '{\"quality\":\"dash\",\"quality_dash\":\"hd1080\"}'::jsonb)::text, updated = NOW() WHERE (preferences::jsonb)->>'quality' != 'dash';"
 
             ${ensureLines}
 
