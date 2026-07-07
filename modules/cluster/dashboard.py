@@ -1792,7 +1792,7 @@ class Dashboard:
                 blist = f"<p class='muted small'>No backups yet. Scheduled every {html.escape(interval)}.</p>"
             else:
                 interval = svc.get("backupInterval", "?")
-                max_age = svc.get("maxBackupAge", "?")
+                max_age = svc.get("maxBackupAge") or "none"
                 brows: list[str] = []
                 for m in manifests[:8]:
                     fresh = m.get("fresh", False)
