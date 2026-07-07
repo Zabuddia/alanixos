@@ -366,6 +366,13 @@
       };
     };
 
+    alanix.remote-desktop = {
+      enable = true;
+      autoStart = true;
+      port = 5900;
+      output = "HDMI-A-1";
+    };
+
     alanix.sunshine = {
       enable = true;
       autoStart = true;
