@@ -7,10 +7,6 @@ let
   enabled = cfg.enable && cfg.cluster.enable;
 
   dataDir = if cfg.dataDir != null then cfg.dataDir else cfg.stateDir;
-  clusteredPaths = lib.unique (
-    [ cfg.stateDir ]
-    ++ lib.optional (dataDir != cfg.stateDir) dataDir
-  );
   stagedDatabaseDump = "${cfg.backupDir}/database/nextcloud.pgcustom";
 
   backupPrepScript = pkgs.writeShellScript "alanix-nextcloud-cluster-backup-runtime" ''
@@ -128,14 +124,13 @@ in
       controller = {
         name = "nextcloud";
         backupInterval = cfg.cluster.backupInterval;
-        maxBackupAge = cfg.cluster.maxBackupAge;
         activeUnits =
           [
             "phpfpm-nextcloud.service"
             "nextcloud-cron.timer"
           ]
           ++ lib.optionals collaboraCfg.enable [ "coolwsd.service" ];
-        backupPaths = clusteredPaths ++ [ cfg.backupDir ];
+        backupPaths = [ cfg.backupDir ];
         preBackupCommand = [ backupPrepScript ];
         postBackupCommand = [ "rm" "-rf" cfg.backupDir ];
         postRestoreCommand = [ restoreScript ];
