@@ -1109,8 +1109,9 @@ class Dashboard:
                 age_seconds = None
                 if completed_at is not None:
                     age_seconds = (now_utc() - completed_at).total_seconds()
-                max_age_seconds = parse_duration_seconds(service["maxBackupAge"])
-                fresh = age_seconds is not None and age_seconds <= max_age_seconds
+                max_backup_age = service.get("maxBackupAge")
+                max_age_seconds = parse_duration_seconds(max_backup_age) if max_backup_age else None
+                fresh = age_seconds is not None and (max_age_seconds is None or age_seconds <= max_age_seconds)
                 pin = self.service_pin_record(service_name, str(manifest_path))
                 snap_size = payload.get("snapshotSizeBytes")
                 if snap_size is not None:
@@ -1166,7 +1167,7 @@ class Dashboard:
             "promotionReadiness": readiness,
             "remoteTargets": [target["host"] for target in service.get("remoteTargets", [])],
             "backupInterval": service["backupInterval"],
-            "maxBackupAge": service["maxBackupAge"],
+            "maxBackupAge": service.get("maxBackupAge"),
             "activeUnits": service.get("activeUnits", []),
             "recoveryMode": recovery_mode,
         }
