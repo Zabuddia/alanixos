@@ -491,6 +491,89 @@ class Dashboard:
         except json.JSONDecodeError:
             return None
 
+    def service_backups_path(self, service_name: str | None = None) -> str:
+        if not service_name:
+            return "/backups"
+        return "/backups?service=" + urllib.parse.quote(service_name, safe="")
+
+    def safe_return_to(self, value: str | None) -> str:
+        if not value:
+            return "/"
+        parsed = urllib.parse.urlsplit(value)
+        if parsed.scheme or parsed.netloc or not parsed.path.startswith("/"):
+            return "/"
+        return urllib.parse.urlunsplit(("", "", parsed.path, parsed.query, ""))
+
+    def render_admin_bar(
+        self,
+        session: dict | None,
+        *,
+        login_error: str | None = None,
+        return_to: str = "/",
+    ) -> str:
+        if not self.admin_enabled:
+            return "<div id='admin-bar'></div>"
+
+        safe_return_to = html.escape(self.safe_return_to(return_to), quote=True)
+        if session is not None:
+            csrf = html.escape(session["csrfToken"])
+            return (
+                "<div id='admin-bar' class='admin-bar signed-in'>"
+                f"Signed in as <strong>{html.escape(session['username'])}</strong>"
+                f"<form method='post' action='/logout' class='ifrm'>"
+                f"<input type='hidden' name='csrf_token' value='{csrf}'/>"
+                f"<input type='hidden' name='returnTo' value='{safe_return_to}'/>"
+                "<button type='submit' class='button button-sm button-subtle'>Sign Out</button>"
+                "</form></div>"
+            )
+
+        err = f"<span class='auth-err'>{html.escape(login_error)}</span>" if login_error else ""
+        return (
+            f"<div id='admin-bar' class='admin-bar'>"
+            f"<form method='post' action='/login' class='ifrm login-form'>"
+            f"<input type='hidden' name='username' value='{html.escape(self.admin_username)}'/>"
+            f"<input type='hidden' name='returnTo' value='{safe_return_to}'/>"
+            f"<label class='admin-label'>Admin</label>"
+            f"<input type='password' name='password' placeholder='Password' autocomplete='current-password'/>"
+            f"<button type='submit' class='button button-sm'>Sign In</button>"
+            f"</form>{err}</div>"
+        )
+
+    def admin_button_html(
+        self,
+        action: str,
+        service_name: str,
+        *,
+        csrf: str,
+        manifest: str = "",
+        extra: str = "",
+        label: str,
+        css: str = "button button-sm",
+        confirm_msg: str = "",
+        disabled_reason: str = "",
+        return_to: str = "/",
+    ) -> str:
+        manifest_input = (
+            f"<input type='hidden' name='manifestPath' value='{html.escape(manifest)}'/>"
+            if manifest
+            else ""
+        )
+        confirm_js = html.escape(json.dumps(confirm_msg), quote=True) if confirm_msg else ""
+        confirm_attr = f' onclick="return confirm({confirm_js})"' if confirm_msg else ""
+        disabled_attr = f" disabled title='{html.escape(disabled_reason, quote=True)}'" if disabled_reason else ""
+        return_to_input = (
+            f"<input type='hidden' name='returnTo' value='{html.escape(self.safe_return_to(return_to), quote=True)}'/>"
+        )
+        return (
+            f"<form method='post' action='/admin/action' class='ifrm'>"
+            f"<input type='hidden' name='csrf_token' value='{html.escape(csrf)}'/>"
+            f"<input type='hidden' name='action' value='{html.escape(action)}'/>"
+            f"<input type='hidden' name='service' value='{html.escape(service_name)}'/>"
+            f"{manifest_input}{return_to_input}{extra}"
+            f"<button type='submit' class='{html.escape(css)}'{confirm_attr}{disabled_attr}>{html.escape(label)}</button>"
+            f"</form>"
+        )
+
     def get_leader(self) -> dict:
         try:
             proc = self.etcdctl(["get", self.leader_key], check=False)
@@ -1310,7 +1393,7 @@ class Dashboard:
         admin_queue = state.get("adminQueue") or []
         admin_enabled = bool(state.get("adminConfig", {}).get("enabled"))
         is_admin = session is not None and admin_enabled
-        csrf = html.escape(session["csrfToken"]) if session else ""
+        csrf = session["csrfToken"] if session else ""
 
         # ── helpers ───────────────────────────────────────────────────────────
         def b(text: str, kind: str) -> str:
@@ -1360,19 +1443,19 @@ class Dashboard:
             css: str = "button button-sm",
             confirm_msg: str = "",
             disabled_reason: str = "",
+            return_to: str = "/",
         ) -> str:
-            mp = f"<input type='hidden' name='manifestPath' value='{html.escape(manifest)}'/>" if manifest else ""
-            confirm_js = html.escape(json.dumps(confirm_msg), quote=True) if confirm_msg else ""
-            confirm_attr = f' onclick="return confirm({confirm_js})"' if confirm_msg else ""
-            disabled_attr = f" disabled title='{html.escape(disabled_reason, quote=True)}'" if disabled_reason else ""
-            return (
-                f"<form method='post' action='/admin/action' class='ifrm'>"
-                f"<input type='hidden' name='csrf_token' value='{csrf}'/>"
-                f"<input type='hidden' name='action' value='{html.escape(action)}'/>"
-                f"<input type='hidden' name='service' value='{html.escape(svc)}'/>"
-                f"{mp}{extra}"
-                f"<button type='submit' class='{html.escape(css)}'{confirm_attr}{disabled_attr}>{html.escape(label)}</button>"
-                f"</form>"
+            return self.admin_button_html(
+                action,
+                svc,
+                csrf=csrf,
+                manifest=manifest,
+                extra=extra,
+                label=label,
+                css=css,
+                confirm_msg=confirm_msg,
+                disabled_reason=disabled_reason,
+                return_to=return_to,
             )
 
         def progress_html(op: dict) -> str:
@@ -1450,28 +1533,7 @@ class Dashboard:
             )
 
         # ── admin bar ─────────────────────────────────────────────────────────
-        if admin_enabled and is_admin:
-            admin_bar = (
-                "<div id='admin-bar' class='admin-bar signed-in'>"
-                f"Signed in as <strong>{html.escape(session['username'])}</strong>"
-                f"<form method='post' action='/logout' class='ifrm'>"
-                f"<input type='hidden' name='csrf_token' value='{csrf}'/>"
-                "<button type='submit' class='button button-sm button-subtle'>Sign Out</button>"
-                "</form></div>"
-            )
-        elif admin_enabled:
-            err = f"<span class='auth-err'>{html.escape(login_error)}</span>" if login_error else ""
-            admin_bar = (
-                f"<div id='admin-bar' class='admin-bar'>"
-                f"<form method='post' action='/login' class='ifrm login-form'>"
-                f"<input type='hidden' name='username' value='{html.escape(self.admin_username)}'/>"
-                f"<label class='admin-label'>Admin</label>"
-                f"<input type='password' name='password' placeholder='Password' autocomplete='current-password'/>"
-                f"<button type='submit' class='button button-sm'>Sign In</button>"
-                f"</form>{err}</div>"
-            )
-        else:
-            admin_bar = "<div id='admin-bar'></div>"
+        admin_bar = self.render_admin_bar(session, login_error=login_error, return_to="/")
 
         # ── ops banner ────────────────────────────────────────────────────────
         cur_admin_op = controller_state.get("adminOperation")
@@ -1734,7 +1796,10 @@ class Dashboard:
             is_decl = svc.get("recoveryMode") == "declarative"
 
             links_row = "".join(chip_link(l) for l in active_links) or "<span class='muted'>Service not on leader.</span>"
-            backup_btn = ""
+            service_actions = ""
+            if not is_decl:
+                backups_href = html.escape(self.service_backups_path(svc_name), quote=True)
+                service_actions += f"<a class='button button-sm button-subtle' href='{backups_href}'>View Backups</a>"
             if is_admin and not is_decl:
                 backup_disabled_reason = ""
                 if mode_blocks_service_admin:
@@ -1750,7 +1815,7 @@ class Dashboard:
                     backup_disabled_reason = (
                         f"All backup slots are busy ({backup_slot_used}/{backup_slot_max}): {running_label}."
                     )
-                backup_btn = admin_btn(
+                service_actions += admin_btn(
                     "backup-now",
                     svc_name,
                     label="Backup Now",
@@ -1762,81 +1827,27 @@ class Dashboard:
                 blist = f"<p class='muted small'>{html.escape(svc.get('recoveryDescription') or 'Declarative — no backup needed.')}</p>"
             elif not manifests:
                 interval = svc.get("backupInterval", "?")
-                blist = f"<p class='muted small'>No backups yet. Scheduled every {html.escape(interval)}.</p>"
+                blist = f"<p class='bkp-summary muted small'>No backups yet. Scheduled every {html.escape(interval)}.</p>"
             else:
                 interval = svc.get("backupInterval", "?")
-                brows: list[str] = []
-                for m in manifests[:8]:
-                    pinned = m.get("pinned", False)
-                    src = m.get("sourceHost") or "unknown"
-                    age = m.get("ageHuman") or "?"
-                    snap_full = m.get("snapshotId") or ""
-                    snap = snap_full[:12]
-                    completed = m.get("completedAt") or ""
-                    meta_badges = b("pinned", "info") if pinned else ""
-                    note = m.get("note") or m.get("pinNote") or ""
-                    note_html = f"<span class='bkp-note muted'>{html.escape(note)}</span>" if note else ""
-                    size_human = m.get("sizeHuman") or ""
-                    restore_btn = (
-                        admin_btn(
-                            "restore-manifest",
-                            svc_name,
-                            manifest=m["path"],
-                            label="Restore",
-                            css="button button-sm button-danger",
-                            disabled_reason=(
-                                f"Restore is disabled while runtime mode is {runtime_mode_name}."
-                                if mode_blocks_service_admin
-                                else ""
-                            ),
-                        )
-                        if is_admin
-                        else ""
-                    )
-                    if is_admin and pinned:
-                        delete_btn = (
-                            "<button type='button' class='button button-sm button-delete' "
-                            "disabled title='Unpin this backup before deleting it'>Delete</button>"
-                        )
-                    elif is_admin:
-                        delete_btn = admin_btn(
-                            "delete-manifest",
-                            svc_name,
-                            manifest=m["path"],
-                            label="Delete",
-                            css="button button-sm button-delete",
-                            confirm_msg="Delete this backup snapshot and its stored data? This cannot be undone.",
-                            disabled_reason=(
-                                f"Backup deletion is disabled while runtime mode is {runtime_mode_name}."
-                                if mode_blocks_service_admin
-                                else ""
-                            ),
-                        )
-                    else:
-                        delete_btn = ""
-                    snap_title = html.escape(snap_full)
-                    size_html = f"<span class='bkp-size muted'>{html.escape(size_human)}</span>" if size_human else "<span class='bkp-size'></span>"
-                    brows.append(
-                        f"<div class='bkp-row'>"
-                        f"<span class='bkp-age' title='{html.escape(completed)}'>{html.escape(age)}</span>"
-                        f"<span class='bkp-src'>{html.escape(src)}</span>"
-                        f"<span class='bkp-meta'>{meta_badges}{note_html}</span>"
-                        f"{size_html}"
-                        f"<code class='bkp-snap' title='{snap_title}'>{html.escape(snap)}</code>"
-                        f"<span class='bkp-act'>{delete_btn}{restore_btn}</span>"
-                        f"</div>"
-                    )
-                blist = (
-                    f"<div class='bkp-sched muted small'>Every {html.escape(interval)}</div>"
-                    f"<div class='bkp-list'>{''.join(brows)}</div>"
-                )
+                latest = manifests[0]
+                latest_bits = [
+                    f"Every {interval}",
+                    f"{len(manifests)} backup{'s' if len(manifests) != 1 else ''}",
+                    f"latest {latest.get('ageHuman') or '?'}",
+                ]
+                if latest.get("sourceHost"):
+                    latest_bits.append(f"from {latest['sourceHost']}")
+                if latest.get("sizeHuman"):
+                    latest_bits.append(str(latest["sizeHuman"]))
+                blist = f"<p class='bkp-summary muted small'>{html.escape(' | '.join(latest_bits))}</p>"
 
             cards.append(
                 f"<article class='svc-card' data-service-name='{html.escape(svc_name)}'>"
                 f"<div class='svc-hd'>"
                 f"<div class='svc-hd-top'>"
                 f"<div class='svc-title'><h3>{html.escape(svc_name)}</h3></div>"
-                f"<div class='svc-acts'>{backup_btn}</div>"
+                f"<div class='svc-acts'>{service_actions}</div>"
                 f"</div>"
                 f"<div class='svc-links'>{links_row}</div>"
                 f"</div>"
@@ -2017,7 +2028,8 @@ class Dashboard:
     .chip-wan {{ background: rgba(26,107,138,0.09); color: #1a6b8a; border-color: rgba(26,107,138,0.22); }}
     /* ── buttons ── */
     .button {{
-      appearance: none; cursor: pointer; font: inherit;
+      appearance: none; cursor: pointer; font: inherit; text-decoration: none;
+      display: inline-flex; align-items: center; justify-content: center;
       border: 1px solid rgba(36,69,45,0.2); background: var(--accent);
       color: #fff; border-radius: 0.55rem; padding: 0.4rem 0.75rem;
     }}
@@ -2161,25 +2173,7 @@ class Dashboard:
       font-size: 0.78rem;
       white-space: nowrap;
     }}
-    /* ── backup list ── */
-    .bkp-sched {{ margin-bottom: 0.35rem; }}
-    .bkp-list {{ display: flex; flex-direction: column; gap: 0.2rem; }}
-    .bkp-row {{
-      display: grid;
-      grid-template-columns: 3.5rem 1fr auto auto auto auto;
-      align-items: center; gap: 0.4rem;
-      padding: 0.28rem 0.1rem;
-      border-top: 1px solid rgba(212,200,180,0.5);
-      font-size: 0.82rem;
-    }}
-    .bkp-list .bkp-row:first-child {{ border-top: none; }}
-    .bkp-age {{ color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }}
-    .bkp-src {{ font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-    .bkp-meta {{ display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap; white-space: nowrap; }}
-    .bkp-size {{ color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 4.75rem; text-align: right; }}
-    .bkp-snap {{ font-family: monospace; font-size: 0.75rem; color: var(--muted); }}
-    .bkp-act {{ justify-self: end; display: flex; gap: 0.3rem; flex-wrap: wrap; }}
-    .bkp-note {{ font-size: 0.75rem; display: block; }}
+    .bkp-summary {{ margin-top: -0.1rem; }}
     /* ── cluster / units tables ── */
     table {{ width: 100%; border-collapse: collapse; font-size: 0.83rem; }}
     th, td {{
@@ -2211,8 +2205,6 @@ class Dashboard:
     }}
     @media (max-width: 600px) {{
       .site-hd {{ flex-direction: column; align-items: flex-start; }}
-      .bkp-row {{ grid-template-columns: 3rem 1fr auto; }}
-      .bkp-snap, .bkp-meta, .bkp-size {{ display: none; }}
     }}
   </style>
 </head>
@@ -2372,6 +2364,271 @@ class Dashboard:
 </html>
 """
 
+    def render_backups_html(
+        self,
+        state: dict,
+        *,
+        service_name: str | None = None,
+        session: dict | None = None,
+        login_error: str | None = None,
+    ) -> str:
+        services = state.get("services") or {}
+        runtime_mode = state.get("runtimeMode") or {"mode": "ha"}
+        runtime_mode_name = runtime_mode.get("mode") or "ha"
+        mode_blocks_service_admin = runtime_mode_name != "ha"
+        is_admin = session is not None and self.admin_enabled
+        return_to = self.service_backups_path(service_name)
+        csrf = session["csrfToken"] if session else ""
+
+        def b(text: str, kind: str) -> str:
+            return f"<span class='badge badge-{kind}'>{html.escape(text)}</span>"
+
+        def backup_link(name: str, label: str | None = None) -> str:
+            href = html.escape(self.service_backups_path(name), quote=True)
+            return f"<a href='{href}'>{html.escape(label or name)}</a>"
+
+        def completed_label(value: str | None) -> str:
+            if not value:
+                return "unknown"
+            return value.replace("T", " ").replace("Z", " UTC")
+
+        def service_index() -> str:
+            rows: list[str] = []
+            for name, svc in services.items():
+                if svc.get("recoveryMode") == "declarative":
+                    continue
+                manifests = svc.get("manifests") or []
+                latest = manifests[0] if manifests else {}
+                rows.append(
+                    "<tr>"
+                    f"<td class='name-cell'>{backup_link(name)}</td>"
+                    f"<td>{html.escape(str(len(manifests)))}</td>"
+                    f"<td>{html.escape(latest.get('ageHuman') or 'none')}</td>"
+                    f"<td class='muted'>{html.escape(svc.get('backupInterval') or '?')}</td>"
+                    "</tr>"
+                )
+            body = "".join(rows) if rows else "<tr><td colspan='4' class='muted'>No backup-backed services configured.</td></tr>"
+            return (
+                "<section class='panel'>"
+                "<div class='section-head'><h2>Services</h2></div>"
+                "<div class='table-wrap'><table><thead><tr>"
+                "<th>Service</th><th>Backups</th><th>Latest</th><th>Schedule</th>"
+                f"</tr></thead><tbody>{body}</tbody></table></div>"
+                "</section>"
+            )
+
+        def action_buttons(manifest: dict, pinned: bool) -> str:
+            if not is_admin:
+                return ""
+            disabled_reason = (
+                f"Backup actions are disabled while runtime mode is {runtime_mode_name}."
+                if mode_blocks_service_admin
+                else ""
+            )
+            manifest_path = manifest.get("path") or ""
+            verify_btn = self.admin_button_html(
+                "verify-manifest",
+                service_name or "",
+                csrf=csrf,
+                manifest=manifest_path,
+                label="Verify",
+                css="button button-sm button-subtle",
+                disabled_reason=disabled_reason,
+                return_to=return_to,
+            )
+            restore_btn = self.admin_button_html(
+                "restore-manifest",
+                service_name or "",
+                csrf=csrf,
+                manifest=manifest_path,
+                label="Restore",
+                css="button button-sm button-danger",
+                confirm_msg="Restore this backup? Current service data will be replaced.",
+                disabled_reason=disabled_reason,
+                return_to=return_to,
+            )
+            pin_btn = self.admin_button_html(
+                "unpin-manifest" if pinned else "pin-manifest",
+                service_name or "",
+                csrf=csrf,
+                manifest=manifest_path,
+                label="Unpin" if pinned else "Pin",
+                css="button button-sm button-subtle",
+                disabled_reason=disabled_reason,
+                return_to=return_to,
+            )
+            if pinned:
+                delete_btn = (
+                    "<button type='button' class='button button-sm button-delete' "
+                    "disabled title='Unpin this backup before deleting it'>Delete</button>"
+                )
+            else:
+                delete_btn = self.admin_button_html(
+                    "delete-manifest",
+                    service_name or "",
+                    csrf=csrf,
+                    manifest=manifest_path,
+                    label="Delete",
+                    css="button button-sm button-delete",
+                    confirm_msg="Delete this backup snapshot and its stored data? This cannot be undone.",
+                    disabled_reason=disabled_reason,
+                    return_to=return_to,
+                )
+            return f"<div class='row-actions'>{verify_btn}{restore_btn}{pin_btn}{delete_btn}</div>"
+
+        def service_backups() -> str:
+            svc = services.get(service_name or "")
+            if svc is None:
+                return (
+                    "<section class='panel'>"
+                    "<div class='section-head'><h2>Not Found</h2></div>"
+                    f"<p class='muted'>No clustered service named {html.escape(service_name or '')}.</p>"
+                    "</section>"
+                )
+            if svc.get("recoveryMode") == "declarative":
+                description = svc.get("recoveryDescription") or "declarative configuration"
+                return (
+                    "<section class='panel'>"
+                    f"<div class='section-head'><h2>{html.escape(service_name or '')}</h2></div>"
+                    f"<p class='muted'>{html.escape(description)}. No backup browser is needed for this service.</p>"
+                    "</section>"
+                )
+
+            manifests = svc.get("manifests") or []
+            rows: list[str] = []
+            for manifest in manifests:
+                pinned = bool(manifest.get("pinned"))
+                badges = b("pinned", "info") if pinned else ""
+                note = manifest.get("note") or manifest.get("pinNote") or ""
+                note_html = f"<span class='note muted'>{html.escape(note)}</span>" if note else ""
+                snapshot_id = manifest.get("snapshotId") or ""
+                rows.append(
+                    "<tr>"
+                    f"<td title='{html.escape(manifest.get('completedAt') or '', quote=True)}'>"
+                    f"{html.escape(completed_label(manifest.get('completedAt')))}</td>"
+                    f"<td>{html.escape(manifest.get('ageHuman') or '?')}</td>"
+                    f"<td>{html.escape(manifest.get('sourceHost') or 'unknown')}</td>"
+                    f"<td>{html.escape(manifest.get('sizeHuman') or '')}</td>"
+                    f"<td><code title='{html.escape(snapshot_id, quote=True)}'>{html.escape(snapshot_id[:12])}</code></td>"
+                    f"<td class='meta-cell'>{badges}{note_html}</td>"
+                    f"<td>{action_buttons(manifest, pinned)}</td>"
+                    "</tr>"
+                )
+
+            if rows:
+                body = "".join(rows)
+            else:
+                body = "<tr><td colspan='7' class='muted'>No backups yet.</td></tr>"
+
+            latest = manifests[0] if manifests else {}
+            summary_bits = [
+                f"schedule {svc.get('backupInterval') or '?'}",
+                f"{len(manifests)} retained",
+            ]
+            if latest:
+                summary_bits.append(f"latest {latest.get('ageHuman') or '?'}")
+                if latest.get("sourceHost"):
+                    summary_bits.append(f"from {latest['sourceHost']}")
+            admin_hint = "" if is_admin else "<p class='muted small'>Sign in on this page to restore, verify, pin, or delete backups.</p>"
+            return (
+                "<section class='panel'>"
+                "<div class='section-head service-title'>"
+                f"<h2>{html.escape(service_name or '')}</h2>"
+                f"<span class='muted small'>{html.escape(' | '.join(summary_bits))}</span>"
+                "</div>"
+                f"{admin_hint}"
+                "<div class='table-wrap'><table><thead><tr>"
+                "<th>Completed</th><th>Age</th><th>Source</th><th>Size</th><th>Snapshot</th><th>Meta</th><th>Actions</th>"
+                f"</tr></thead><tbody>{body}</tbody></table></div>"
+                "</section>"
+            )
+
+        content = service_backups() if service_name else service_index()
+        page_title = f"{service_name} backups" if service_name else "Backups"
+        admin_bar = self.render_admin_bar(session, login_error=login_error, return_to=return_to)
+        role = state.get("cluster", {}).get("role") or {"label": "unknown", "kind": "warn"}
+        favicon_link = '<link rel="icon" href="/favicon.ico" sizes="any">' if self.favicon_bytes else ""
+        return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Alanix · {html.escape(page_title)}</title>
+  {favicon_link}
+  <style>
+    :root {{
+      --bg: #f5f0e8; --panel: #fffdf8; --border: #d4c8b4;
+      --text: #1a2018; --muted: #5a6659;
+      --good: #2a7040; --warn: #a85c10; --bad: #8f2a20; --info: #1e5580;
+      --accent: #24452d;
+    }}
+    *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{ font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.5; color: var(--text); background: var(--bg); }}
+    a {{ color: inherit; }}
+    .site-hd {{ background: var(--panel); border-bottom: 1px solid var(--border); padding: 0.6rem 1.25rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }}
+    .brand {{ display: flex; align-items: baseline; gap: 0.6rem; flex: 1; min-width: 0; }}
+    .cluster-nm {{ font-weight: 700; font-size: 1rem; }}
+    .node-nm, .muted {{ color: var(--muted); }}
+    main {{ max-width: 82rem; margin: 0 auto; padding: 1.1rem 1.25rem; display: flex; flex-direction: column; gap: 0.85rem; }}
+    .panel, .admin-bar {{ background: var(--panel); border: 1px solid var(--border); border-radius: 0.75rem; padding: 0.85rem 1rem; }}
+    .admin-bar {{ display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; padding: 0.45rem 0.75rem; }}
+    .admin-bar.signed-in {{ background: rgba(42,112,64,0.08); border-color: rgba(42,112,64,0.22); }}
+    .login-form, .row-actions {{ display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }}
+    .admin-label {{ font-size: 0.8rem; color: var(--muted); font-weight: 600; }}
+    .auth-err {{ color: var(--bad); font-size: 0.82rem; }}
+    input[type="password"] {{ border: 1px solid var(--border); background: var(--panel); border-radius: 0.5rem; padding: 0.3rem 0.6rem; font: inherit; color: inherit; }}
+    .top-actions {{ display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }}
+    .section-head {{ display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.55rem; flex-wrap: wrap; }}
+    .section-head h2 {{ font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }}
+    .service-title h2 {{ color: var(--text); font-size: 1.05rem; letter-spacing: 0; text-transform: none; }}
+    .small {{ font-size: 0.8rem; }}
+    .button {{ appearance: none; cursor: pointer; font: inherit; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; border: 1px solid rgba(36,69,45,0.2); background: var(--accent); color: #fff; border-radius: 0.55rem; padding: 0.4rem 0.75rem; }}
+    .button:not(:disabled):hover {{ filter: brightness(1.1); }}
+    .button-sm {{ padding: 0.25rem 0.55rem; font-size: 0.8rem; }}
+    .button-subtle {{ background: transparent; color: var(--accent); }}
+    .button-danger {{ background: var(--bad); border-color: rgba(143,42,32,0.25); }}
+    .button-delete {{ background: #6b7280; border-color: rgba(75,85,99,0.3); }}
+    .button:disabled {{ cursor: not-allowed; opacity: 0.55; filter: none; }}
+    .ifrm {{ display: inline; margin: 0; padding: 0; }}
+    .badge {{ display: inline-flex; align-items: center; border-radius: 999px; padding: 0.15rem 0.45rem; font-size: 0.75rem; line-height: 1.4; white-space: nowrap; font-weight: 500; }}
+    .badge-good {{ background: rgba(42,112,64,0.12); color: var(--good); }}
+    .badge-warn {{ background: rgba(168,92,16,0.12); color: var(--warn); }}
+    .badge-bad {{ background: rgba(143,42,32,0.12); color: var(--bad); }}
+    .badge-muted {{ background: rgba(90,102,89,0.12); color: var(--muted); }}
+    .badge-info {{ background: rgba(30,85,128,0.12); color: var(--info); }}
+    .table-wrap {{ overflow-x: auto; }}
+    table {{ width: 100%; border-collapse: collapse; font-size: 0.83rem; min-width: 58rem; }}
+    th, td {{ padding: 0.42rem 0.45rem; text-align: left; border-top: 1px solid rgba(212,200,180,0.5); vertical-align: middle; }}
+    th {{ border-top: none; color: var(--muted); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; }}
+    code {{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78rem; color: var(--muted); }}
+    .name-cell {{ font-weight: 700; }}
+    .meta-cell {{ display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; min-width: 9rem; }}
+    .note {{ font-size: 0.75rem; }}
+    @media (max-width: 640px) {{
+      .site-hd {{ flex-direction: column; align-items: flex-start; }}
+      main {{ padding: 0.8rem; }}
+    }}
+  </style>
+</head>
+<body>
+  <header class="site-hd">
+    <div class="brand">
+      <span class="cluster-nm">Alanix · {html.escape(page_title)}</span>
+      <span class="node-nm">{html.escape(self.hostname)}</span>
+    </div>
+    <div class="top-actions">
+      <a class="button button-sm button-subtle" href="/">Dashboard</a>
+      {b(role.get("label", "unknown"), role.get("kind", "warn"))}
+    </div>
+  </header>
+  <main>
+    {admin_bar}
+    {content}
+  </main>
+</body>
+</html>
+"""
+
 class RequestHandler(BaseHTTPRequestHandler):
     dashboard: Dashboard
 
@@ -2455,7 +2712,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
     def do_GET(self) -> None:  # noqa: N802
-        path = urllib.parse.urlsplit(self.path).path
+        parsed_url = urllib.parse.urlsplit(self.path)
+        path = parsed_url.path
         if path == "/favicon.ico":
             if self.dashboard.favicon_bytes is None:
                 self.send_response(404)
@@ -2484,6 +2742,24 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.respond_bytes(200, payload, "application/json; charset=utf-8")
             return
 
+        if path == "/backups":
+            query = urllib.parse.parse_qs(parsed_url.query, keep_blank_values=True)
+            service_name = (query.get("service") or [""])[-1] or None
+            with self.dashboard._state_cond:
+                state = self.dashboard._cached_state
+            if state is None:
+                state = self.dashboard.collect()
+            status = 200
+            if service_name and service_name not in (state.get("services") or {}):
+                status = 404
+            payload = self.dashboard.render_backups_html(
+                state,
+                service_name=service_name,
+                session=session,
+            ).encode("utf-8")
+            self.respond_bytes(status, payload, "text/html; charset=utf-8")
+            return
+
         if path in {"/", ""}:
             with self.dashboard._state_cond:
                 state = self.dashboard._cached_state
@@ -2505,17 +2781,29 @@ class RequestHandler(BaseHTTPRequestHandler):
         session = self.current_session()
         form = self.parse_form_body()
         path = urllib.parse.urlsplit(self.path).path
+        return_to = self.dashboard.safe_return_to(form.get("returnTo"))
 
         if path == "/login":
             username = form.get("username", "")
             password = form.get("password", "")
             if not self.dashboard.verify_password(username, password):
                 state = self.dashboard.collect()
-                payload = self.dashboard.render_html(
-                    state,
-                    session=None,
-                    login_error="Sign-in failed. Check the password and try again.",
-                ).encode("utf-8")
+                parsed_return = urllib.parse.urlsplit(return_to)
+                if parsed_return.path == "/backups":
+                    query = urllib.parse.parse_qs(parsed_return.query, keep_blank_values=True)
+                    service_name = (query.get("service") or [""])[-1] or None
+                    payload = self.dashboard.render_backups_html(
+                        state,
+                        service_name=service_name,
+                        session=None,
+                        login_error="Sign-in failed. Check the password and try again.",
+                    ).encode("utf-8")
+                else:
+                    payload = self.dashboard.render_html(
+                        state,
+                        session=None,
+                        login_error="Sign-in failed. Check the password and try again.",
+                    ).encode("utf-8")
                 self.respond_bytes(401, payload, "text/html; charset=utf-8")
                 return
 
@@ -2523,7 +2811,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             cookie = (
                 f"alanix_cluster_session={session['id']}; Path=/; HttpOnly; SameSite=Strict"
             )
-            self.redirect("/", headers=[("Set-Cookie", cookie)])
+            self.redirect(return_to, headers=[("Set-Cookie", cookie)])
             return
 
         if path == "/logout":
@@ -2534,7 +2822,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             if session is not None:
                 self.dashboard.destroy_session(session.get("id"))
             cookie = "alanix_cluster_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"
-            self.redirect("/", headers=[("Set-Cookie", cookie)])
+            self.redirect(return_to, headers=[("Set-Cookie", cookie)])
             return
 
         if path == "/admin/action":
@@ -2553,7 +2841,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 "requestedBy": session["username"],
             }
             self.dashboard.queue_admin_request(request)
-            self.redirect("/")
+            self.redirect(return_to)
             return
 
         self.send_response(404)
