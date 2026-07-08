@@ -1359,11 +1359,9 @@ class Controller:
         except Exception:
             return None
 
-    def backup_retention(self, service: dict) -> tuple[int, list[float]]:
+    def backup_retention(self, service: dict) -> int:
         backup_cfg = self.cluster.get("backup", {})
-        retain_days = int(service.get("retainDays", backup_cfg.get("retainDays", 7)))
-        retain_target_ages = service.get("retainTargetAges", backup_cfg.get("retainTargetAges", []))
-        return retain_days, [parse_duration_seconds(age) for age in retain_target_ages]
+        return int(service.get("retainDays", backup_cfg.get("retainDays", 7)))
 
     def manifest_sort_timestamp(self, manifest_path: Path, fallback: float) -> float:
         try:
@@ -1380,7 +1378,6 @@ class Controller:
         self,
         manifest_dir: str,
         retain_days: int,
-        retain_target_ages: list[float],
         service_name: str,
     ) -> None:
         now = time.time()
@@ -1399,25 +1396,9 @@ class Controller:
             sort_timestamp = self.manifest_sort_timestamp(p, stat_result.st_mtime)
             manifests.append((sort_timestamp, str(p), p))
 
-        protected_by_age = set()
-        for target_age in retain_target_ages:
-            target_timestamp = now - target_age
-            selected = min(
-                manifests,
-                key=lambda item: (abs(item[0] - target_timestamp), -item[0], item[1]),
-                default=None,
-            )
-            if selected is not None:
-                protected_by_age.add(selected[2])
-
-        if retain_target_ages:
-            for _, _, path in manifests:
-                if path not in protected_by_age:
-                    delete_paths.add(path)
-        else:
-            for sort_timestamp, _, path in manifests:
-                if sort_timestamp < cutoff:
-                    delete_paths.add(path)
+        for sort_timestamp, _, path in manifests:
+            if sort_timestamp < cutoff:
+                delete_paths.add(path)
 
         for p in sorted(delete_paths, key=lambda path: str(path)):
             try:
@@ -1494,7 +1475,6 @@ class Controller:
         target: dict,
         manifest_dir: str,
         retain_days: int,
-        retain_target_ages: list[float],
     ) -> set[str]:
         script = r'''
 import json
@@ -1526,7 +1506,6 @@ def sort_timestamp(path, fallback):
 
 manifest_dir = Path(sys.argv[1])
 retain_days = int(sys.argv[2])
-retain_target_ages = json.loads(sys.argv[3])
 now = time.time()
 cutoff = now - retain_days * 86400
 manifests = []
@@ -1541,25 +1520,9 @@ if manifest_dir.exists():
         manifests.append((sort_timestamp(path, stat_result.st_mtime), str(path), path))
 
 newest_first = sorted(manifests, key=lambda item: (item[0], item[1]), reverse=True)
-protected_by_age = set()
-for target_age in retain_target_ages:
-    target_timestamp = now - float(target_age)
-    selected = min(
-        manifests,
-        key=lambda item: (abs(item[0] - target_timestamp), -item[0], item[1]),
-        default=None,
-    )
-    if selected is not None:
-        protected_by_age.add(selected[2])
-
-if retain_target_ages:
-    for _, _, path in manifests:
-        if path not in protected_by_age:
-            delete_paths.add(path)
-else:
-    for sort_ts, _, path in manifests:
-        if sort_ts < cutoff:
-            delete_paths.add(path)
+for sort_ts, _, path in manifests:
+    if sort_ts < cutoff:
+        delete_paths.add(path)
 
 removed = 0
 for path in sorted(delete_paths, key=lambda item: str(item)):
@@ -1585,7 +1548,7 @@ if removed:
 '''
         remote_cmd = "python3 - " + " ".join(
             shlex.quote(arg)
-            for arg in [manifest_dir, str(retain_days), json.dumps(retain_target_ages)]
+            for arg in [manifest_dir, str(retain_days)]
         )
         proc = self.run_as_backup_user(
             ["ssh", target["address"], remote_cmd],
@@ -1611,9 +1574,8 @@ if removed:
         repo_uri: str,
         manifest_dir: str,
         retain_days: int,
-        retain_target_ages: list[float],
     ) -> int:
-        keep_ids = self.prune_remote_manifests(service_name, target, manifest_dir, retain_days, retain_target_ages)
+        keep_ids = self.prune_remote_manifests(service_name, target, manifest_dir, retain_days)
         if not keep_ids:
             log(f"{service_name}: skipping remote snapshot pruning on {target['host']} because no kept manifests were found")
             return 0
@@ -1624,7 +1586,7 @@ if removed:
             label=f"remote repo on {target['host']}",
         )
 
-    def prune_service_local_repos(self, service_name: str, retain_days: int, retain_target_ages: list[float]) -> int:
+    def prune_service_local_repos(self, service_name: str, retain_days: int) -> int:
         manifest_dir = self.cluster_data_dir / service_name
         if not manifest_dir.exists():
             return 0
@@ -1637,7 +1599,7 @@ if removed:
                 active_ids.add(snapshot_id)
 
         total_deleted = 0
-        self._prune_local_manifests(str(manifest_dir), retain_days, retain_target_ages, service_name)
+        self._prune_local_manifests(str(manifest_dir), retain_days, service_name)
         keep_ids = self.repo_manifest_snapshot_ids(manifest_dir) | active_ids
 
         repo_path = manifest_dir / "repo"
@@ -1653,7 +1615,7 @@ if removed:
     def backup_service(self, service_name, generation, *, origin="automatic", requested_by=None):
         service = self.services[service_name]
         backup_started_at = time.monotonic()
-        retain_days, retain_target_ages = self.backup_retention(service)
+        retain_days = self.backup_retention(service)
         prep_base_percent = 1.0
         prep_end_percent = 20.0
         work_end_percent = 95.0
@@ -1775,7 +1737,7 @@ if removed:
                                 currentTargetIndex=target_index + 1,
                                 totalTargets=target_count,
                             )
-                            pruned_snapshot_count += self.prune_service_local_repos(service_name, retain_days, retain_target_ages)
+                            pruned_snapshot_count += self.prune_service_local_repos(service_name, retain_days)
                         except Exception as exc:
                             maintenance_error = summarize_error(str(exc))
                             maintenance_errors.append({"target": "local", "error": maintenance_error})
@@ -1855,7 +1817,6 @@ if removed:
                                 remote_uri,
                                 manifest_dir,
                                 retain_days,
-                                retain_target_ages,
                             )
                         except Exception as exc:
                             maintenance_error = summarize_error(str(exc))
@@ -1962,7 +1923,7 @@ if removed:
             if cleanup_error:
                 result["cleanupError"] = cleanup_error
             try:
-                pruned_snapshot_count += self.prune_service_local_repos(service_name, retain_days, retain_target_ages)
+                pruned_snapshot_count += self.prune_service_local_repos(service_name, retain_days)
             except Exception as exc:
                 maintenance_error = summarize_error(str(exc))
                 maintenance_errors.append({"target": "local", "error": maintenance_error})

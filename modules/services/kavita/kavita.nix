@@ -342,6 +342,39 @@ in
               mv "$repaired_db" "$db_path"
               echo "Kavita sqlite recovery replaced $db_path; original saved at $corrupt_copy" >&2
             fi
+
+            app_user_library_ready="$(sqlite3 "$db_path" "
+              SELECT CASE WHEN COUNT(*) = 3 THEN 1 ELSE 0 END
+              FROM sqlite_master
+              WHERE type = 'table'
+                AND name IN ('AppUserLibrary', 'AspNetUsers', 'Library');
+            ")"
+            if [ "$app_user_library_ready" = "1" ]; then
+              orphan_library_users="$(sqlite3 "$db_path" "
+                SELECT COUNT(*)
+                FROM AppUserLibrary aul
+                WHERE NOT EXISTS (SELECT 1 FROM AspNetUsers u WHERE u.Id = aul.AppUsersId)
+                   OR NOT EXISTS (SELECT 1 FROM Library l WHERE l.Id = aul.LibrariesId);
+              ")"
+              if [ "$orphan_library_users" -gt 0 ]; then
+                repair_dir=${lib.escapeShellArg cfg.dataDir}/config/corrupt-db-repairs
+                stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+                orphan_copy="$repair_dir/$(basename "$db_path").$stamp.orphan-app-user-library"
+
+                install -d -m 0700 "$repair_dir"
+                cp -a "$db_path" "$orphan_copy"
+                echo "Removing $orphan_library_users orphaned Kavita user-library row(s) from $db_path; original saved at $orphan_copy" >&2
+
+                sqlite3 "$db_path" "
+                  PRAGMA foreign_keys = ON;
+                  BEGIN IMMEDIATE;
+                  DELETE FROM AppUserLibrary
+                  WHERE NOT EXISTS (SELECT 1 FROM AspNetUsers u WHERE u.Id = AppUserLibrary.AppUsersId)
+                     OR NOT EXISTS (SELECT 1 FROM Library l WHERE l.Id = AppUserLibrary.LibrariesId);
+                  COMMIT;
+                "
+              fi
+            fi
           done
         '';
       };

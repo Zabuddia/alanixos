@@ -154,18 +154,6 @@ in
           Number of days to keep timestamped backup manifests before pruning.
         '';
       };
-
-      retainTargetAges = lib.mkOption {
-        type = types.listOf types.str;
-        default = [ ];
-        description = ''
-          Optional restore-point age targets to keep for each service and
-          target. For each duration, the controller keeps the unpinned backup
-          manifest closest to that age, along with its matching restic
-          snapshot. Pinned manifests and the active local snapshot are always
-          kept.
-        '';
-      };
     };
 
     dashboard = {
@@ -580,6 +568,7 @@ in
         serviceName: svc:
         let
           controller = svc.controller;
+          controllerConfig = lib.removeAttrs controller [ "maxBackupAge" ];
           recoveryMode = controller.recoveryMode or "backup";
           activeUnits =
             lib.unique (
@@ -589,7 +578,7 @@ in
           torUrl = mkServiceTorUrl serviceName svc;
           torConfig = mkServiceTorConfig serviceName svc;
         in
-        controller
+        controllerConfig
         // {
           name = controller.name or serviceName;
           activeUnits = activeUnits;
@@ -671,7 +660,6 @@ in
             maxConcurrent = cfg.backup.maxConcurrent;
             minFreeSpaceBytes = cfg.backup.minFreeSpaceBytes;
             retainDays = cfg.backup.retainDays;
-            retainTargetAges = cfg.backup.retainTargetAges;
           };
           endpoints =
             map

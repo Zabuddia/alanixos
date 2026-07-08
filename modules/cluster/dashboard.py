@@ -1063,12 +1063,9 @@ class Dashboard:
         service_label = service.get("label") or service_name.title()
         if recovery_mode == "declarative":
             result = {
-                "freshestManifest": None,
                 "manifests": [],
-                "promotionReadiness": {"ready": True, "reason": "declarative"},
                 "remoteTargets": [target["host"] for target in service.get("remoteTargets", [])],
                 "backupInterval": service.get("backupInterval"),
-                "maxBackupAge": service.get("maxBackupAge"),
                 "activeUnits": service.get("activeUnits", []),
                 "recoveryMode": recovery_mode,
                 "recoveryDescription": service.get("recoveryDescription", "declarative configuration"),
@@ -1109,9 +1106,6 @@ class Dashboard:
                 age_seconds = None
                 if completed_at is not None:
                     age_seconds = (now_utc() - completed_at).total_seconds()
-                max_backup_age = service.get("maxBackupAge")
-                max_age_seconds = parse_duration_seconds(max_backup_age) if max_backup_age else None
-                fresh = age_seconds is not None and (max_age_seconds is None or age_seconds <= max_age_seconds)
                 pin = self.service_pin_record(service_name, str(manifest_path))
                 snap_size = payload.get("snapshotSizeBytes")
                 if snap_size is not None:
@@ -1139,7 +1133,6 @@ class Dashboard:
                         "sizeHuman": format_bytes(snap_size) if snap_size is not None else "",
                         "ageSeconds": age_seconds,
                         "ageHuman": format_age(age_seconds),
-                        "fresh": fresh,
                         "imported": bool(payload.get("imported")),
                         "note": payload.get("note") or "",
                         "requestedBy": payload.get("requestedBy"),
@@ -1150,24 +1143,11 @@ class Dashboard:
                 )
 
         manifests.sort(key=lambda item: item.get("completedAt") or "", reverse=True)
-        freshest = manifests[0] if manifests else None
-
-        if freshest and freshest["fresh"]:
-            readiness = {"ready": True, "reason": "fresh-backup"}
-        elif freshest:
-            readiness = {"ready": False, "reason": "stale-backup"}
-        elif self.hostname == self.bootstrap_host:
-            readiness = {"ready": True, "reason": "bootstrap-host"}
-        else:
-            readiness = {"ready": False, "reason": "no-local-backup"}
 
         result = {
-            "freshestManifest": freshest,
             "manifests": manifests,
-            "promotionReadiness": readiness,
             "remoteTargets": [target["host"] for target in service.get("remoteTargets", [])],
             "backupInterval": service["backupInterval"],
-            "maxBackupAge": service.get("maxBackupAge"),
             "activeUnits": service.get("activeUnits", []),
             "recoveryMode": recovery_mode,
         }
@@ -1279,10 +1259,6 @@ class Dashboard:
             if tor_link:
                 active_links = unique_links(active_links + [tor_link])
             service_state["activeLinks"] = active_links
-            # On the leader the service is actively running here — "stale-backup" is
-            # misleading since promotion readiness doesn't apply to the running node.
-            if is_leader:
-                service_state["promotionReadiness"] = {"ready": True, "reason": "active"}
 
         members = [
             {
@@ -1409,7 +1385,7 @@ class Dashboard:
             tf = prog.get("totalFiles")
             stats: list[str] = []
             # Only show bytes/files when the current sub-step is still in flight.
-            # If bytesDone >= totalBytes the sub-step finished and the stale numbers
+            # If bytesDone >= totalBytes the sub-step finished and the previous numbers
             # would contradict the overall percent (e.g. 239/239 MiB at 50%).
             step_in_flight = bd is not None and tb and bd < tb
             if step_in_flight:
@@ -1752,14 +1728,11 @@ class Dashboard:
         # ── service cards ─────────────────────────────────────────────────────
         cards: list[str] = []
         for svc_name, svc in services.items():
-            readiness = svc["promotionReadiness"]
             manifests = svc.get("manifests") or []
             active_links = svc.get("activeLinks") or []
             cur_op = svc.get("currentOperation")
             is_decl = svc.get("recoveryMode") == "declarative"
 
-            r_kind = "good" if readiness["ready"] else "warn"
-            r_reason = readiness["reason"]
             links_row = "".join(chip_link(l) for l in active_links) or "<span class='muted'>Service not on leader.</span>"
             backup_btn = ""
             if is_admin and not is_decl:
@@ -1792,19 +1765,15 @@ class Dashboard:
                 blist = f"<p class='muted small'>No backups yet. Scheduled every {html.escape(interval)}.</p>"
             else:
                 interval = svc.get("backupInterval", "?")
-                max_age = svc.get("maxBackupAge") or "none"
                 brows: list[str] = []
                 for m in manifests[:8]:
-                    fresh = m.get("fresh", False)
                     pinned = m.get("pinned", False)
                     src = m.get("sourceHost") or "unknown"
                     age = m.get("ageHuman") or "?"
                     snap_full = m.get("snapshotId") or ""
                     snap = snap_full[:12]
                     completed = m.get("completedAt") or ""
-                    status_badges = b("fresh" if fresh else "stale", "good" if fresh else "warn")
-                    if pinned:
-                        status_badges += b("pinned", "info")
+                    meta_badges = b("pinned", "info") if pinned else ""
                     note = m.get("note") or m.get("pinNote") or ""
                     note_html = f"<span class='bkp-note muted'>{html.escape(note)}</span>" if note else ""
                     size_human = m.get("sizeHuman") or ""
@@ -1851,14 +1820,14 @@ class Dashboard:
                         f"<div class='bkp-row'>"
                         f"<span class='bkp-age' title='{html.escape(completed)}'>{html.escape(age)}</span>"
                         f"<span class='bkp-src'>{html.escape(src)}</span>"
-                        f"<span class='bkp-st'>{status_badges}{note_html}</span>"
+                        f"<span class='bkp-meta'>{meta_badges}{note_html}</span>"
                         f"{size_html}"
                         f"<code class='bkp-snap' title='{snap_title}'>{html.escape(snap)}</code>"
                         f"<span class='bkp-act'>{delete_btn}{restore_btn}</span>"
                         f"</div>"
                     )
                 blist = (
-                    f"<div class='bkp-sched muted small'>Every {html.escape(interval)} · max age {html.escape(max_age)}</div>"
+                    f"<div class='bkp-sched muted small'>Every {html.escape(interval)}</div>"
                     f"<div class='bkp-list'>{''.join(brows)}</div>"
                 )
 
@@ -1866,7 +1835,7 @@ class Dashboard:
                 f"<article class='svc-card' data-service-name='{html.escape(svc_name)}'>"
                 f"<div class='svc-hd'>"
                 f"<div class='svc-hd-top'>"
-                f"<div class='svc-title'><h3>{html.escape(svc_name)}</h3>{b(r_reason, r_kind)}</div>"
+                f"<div class='svc-title'><h3>{html.escape(svc_name)}</h3></div>"
                 f"<div class='svc-acts'>{backup_btn}</div>"
                 f"</div>"
                 f"<div class='svc-links'>{links_row}</div>"
@@ -2206,7 +2175,7 @@ class Dashboard:
     .bkp-list .bkp-row:first-child {{ border-top: none; }}
     .bkp-age {{ color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }}
     .bkp-src {{ font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-    .bkp-st {{ display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap; white-space: nowrap; }}
+    .bkp-meta {{ display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap; white-space: nowrap; }}
     .bkp-size {{ color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 4.75rem; text-align: right; }}
     .bkp-snap {{ font-family: monospace; font-size: 0.75rem; color: var(--muted); }}
     .bkp-act {{ justify-self: end; display: flex; gap: 0.3rem; flex-wrap: wrap; }}
@@ -2243,7 +2212,7 @@ class Dashboard:
     @media (max-width: 600px) {{
       .site-hd {{ flex-direction: column; align-items: flex-start; }}
       .bkp-row {{ grid-template-columns: 3rem 1fr auto; }}
-      .bkp-snap, .bkp-st, .bkp-size {{ display: none; }}
+      .bkp-snap, .bkp-meta, .bkp-size {{ display: none; }}
     }}
   </style>
 </head>
