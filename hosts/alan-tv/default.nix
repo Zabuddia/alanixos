@@ -329,12 +329,8 @@
         "emulation-n64"
         "emulation-retroarch"
         "emulation-ryujinx"
-        "movies"
-        "shows"
         "videos"
         "music"
-        "audiobooks"
-        "ebooks"
       ];
       linkFolderSets = [
         "emulation-azahar"

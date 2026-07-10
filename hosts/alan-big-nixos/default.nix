@@ -150,6 +150,20 @@
 
     alanix.syncthing = {
       deviceId = "5CVWFSK-CV4SWJP-Z7S4TTV-UAX263E-AEEWI6K-Z22GRUZ-F2JFFQY-LOZWLAS";
+      bulkStorage = {
+        enable = true;
+        device = "/dev/disk/by-id/ata-ST20000NT001-3MB101_WYE0BDJX-part1";
+        paths = [
+          "media"
+          "games/roms"
+        ];
+        mediaServices = [
+          "jellyfin"
+          "navidrome"
+          "audiobookshelf"
+          "kavita"
+        ];
+      };
       peers = [
         "alan-node"
         "alan-optiplex"

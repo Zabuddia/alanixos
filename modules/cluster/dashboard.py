@@ -827,6 +827,7 @@ class Dashboard:
         candidates = [
             ("Root", "/"),
             ("Nix Store", "/nix"),
+            ("Bulk", "/srv/bulk"),
             ("Backups", self.cluster["backup"]["repoBaseDir"]),
             ("Boot", "/boot"),
         ]
