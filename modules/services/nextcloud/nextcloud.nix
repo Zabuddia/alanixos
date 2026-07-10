@@ -839,6 +839,18 @@ in
             DESIRED_OVERWRITEWEBROOT=${lib.escapeShellArg (if desiredOverwriteWebroot != null then toString desiredOverwriteWebroot else "")}
             PASSWORD_DIGESTS_FILE=${lib.escapeShellArg "${cfg.stateDir}/alanix-password-digests.json"}
 
+            install_password_digests_file() {
+              local source="$1"
+              install -m 0640 -o nextcloud -g nextcloud "$source" "$PASSWORD_DIGESTS_FILE"
+            }
+
+            fix_password_digest_permissions() {
+              if [ -e "$PASSWORD_DIGESTS_FILE" ]; then
+                chown nextcloud:nextcloud "$PASSWORD_DIGESTS_FILE"
+                chmod 0640 "$PASSWORD_DIGESTS_FILE"
+              fi
+            }
+
             ensure_runtime_passfile() {
               local path="$1"
               local value="$2"
@@ -956,7 +968,7 @@ in
                 jq -cn --arg user "$name" --arg digest "$digest" '{($user): $digest}' > "$tmp"
               fi
 
-              install -m 600 "$tmp" "$PASSWORD_DIGESTS_FILE"
+              install_password_digests_file "$tmp"
               rm -f "$tmp"
             }
 
@@ -970,7 +982,7 @@ in
 
               tmp="$(mktemp "$RUNTIME_DIRECTORY/password-digests.XXXXXX")"
               jq -c --arg user "$name" 'del(.[$user])' "$PASSWORD_DIGESTS_FILE" > "$tmp"
-              install -m 600 "$tmp" "$PASSWORD_DIGESTS_FILE"
+              install_password_digests_file "$tmp"
               rm -f "$tmp"
             }
 
@@ -1177,6 +1189,7 @@ in
             sync_trusted_domains
             sync_overwrite_settings
             prune_undeclared_users
+            fix_password_digest_permissions
             configure_collabora
           '';
       };
