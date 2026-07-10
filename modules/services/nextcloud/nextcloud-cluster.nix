@@ -7,6 +7,10 @@ let
   enabled = cfg.enable && cfg.cluster.enable;
 
   dataDir = if cfg.dataDir != null then cfg.dataDir else cfg.stateDir;
+  clusteredPaths = lib.unique (
+    [ cfg.stateDir ]
+    ++ lib.optional (dataDir != cfg.stateDir) dataDir
+  );
   stagedDatabaseDump = "${cfg.backupDir}/database/nextcloud.pgcustom";
 
   backupPrepScript = pkgs.writeShellScript "alanix-nextcloud-cluster-backup-runtime" ''
@@ -130,7 +134,7 @@ in
             "nextcloud-cron.timer"
           ]
           ++ lib.optionals collaboraCfg.enable [ "coolwsd.service" ];
-        backupPaths = [ cfg.backupDir ];
+        backupPaths = clusteredPaths ++ [ cfg.backupDir ];
         preBackupCommand = [ backupPrepScript ];
         postBackupCommand = [ "rm" "-rf" cfg.backupDir ];
         postRestoreCommand = [ restoreScript ];
