@@ -51,6 +51,8 @@ let
     };
   };
 
+  mediaVersioning = staggeredVersioning 365;
+
   azaharSystemId = "00000000000000000000000000000000";
   azaharSdCardId = "00000000000000000000000000000000";
   azaharSdmcRelativeBase = "games/azahar-emu/sdmc/Nintendo 3DS/${azaharSystemId}/${azaharSdCardId}";
@@ -200,6 +202,8 @@ let
       group = "users";
       mode = "2775";
       ignorePerms = true;
+      ignoreDelete = true;
+      versioning = mediaVersioning;
     };
   };
 
@@ -211,6 +215,8 @@ let
       group = "users";
       mode = "2775";
       ignorePerms = true;
+      ignoreDelete = true;
+      versioning = mediaVersioning;
     };
   };
 
@@ -222,6 +228,8 @@ let
       group = "users";
       mode = "2775";
       ignorePerms = true;
+      ignoreDelete = true;
+      versioning = mediaVersioning;
     };
   };
 
@@ -233,6 +241,8 @@ let
       group = "users";
       mode = "2775";
       ignorePerms = true;
+      ignoreDelete = true;
+      versioning = mediaVersioning;
     };
   };
 
@@ -244,6 +254,8 @@ let
       group = "users";
       mode = "2775";
       ignorePerms = true;
+      ignoreDelete = true;
+      versioning = mediaVersioning;
     };
   };
 
@@ -255,6 +267,8 @@ let
       group = "users";
       mode = "2775";
       ignorePerms = true;
+      ignoreDelete = true;
+      versioning = mediaVersioning;
     };
   };
 
@@ -456,6 +470,8 @@ let
           fsWatcherEnabled = true;
         } // lib.optionalAttrs (folderCfg ? ignorePerms) {
           ignorePerms = folderCfg.ignorePerms;
+        } // lib.optionalAttrs (folderCfg ? ignoreDelete) {
+          ignoreDelete = folderCfg.ignoreDelete;
         } // lib.optionalAttrs (folderCfg ? versioning) {
           versioning = folderCfg.versioning;
         }))
