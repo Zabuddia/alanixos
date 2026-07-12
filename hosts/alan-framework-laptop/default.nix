@@ -336,7 +336,6 @@
       listenPort = 22000;
       peers = [
         "alan-big-nixos"
-        "alan-node"
         "alan-framework"
         "alan-optiplex"
         "alan-tv"

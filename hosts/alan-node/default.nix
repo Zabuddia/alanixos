@@ -7,7 +7,7 @@
     imports = [
       ./hardware-configuration.nix
       ./secrets.nix
-      ../../clusters/home.nix
+      ../../modules/services/bitcoin
     ];
 
     alanix.system = {
@@ -131,18 +131,6 @@
     };
 
     alanix.wifi.radio.enable = false;
-
-    alanix.syncthing = {
-      deviceId = "VMTMWXV-KWNAOOA-INEEIN5-7SH6WBI-TGO4LBZ-7E66ZWN-XJU7AS6-NGHXXQ5";
-      peers = [
-        "alan-big-nixos"
-        "alan-framework-laptop"
-        "alan-optiplex"
-        "alan-tv"
-        "randy-big-nixos"
-      ];
-      folderSets = lib.mkForce [ "filebrowser-files" ];
-    };
 
     alanix.remote-desktop = {
       enable = true;

@@ -7,7 +7,7 @@
     imports = [
       ./hardware-configuration.nix
       ./secrets.nix
-      ../../modules/services/bitcoin
+      ../../clusters/home.nix
     ];
 
     alanix.system = {
@@ -173,62 +173,26 @@
 
     alanix.wifi.radio.enable = false;
 
-    services.avahi.enable = true;
-
-    fileSystems."/home/buddia/storage" = {
-      device = "/dev/disk/by-uuid/1e1a79ae-0312-4f3b-81ce-66fca54202ba";
-      fsType = "ext4";
-      options = [ "nofail" "x-systemd.device-timeout=10s" ];
-    };
-
-    systemd.tmpfiles.rules = [
-      "d /home/buddia/storage 0755 buddia users - -"
-    ];
-
     alanix.syncthing = {
-      enable = true;
-      transport = "tailscale";
-      syncRoot = "/home/buddia/storage/Syncthing";
-      listenPort = 22000;
-      folderSets = [
-        "emulation-azahar"
-        "emulation-dolphin"
-        "emulation-melonds"
-        "emulation-n64"
-        "emulation-retroarch"
-        "movies"
-        "shows"
-        "videos"
-        "music"
-        "audiobooks"
-        "ebooks"
-      ];
-      linkFolderSets = [
-        "emulation-azahar"
-        "emulation-dolphin"
-        "emulation-melonds"
-      ];
       deviceId = "2BGWQTB-75JJCIW-OEWFP4L-Y2BTROG-IYJ2ESY-IAQ5CIO-QGOXUYW-GBM5HA4";
+      bulkStorage = {
+        enable = true;
+        device = "/dev/disk/by-id/ata-ST4000DM004-2U9104_ZFN5S7NP-part1";
+        paths = [ "media" ];
+        mediaServices = [
+          "jellyfin"
+          "navidrome"
+          "audiobookshelf"
+          "kavita"
+        ];
+      };
       peers = [
         "alan-big-nixos"
         "alan-framework"
         "alan-framework-laptop"
-        "alan-node"
         "alan-tv"
         "randy-big-nixos"
       ];
-      externalDevices.pixel-fold = {
-        id = "BT23SPJ-ICTEBQ7-GJTDRQT-LCUQ773-U63QFZR-472O3YA-2KRJ4KY-AMPZ7AF";
-        addresses = [ "tcp://pixel-fold:22000" ];
-        folderSets = [
-          "emulation-azahar"
-          "emulation-dolphin"
-          "emulation-melonds"
-          "emulation-n64"
-          "emulation-retroarch"
-          "videos"
-        ];
-      };
     };
 
     alanix.sunshine = {

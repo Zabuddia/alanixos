@@ -165,7 +165,6 @@
         ];
       };
       peers = [
-        "alan-node"
         "alan-optiplex"
         "alan-tv"
         "alan-framework"

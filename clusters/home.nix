@@ -3,7 +3,7 @@ let
   members = [
     "alan-big-nixos"
     "randy-big-nixos"
-    "alan-node"
+    "alan-optiplex"
   ];
 
   mailDkimTxt = lib.concatStrings [
@@ -37,11 +37,11 @@ in
       addresses = {
         randy-big-nixos = "randy-big-nixos";
         alan-big-nixos = "alan-big-nixos";
-        alan-node = "alan-node";
+        alan-optiplex = "alan-optiplex";
       };
 
       etcd = {
-        bootstrapGeneration = 3;
+        bootstrapGeneration = 4;
         heartbeatInterval = "500ms";
         electionTimeout = "5s";
         leaseTtl = "3m";
@@ -82,7 +82,7 @@ in
             secretKeyBase64Secret = "tor/cluster-dashboard/${hostname}/secret-key-base64";
             hostname =
               if hostname == "alan-big-nixos" then "uu6th6s6ry55vqdp7dbt6znbyedvgeqlmat2venoxkyijq5qk3lipiad.onion"
-              else if hostname == "alan-node" then "u7pemgmtbljkrsc2dyqivx7u4kpy76ajf7hmsnlubmhs33uo4tw5txid.onion"
+              else if hostname == "alan-optiplex" then "6tkxmjarbepvvy5wrlslbarhfkkowmuttnade55tlpsnd2noy44dnzid.onion"
               else if hostname == "randy-big-nixos" then "wzzhb5g6vfmk76k2a7ccfh4r53qjxsprneizy2ikhplhz3flluacqxqd.onion"
               else null;
           };
@@ -171,12 +171,12 @@ in
         enable = true;
         resolverHosts = [
           "alan-big-nixos"
-          "alan-node"
+          "alan-optiplex"
           "randy-big-nixos"
         ];
         resolverAddresses = {
           alan-big-nixos = "100.64.0.3";
-          alan-node = "100.64.0.5";
+          alan-optiplex = "100.64.0.9";
           randy-big-nixos = "100.64.0.6";
         };
         lanBindHosts.alan-big-nixos = [ "192.168.10.225" ];

@@ -152,10 +152,20 @@
 
     alanix.syncthing = {
       deviceId = "WOQMMD4-ZYSB3YY-F4WFRQJ-O7T4X2A-UV54S74-Z26UPI2-DCNKC2I-ALDOWAN";
+      bulkStorage = {
+        enable = true;
+        device = "/dev/disk/by-id/ata-ST20000NT001-3MB101_WYD3JH1Z-part1";
+        paths = [ "media" ];
+        mediaServices = [
+          "jellyfin"
+          "navidrome"
+          "audiobookshelf"
+          "kavita"
+        ];
+      };
       peers = [
         "alan-big-nixos"
         "alan-framework-laptop"
-        "alan-node"
         "alan-optiplex"
         "alan-tv"
       ];

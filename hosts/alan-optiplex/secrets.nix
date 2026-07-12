@@ -20,7 +20,163 @@
     owner = "root";
     group = "root";
     mode = "0400";
-  };  sops.secrets."ssh-private-keys/alan-optiplex" = {
+  };
+
+  sops.secrets."cluster/restic-password" = {
+    sopsFile = (import ../../secrets/files.nix).cluster;
+    owner = "buddia";
+    group = "users";
+    mode = "0400";
+  };
+
+  sops.secrets."cluster/dashboard-password" = {
+    sopsFile = (import ../../secrets/files.nix).cluster;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."forgejo-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "forgejo";
+    group = "forgejo";
+    mode = "0400";
+  };
+
+  sops.secrets."invidious/hmac-key" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "invidious";
+    group = "invidious";
+    mode = "0400";
+  };
+
+  sops.secrets."invidious/companion-secret-key" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."invidious-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "invidious";
+    group = "invidious";
+    mode = "0400";
+  };
+
+  sops.secrets."immich-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "immich";
+    group = "immich";
+    mode = "0400";
+  };
+
+  sops.secrets."jellyfin-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."nextcloud-passwords/fifefam" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "nextcloud";
+    group = "nextcloud";
+    mode = "0400";
+  };
+
+  sops.secrets."nextcloud-passwords/waffleiron" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "nextcloud";
+    group = "nextcloud";
+    mode = "0400";
+  };
+
+  sops.secrets."nextcloud-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "nextcloud";
+    group = "nextcloud";
+    mode = "0400";
+  };
+
+  sops.secrets."radicale-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "radicale";
+    group = "radicale";
+    mode = "0400";
+  };
+
+  sops.secrets."grocy-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "grocy";
+    group = "nginx";
+    mode = "0400";
+  };
+
+  sops.secrets."homebox-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."actual-passwords/server-password" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."filebrowser-passwords/admin" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "filebrowser";
+    group = "filebrowser";
+    mode = "0400";
+  };
+
+  sops.secrets."filebrowser-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "filebrowser";
+    group = "filebrowser";
+    mode = "0400";
+  };
+
+  sops.secrets."openwebui-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."owntracks-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."owntracks-passwords/recorder-internal" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."searxng-app/secret-key" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."sunshine-web-ui-passwords/alan-optiplex" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "buddia";
+    group = "users";
+    mode = "0400";
+  };
+
+  sops.secrets."ssh-private-keys/alan-optiplex" = {
     sopsFile = (import ../../secrets/files.nix).users;
     owner = "buddia";
     group = "users";
@@ -50,17 +206,185 @@
     mode = "0400";
   };
 
-  sops.secrets."sunshine-web-ui-passwords/alan-optiplex" = {
-    sopsFile = (import ../../secrets/files.nix).servicePasswords;
-    owner = "buddia";
-    group = "users";
+  sops.secrets."tor/actual/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
     mode = "0400";
   };
 
-  sops.secrets."invidious-passwords/buddia" = {
+  sops.secrets."tor/headplane/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/vaultwarden/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/forgejo/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/invidious/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/immich/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/jellyfin/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/filebrowser/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/nextcloud/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/nextcloud-collabora/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/radicale/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/openwebui/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/audiobookshelf/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/kavita/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/searxng/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/roundcube/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/grocy/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/homebox/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/cluster-dashboard/alan-optiplex/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."navidrome-passwords/buddia" = {
     sopsFile = (import ../../secrets/files.nix).servicePasswords;
-    owner = "buddia";
-    group = "users";
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."audiobookshelf-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."kavita-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."mail-password-hashes/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."mail-dkim/fifefin.com/mail-private-key" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/navidrome/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
+    mode = "0400";
+  };
+
+  sops.secrets."tor/owntracks/secret-key-base64" = {
+    sopsFile = (import ../../secrets/files.nix).tor;
+    owner = "root";
+    group = "root";
     mode = "0400";
   };
 

@@ -344,7 +344,6 @@
         "alan-big-nixos"
         "alan-framework"
         "alan-framework-laptop"
-        "alan-node"
         "alan-optiplex"
         "randy-big-nixos"
       ];
