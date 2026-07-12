@@ -48,7 +48,7 @@ let
       assets = {
         x86_64-linux = {
           url = "https://github.com/iv-org/invidious-companion/releases/download/release-master/invidious_companion-x86_64-unknown-linux-gnu.tar.gz";
-          hash = "sha256-qh4O7H9BFc2uT++0aTFGAG4d0r21V5BXsTvt3obwTEs=";
+          hash = "sha256-Idb/X1ufyLbb6FpW8mgaa/g9jAWS2J90a3HuUTJxsAQ=";
         };
         aarch64-linux = {
           url = "https://github.com/iv-org/invidious-companion/releases/download/release-master/invidious_companion-aarch64-unknown-linux-gnu.tar.gz";
