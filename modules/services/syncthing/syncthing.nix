@@ -52,6 +52,11 @@ let
   };
 
   mediaVersioning = staggeredVersioning 365;
+  romVersioning = staggeredVersioning 365;
+  romFolderProtection = {
+    ignoreDelete = true;
+    versioning = romVersioning;
+  };
 
   azaharSystemId = "00000000000000000000000000000000";
   azaharSdCardId = "00000000000000000000000000000000";
@@ -65,7 +70,7 @@ let
     "games-roms-3ds" = {
       label = "games/roms/3ds";
       relativePath = "games/roms/3ds";
-    };
+    } // romFolderProtection;
     "games-azahar-emu-sdmc-title" = {
       label = "${azaharSdmcRelativeBase}/title";
       relativePath = "${azaharSdmcRelativeBase}/title";
@@ -87,11 +92,11 @@ let
     "games-roms-gamecube" = {
       label = "games/roms/gamecube";
       relativePath = "games/roms/gamecube";
-    };
+    } // romFolderProtection;
     "games-roms-wii" = {
       label = "games/roms/wii";
       relativePath = "games/roms/wii";
-    };
+    } // romFolderProtection;
     "games-dolphin-emu-gc" = {
       label = "games/dolphin-emu/GC";
       relativePath = "games/dolphin-emu/GC";
@@ -112,7 +117,7 @@ let
     "games-roms-nds" = {
       label = "games/roms/nds";
       relativePath = "games/roms/nds";
-    };
+    } // romFolderProtection;
     "games-melonds-saves" = {
       label = "games/melonDS/saves";
       relativePath = "games/melonDS/saves";
@@ -124,34 +129,34 @@ let
     "games-roms-n64" = {
       label = "games/roms/n64";
       relativePath = "games/roms/n64";
-    };
+    } // romFolderProtection;
   };
 
   retroarchFolders = {
     "games-roms-nes" = {
       label = "games/roms/nes";
       relativePath = "games/roms/nes";
-    };
+    } // romFolderProtection;
     "games-roms-snes" = {
       label = "games/roms/snes";
       relativePath = "games/roms/snes";
-    };
+    } // romFolderProtection;
     "games-roms-gb" = {
       label = "games/roms/gb";
       relativePath = "games/roms/gb";
-    };
+    } // romFolderProtection;
     "games-roms-gbc" = {
       label = "games/roms/gbc";
       relativePath = "games/roms/gbc";
-    };
+    } // romFolderProtection;
     "games-roms-gba" = {
       label = "games/roms/gba";
       relativePath = "games/roms/gba";
-    };
+    } // romFolderProtection;
     "games-roms-genesis" = {
       label = "games/roms/genesis";
       relativePath = "games/roms/genesis";
-    };
+    } // romFolderProtection;
     "games-retroarch" = {
       label = "games/retroarch";
       relativePath = "games/retroarch";
@@ -176,7 +181,7 @@ let
     "games-roms-switch" = {
       label = "games/roms/switch";
       relativePath = "games/roms/switch";
-    };
+    } // romFolderProtection;
     "games-ryujinx" = {
       label = "games/Ryujinx";
       relativePath = "games/Ryujinx";
