@@ -69,7 +69,13 @@ in
     packages = lib.mkOption {
       type = types.listOf types.package;
       default = [ ];
-      description = "Base system packages for this host.";
+      description = "Base system packages for this host from the stable package set.";
+    };
+
+    unstablePackages = lib.mkOption {
+      type = types.listOf types.package;
+      default = [ ];
+      description = "Base system packages for this host from pkgs-unstable.";
     };
 
     swapDevices = lib.mkOption {
@@ -116,7 +122,7 @@ in
       networking.networkmanager.enable = cfg.enableNetworkManager;
       networking.firewall.enable = cfg.enableFirewall;
 
-      environment.systemPackages = cfg.packages;
+      environment.systemPackages = cfg.packages ++ cfg.unstablePackages;
       swapDevices = cfg.swapDevices;
     }
 

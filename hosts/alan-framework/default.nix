@@ -31,7 +31,6 @@
         lm_sensors
         lsof
         nak
-        pkgs-unstable.nodejs_24
         ripgrep
         python3
         restic
@@ -44,6 +43,9 @@
         dosfstools
         wget
         usbutils
+      ];
+      unstablePackages = with pkgs-unstable; [
+        nodejs_24
       ];
       swapDevices = [
         # This host keeps several large local models warm; swap gives the box
