@@ -31,7 +31,7 @@
         lm_sensors
         lsof
         nak
-        nodejs
+        pkgs-unstable.nodejs_24
         ripgrep
         python3
         restic
@@ -70,17 +70,6 @@
           enable = true;
           directory = "/home/buddia";
           stateVersion = "25.11";
-          files = {
-            ".config/systemd/user/openclaw-gateway.service.d/10-path.conf" = {
-              text = ''
-                [Service]
-                Environment=PATH=/home/buddia/.local/bin:/run/current-system/sw/bin:/run/wrappers/bin:/usr/bin:/bin
-              '';
-              source = null;
-              force = true;
-              executable = null;
-            };
-          };
           packages = with pkgs; [
             tmux
           ];

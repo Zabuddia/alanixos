@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ... }:
+{ config, lib, pkgs, pkgs-unstable, ... }:
 
 let
   cfg = config.alanix.openclaw;
@@ -37,7 +37,7 @@ let
     [
       pkgs.bash
       pkgs.coreutils
-      pkgs.nodejs
+      pkgs-unstable.nodejs_24
     ]
     ++ lib.optionals config.services.tailscale.enable [ config.services.tailscale.package ]
     ++ cfg.packages
@@ -144,7 +144,7 @@ in
       };
     };
 
-    environment.systemPackages = lib.mkIf openclawEnabled ([ pkgs.nodejs ] ++ cfg.packages);
+    environment.systemPackages = lib.mkIf openclawEnabled ([ pkgs-unstable.nodejs_24 ] ++ cfg.packages);
 
     home-manager.users = lib.optionalAttrs (openclawUserHomeReady && openclawEnabled) {
       ${cfg.user} = lib.mkMerge [
