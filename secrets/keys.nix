@@ -27,7 +27,7 @@
     };
     
     alan-node = {
-      recipient = "age1xlpujktcrv84rx498z7wakal4c4pklda2c2s4jx2kgxsh2yaa9lq6v7ptk";
+      recipient = "age1gvgt7lg6ledntcn3pcak6050spl8q88wjum852mjt6t984c95axq97m2wf";
       description = "Root-only runtime key stored at /var/lib/sops-nix/key.txt.";
     };
 
