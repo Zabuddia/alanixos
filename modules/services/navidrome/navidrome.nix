@@ -75,7 +75,7 @@ in
     scanInterval = lib.mkOption {
       type = lib.types.str;
       default = "5m";
-      description = "How often Navidrome scans the music folder for changes.";
+      description = "How often Navidrome scans the music folder for changes, expressed as a Go duration.";
     };
 
     purgeMissing = lib.mkOption {
@@ -280,8 +280,8 @@ in
           Port = cfg.port;
           DataFolder = cfg.dataDir;
           MusicFolder = cfg.mediaFolders.music.path;
-          ScanInterval = cfg.scanInterval;
           Scanner.PurgeMissing = cfg.purgeMissing;
+          Scanner.Schedule = "@every ${cfg.scanInterval}";
           LogLevel = "info";
           EnableInsightsCollector = false;
         };
