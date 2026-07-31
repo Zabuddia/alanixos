@@ -12,6 +12,12 @@ in
       default = null;
       description = "MakeMKV beta key written to ~/.MakeMKV/settings.conf.";
     };
+
+    minimumTitleLength = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 120;
+      description = "Minimum MakeMKV title length in seconds.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -27,6 +33,7 @@ in
         home.file.".MakeMKV/settings.conf" = lib.mkIf (cfg.betaKey != null) {
           text = ''
             app_Key = "${cfg.betaKey}"
+            dvd_MinimumTitleLength = "${toString cfg.minimumTitleLength}"
           '';
         };
       }

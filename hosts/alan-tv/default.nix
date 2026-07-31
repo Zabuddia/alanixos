@@ -182,6 +182,7 @@
         makemkv = {
           enable = true;
           betaKey = "T-vwvnrmF87JuRPLYYO8HnIrZR_LCAF7JXs9iJEm10moGpjEgkvmPTsf6Ox4BI@N5rPp";
+          minimumTitleLength = 1200;
         };
         kodi = {
           enable = true;
