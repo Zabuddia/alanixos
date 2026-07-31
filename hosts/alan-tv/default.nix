@@ -181,7 +181,7 @@
         chromium.enable = true;
         makemkv = {
           enable = true;
-          betaKey = "T-BSaJ6gwgMx4eIggWkVYXiVP_6zehm7WAO9dEydvzOHFHoZ6YQ82BL5cGpYDxvyRWnS";
+          betaKey = "T-vwvnrmF87JuRPLYYO8HnIrZR_LCAF7JXs9iJEm10moGpjEgkvmPTsf6Ox4BI@N5rPp";
         };
         kodi = {
           enable = true;
