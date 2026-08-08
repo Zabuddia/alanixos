@@ -172,6 +172,8 @@ in
       description = "alanix.users account that owns the OpenClaw services and state.";
     };
 
+    enablePasswordlessSudo = lib.mkEnableOption "unrestricted passwordless sudo for the OpenClaw user";
+
     packages = lib.mkOption {
       type = types.listOf types.package;
       default = [ ];
@@ -337,6 +339,10 @@ in
           message = "alanix.openclaw.user must reference an account with home.enable = true.";
         }
         {
+          assertion = !cfg.enablePasswordlessSudo || openclawEnabled;
+          message = "alanix.openclaw.enablePasswordlessSudo requires an enabled gateway or node.";
+        }
+        {
           assertion = !cfg.gateway.enable || cfg.gateway.gatewayTokenFile != null;
           message = "alanix.openclaw.gateway.gatewayTokenFile must be set when the gateway is enabled.";
         }
@@ -370,6 +376,18 @@ in
       ) {
         ${cfg.user}.linger = true;
       };
+
+      security.sudo.extraRules = lib.optionals cfg.enablePasswordlessSudo [
+        {
+          users = lib.optional (cfg.user != null) cfg.user;
+          commands = [
+            {
+              command = "ALL";
+              options = [ "NOPASSWD" ];
+            }
+          ];
+        }
+      ];
 
       environment.systemPackages = lib.mkIf openclawEnabled ([ openclawPackage ] ++ cfg.packages);
 

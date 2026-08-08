@@ -327,6 +327,7 @@
 
     alanix.openclaw = {
       user = "buddia";
+      enablePasswordlessSudo = true;
       node = {
         enable = true;
         displayName = "alan-framework-laptop";

@@ -31,7 +31,8 @@ Require explicit approval for the exact action and target:
 - Change users, groups, permissions, networking, authentication, firewall, or
   secret configuration.
 
-Use only an approved privileged helper. Never invoke arbitrary sudo.
+Sudo is available, but it does not expand authorization. Use it only when the
+operator's current request authorizes the privileged action and target.
 
 ## Tier 3: destructive or irreversible actions
 

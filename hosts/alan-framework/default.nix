@@ -157,6 +157,7 @@
 
     alanix.openclaw = {
       user = "buddia";
+      enablePasswordlessSudo = true;
       gateway = {
         enable = true;
         port = 18789;
