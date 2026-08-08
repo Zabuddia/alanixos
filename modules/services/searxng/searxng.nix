@@ -217,6 +217,18 @@ in
         after = [ "alanix-searxng-prepare.service" ];
         requires = [ "alanix-searxng-prepare.service" ];
       };
+
+      # SearXNG defaults its disposable SQLite caches to /tmp.  Long-running
+      # instances can keep those databases open past the tmpfiles cleanup age,
+      # after which searches fail against deleted database files.  Give the
+      # service a private runtime cache directory that exists for its lifetime.
+      systemd.services.searx = lib.mkIf baseConfigReady {
+        environment.TMPDIR = "/run/searxng-cache";
+        serviceConfig = {
+          RuntimeDirectory = "searxng-cache";
+          RuntimeDirectoryMode = "0750";
+        };
+      };
     }
 
     (lib.mkIf (baseConfigReady && !clusterCfg.enable) (
