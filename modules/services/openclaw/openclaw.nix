@@ -22,13 +22,13 @@ let
     defaults = {
       security = "full";
       ask = "off";
-      askFallback = "deny";
+      askFallback = "full";
       autoAllowSkills = false;
     };
     agents.ops = {
       security = "full";
       ask = "off";
-      askFallback = "deny";
+      askFallback = "full";
       autoAllowSkills = false;
     };
   };
