@@ -90,9 +90,34 @@ let
       --tailscale off
   '';
 
-  nodeGatewayHost = if cfg.node.gatewayHost != null then cfg.node.gatewayHost else "127.0.0.1";
+  nodeGatewayHost =
+    if cfg.node.sshTunnel.enable then
+      "127.0.0.1"
+    else if cfg.node.gatewayHost != null then
+      cfg.node.gatewayHost
+    else
+      "127.0.0.1";
+  nodeGatewayPort =
+    if cfg.node.sshTunnel.enable then cfg.node.sshTunnel.localPort else cfg.node.gatewayPort;
   nodeStateDir = resolveHomePath cfg.node.stateDir;
   nodeExtraArgs = lib.concatMapStringsSep " " lib.escapeShellArg cfg.node.extraArgs;
+  nodeSshTarget =
+    lib.optionalString (cfg.node.sshTunnel.remoteUser != null) "${cfg.node.sshTunnel.remoteUser}@"
+    + cfg.node.sshTunnel.remoteHost;
+  nodeSshExtraOptions = lib.concatMapStringsSep " " lib.escapeShellArg cfg.node.sshTunnel.extraOptions;
+  nodeSshTunnelLauncher = pkgs.writeShellScript "alanix-openclaw-node-ssh-tunnel" ''
+    set -euo pipefail
+
+    exec ${lib.getExe pkgs.openssh} -N -T \
+      -o BatchMode=yes \
+      -o ExitOnForwardFailure=yes \
+      -o ServerAliveInterval=30 \
+      -o ServerAliveCountMax=3 \
+      -o StrictHostKeyChecking=yes \
+      -L ${lib.escapeShellArg "127.0.0.1:${toString cfg.node.sshTunnel.localPort}:127.0.0.1:${toString cfg.node.sshTunnel.remotePort}"} \
+      ${lib.optionalString (nodeSshExtraOptions != "") "${nodeSshExtraOptions} \
+      "}${lib.escapeShellArg nodeSshTarget}
+  '';
   nodeLauncher = pkgs.writeShellScript "alanix-openclaw-node" ''
     set -euo pipefail
 
@@ -102,7 +127,7 @@ let
 
     exec ${openclawBin} node run \
       --host ${lib.escapeShellArg nodeGatewayHost} \
-      --port ${toString cfg.node.gatewayPort}${lib.optionalString cfg.node.gatewayTls " --tls"}${lib.optionalString (cfg.node.displayName != null) " --display-name ${lib.escapeShellArg cfg.node.displayName}"}${lib.optionalString (nodeExtraArgs != "") " ${nodeExtraArgs}"}
+      --port ${toString nodeGatewayPort}${lib.optionalString cfg.node.gatewayTls " --tls"}${lib.optionalString (cfg.node.displayName != null) " --display-name ${lib.escapeShellArg cfg.node.displayName}"}${lib.optionalString (nodeExtraArgs != "") " ${nodeExtraArgs}"}
   '';
 
   gatewayEndpoint = {
@@ -223,6 +248,40 @@ in
         type = types.listOf types.str;
         default = [ ];
       };
+
+      sshTunnel = {
+        enable = lib.mkEnableOption "an SSH tunnel to a loopback-only OpenClaw gateway";
+
+        remoteHost = lib.mkOption {
+          type = types.str;
+          default = "";
+          description = "SSH host that runs the OpenClaw gateway.";
+        };
+
+        remoteUser = lib.mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Optional SSH user. The OpenClaw user is used by SSH configuration when omitted.";
+        };
+
+        remotePort = lib.mkOption {
+          type = types.port;
+          default = 18789;
+          description = "Gateway loopback port on the SSH host.";
+        };
+
+        localPort = lib.mkOption {
+          type = types.port;
+          default = 18791;
+          description = "Laptop loopback port forwarded to the gateway.";
+        };
+
+        extraOptions = lib.mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = "Additional arguments passed to SSH.";
+        };
+      };
     };
   };
 
@@ -258,6 +317,14 @@ in
         {
           assertion = !cfg.node.enable || cfg.node.gatewayTokenFile != null;
           message = "alanix.openclaw.node.gatewayTokenFile must be set when the node is enabled.";
+        }
+        {
+          assertion = !cfg.node.sshTunnel.enable || cfg.node.sshTunnel.remoteHost != "";
+          message = "alanix.openclaw.node.sshTunnel.remoteHost must be set when the SSH tunnel is enabled.";
+        }
+        {
+          assertion = !cfg.node.sshTunnel.enable || !cfg.node.gatewayTls;
+          message = "alanix.openclaw.node.gatewayTls must be false when the SSH tunnel is enabled.";
         }
       ]
       ++ serviceExposure.mkAssertions {
@@ -331,8 +398,10 @@ in
             systemd.user.services.openclaw-node = {
               Unit = {
                 Description = "OpenClaw headless node";
-                After = [ "network-online.target" ];
+                After = [ "network-online.target" ]
+                  ++ lib.optionals cfg.node.sshTunnel.enable [ "openclaw-node-ssh-tunnel.service" ];
                 Wants = [ "network-online.target" ];
+                Requires = lib.optionals cfg.node.sshTunnel.enable [ "openclaw-node-ssh-tunnel.service" ];
                 ConditionPathExists = cfg.node.gatewayTokenFile;
               };
 
@@ -343,6 +412,27 @@ in
                   "OPENCLAW_CONFIG_PATH=${nodeStateDir}/openclaw.json"
                   "OPENCLAW_STATE_DIR=${nodeStateDir}"
                 ];
+                Restart = "always";
+                RestartSec = 5;
+              };
+
+              Install.WantedBy = [ "default.target" ];
+            };
+          })
+
+          (lib.mkIf (cfg.node.enable && cfg.node.sshTunnel.enable) {
+            xdg.configFile."systemd/user/openclaw-node-ssh-tunnel.service".force = true;
+            xdg.configFile."systemd/user/default.target.wants/openclaw-node-ssh-tunnel.service".force = true;
+
+            systemd.user.services.openclaw-node-ssh-tunnel = {
+              Unit = {
+                Description = "SSH tunnel for the OpenClaw node";
+                After = [ "network-online.target" ];
+                Wants = [ "network-online.target" ];
+              };
+
+              Service = {
+                ExecStart = "${nodeSshTunnelLauncher}";
                 Restart = "always";
                 RestartSec = 5;
               };

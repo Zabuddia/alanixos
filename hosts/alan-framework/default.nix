@@ -229,11 +229,6 @@
           browser.enabled = false;
           session.dmScope = "per-channel-peer";
         };
-        expose.tailscale = {
-          enable = true;
-          port = 18790;
-          tls = false;
-        };
       };
     };
 

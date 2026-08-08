@@ -330,10 +330,16 @@
       node = {
         enable = true;
         displayName = "alan-framework-laptop";
-        gatewayHost = "alan-framework";
-        gatewayPort = 18790;
+        gatewayHost = "127.0.0.1";
+        gatewayPort = 18791;
         gatewayTls = false;
         gatewayTokenFile = config.sops.secrets."openclaw/gateway-token".path;
+        sshTunnel = {
+          enable = true;
+          remoteHost = "alan-framework";
+          remotePort = 18789;
+          localPort = 18791;
+        };
       };
     };
 
