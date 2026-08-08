@@ -156,6 +156,30 @@
       operator = "buddia";
     };
 
+    # OpenClaw is restarted by Home Manager during some system activations.
+    # Run the control-plane rebuild as a system service so it is not a child of
+    # the gateway and can finish after the gateway temporarily disconnects.
+    systemd.services.alanix-rebuild = {
+      description = "Durable NixOS rebuild for alan-framework";
+      restartIfChanged = false;
+      stopIfChanged = false;
+      path = [
+        config.system.build.nixos-rebuild
+        pkgs.coreutils
+        pkgs.git
+        pkgs.nix
+      ];
+      serviceConfig = {
+        Type = "oneshot";
+        WorkingDirectory = "/home/buddia/.nixos";
+        TimeoutStartSec = "infinity";
+      };
+      script = ''
+        exec nixos-rebuild switch \
+          --flake path:/home/buddia/.nixos#alan-framework
+      '';
+    };
+
     alanix.openclaw = {
       user = "buddia";
       gateway = {

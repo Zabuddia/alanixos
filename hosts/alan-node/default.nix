@@ -10,6 +10,13 @@
       ../../modules/services/bitcoin
     ];
 
+    # The nix-bitcoin secure-node preset defaults to doas. Keep this host
+    # consistent with the rest of the cluster so non-interactive SSH and the
+    # shared `nrs` alias can use the same passwordless sudo interface.
+    security.doas.enable = lib.mkForce false;
+    security.sudo.enable = lib.mkForce true;
+    environment.shellAliases.sudo = lib.mkForce "${pkgs.sudo}/bin/sudo";
+
     alanix.system = {
       stateVersion = "25.11";
       timeZone = "America/Chicago";
