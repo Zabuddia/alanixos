@@ -38,6 +38,14 @@
         group = "users";
         mode = "0400";
       };
+
+      "openclaw/gateway-token" = {
+        sopsFile = (import ../../secrets/files.nix).servicePasswords;
+        owner = "buddia";
+        group = "users";
+        mode = "0400";
+      };
+
       "ssh-private-keys/alan-framework-laptop" = {
         sopsFile = (import ../../secrets/files.nix).users;
         owner = "buddia";

@@ -325,6 +325,18 @@
       operator = "buddia";
     };
 
+    alanix.openclaw = {
+      user = "buddia";
+      node = {
+        enable = true;
+        displayName = "alan-framework-laptop";
+        gatewayHost = "alan-framework";
+        gatewayPort = 18790;
+        gatewayTls = false;
+        gatewayTokenFile = config.sops.secrets."openclaw/gateway-token".path;
+      };
+    };
+
     alanix.wifi.networks = [
       { ssid = "OpenWrt"; pskSecret = "wifi-passwords/OpenWrt"; }
     ];

@@ -155,6 +155,88 @@
       operator = "buddia";
     };
 
+    alanix.openclaw = {
+      user = "buddia";
+      gateway = {
+        enable = true;
+        port = 18789;
+        gatewayTokenFile = config.sops.secrets."openclaw/gateway-token".path;
+        workspaceFiles = {
+          "AGENTS.md" = ../../modules/services/openclaw/workspace/AGENTS.md;
+          "CLUSTER.md" = ../../modules/services/openclaw/workspace/CLUSTER.md;
+          "HEARTBEAT.md" = ../../modules/services/openclaw/workspace/HEARTBEAT.md;
+          "IDENTITY.md" = ../../modules/services/openclaw/workspace/IDENTITY.md;
+          "MEMORY.md" = ../../modules/services/openclaw/workspace/MEMORY.md;
+          "POLICY.md" = ../../modules/services/openclaw/workspace/POLICY.md;
+          "TOOLS.md" = ../../modules/services/openclaw/workspace/TOOLS.md;
+          "USER.md" = ../../modules/services/openclaw/workspace/USER.md;
+        };
+        config = {
+          models.providers.local-litellm = {
+            api = "openai-completions";
+            baseUrl = "http://127.0.0.1:4000/v1";
+            apiKey = "local-litellm";
+            authHeader = false;
+            injectNumCtxForOpenAICompat = true;
+            models = [
+              {
+                id = "qwen3.6-35b-a3b";
+                name = "Qwen3.6 35B A3B";
+                api = "openai-completions";
+                reasoning = false;
+                input = [ "text" ];
+                contextWindow = 131072;
+                maxTokens = 8192;
+              }
+            ];
+          };
+          agents = {
+            defaults = {
+              workspace = "/home/buddia/.openclaw/workspaces/ops";
+              skipBootstrap = true;
+              model = {
+                primary = "local-litellm/qwen3.6-35b-a3b";
+                fallbacks = [ ];
+              };
+              models."local-litellm/qwen3.6-35b-a3b" = {
+                alias = "qwen3.6-35b-a3b";
+                streaming = true;
+              };
+            };
+            list = [
+              {
+                id = "ops";
+                default = true;
+                name = "Ops";
+                workspace = "/home/buddia/.openclaw/workspaces/ops";
+                agentDir = "/home/buddia/.openclaw/agents/ops/agent";
+                model = {
+                  primary = "local-litellm/qwen3.6-35b-a3b";
+                  fallbacks = [ ];
+                };
+              }
+            ];
+          };
+          tools = {
+            profile = "minimal";
+            elevated.enabled = false;
+            exec = {
+              mode = "deny";
+              strictInlineEval = true;
+            };
+            fs.workspaceOnly = true;
+          };
+          browser.enabled = false;
+          session.dmScope = "per-channel-peer";
+        };
+        expose.tailscale = {
+          enable = true;
+          port = 18790;
+          tls = false;
+        };
+      };
+    };
+
     alanix.wifi.radio.enable = false;
 
     alanix.syncthing = {
@@ -259,6 +341,40 @@
             "--reasoning"
             "off"
           ];
+        };
+
+        # Coding-agent model. The IQ4_XS quant keeps this 80B-total/3B-active
+        # MoE model small enough to coexist with the other always-on models.
+        coder = {
+          enable = true;
+          runtime = "llama";
+          host = "127.0.0.1";
+          listenHost = "0.0.0.0";
+          port = 8087;
+          alias = "qwen3-coder-next";
+          ctxSize = 65536;
+          batchSize = 2048;
+          ubatchSize = 512;
+          parallel = 1;
+          gpuLayers = "all";
+          flashAttention = "on";
+          threads = null;
+          threadsBatch = null;
+          mmap = true;
+          mlock = false;
+          input = [ "text" ];
+          imageMinTokens = null;
+          imageMaxTokens = null;
+          model = {
+            name = "qwen3-coder-next";
+            path = null;
+            url = null;
+            hfRepo = "unsloth/Qwen3-Coder-Next-GGUF";
+            hfFile = "Qwen3-Coder-Next-UD-IQ4_XS.gguf";
+            mmprojPath = null;
+            mmprojUrl = null;
+          };
+          extraArgs = [ ];
         };
 
         # Small fast text model for OpenClaw subagents, ops, and quick triage.
