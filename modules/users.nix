@@ -83,6 +83,8 @@ let
           description = "Additional groups for the user.";
         };
 
+        passwordlessSudo = lib.mkEnableOption "unrestricted passwordless sudo for ${name}";
+
         hashedPasswordFile = lib.mkOption {
           type = types.nullOr types.path;
           default = null;
@@ -233,6 +235,7 @@ let
   };
 
   enabledAccounts = lib.filterAttrs (_: userCfg: userCfg.enable) cfg.accounts;
+  passwordlessSudoAccounts = lib.filterAttrs (_: userCfg: userCfg.enable && userCfg.passwordlessSudo) cfg.accounts;
   homeEnabledAccounts = lib.filterAttrs (_: userCfg: userCfg.enable && userCfg.home.enable) cfg.accounts;
   antimicroxEnabledAccounts = lib.filterAttrs (_: userCfg: userCfg.enable && userCfg.antimicrox.enable) cfg.accounts;
   requiredKernelModules = lib.unique (
@@ -324,6 +327,20 @@ in
                   allHosts);
           })
         enabledAccounts;
+    })
+
+    (lib.mkIf (passwordlessSudoAccounts != { }) {
+      security.sudo.extraRules = lib.mapAttrsToList
+        (username: _: {
+          users = [ username ];
+          commands = [
+            {
+              command = "ALL";
+              options = [ "NOPASSWD" ];
+            }
+          ];
+        })
+        passwordlessSudoAccounts;
     })
 
     (lib.mkIf (homeEnabledAccounts != { }) {

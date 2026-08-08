@@ -66,6 +66,7 @@
       accounts.buddia = {
         enable = true;
         isNormalUser = true;
+        passwordlessSudo = true;
         extraGroups = [ "wheel" "networkmanager" "input" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 

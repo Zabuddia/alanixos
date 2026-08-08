@@ -62,6 +62,7 @@
       accounts.buddia = {
         enable = true;
         isNormalUser = true;
+        passwordlessSudo = true;
         extraGroups = [ "wheel" "networkmanager" "input" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
@@ -157,9 +158,9 @@
 
     alanix.openclaw = {
       user = "buddia";
-      enablePasswordlessSudo = true;
       gateway = {
         enable = true;
+        enableFullExec = true;
         port = 18789;
         gatewayTokenFile = config.sops.secrets."openclaw/gateway-token".path;
         workspaceFiles = {
@@ -220,17 +221,24 @@
           };
           tools = {
             profile = "minimal";
-            alsoAllow = [ "exec" ];
+            alsoAllow = [ "exec" "cron" ];
             elevated.enabled = false;
             exec = {
               mode = "full";
-              host = "node";
-              node = "alan-framework-laptop";
+              host = "gateway";
               strictInlineEval = false;
               timeoutSec = 60;
             };
             fs.workspaceOnly = true;
           };
+          channels.telegram = {
+            enabled = true;
+            tokenFile = config.sops.secrets."openclaw/telegram-bot-token".path;
+            dmPolicy = "allowlist";
+            allowFrom = [ "7336229793" ];
+            groupPolicy = "disabled";
+          };
+          commands.ownerAllowFrom = [ "telegram:7336229793" ];
           browser.enabled = false;
           session.dmScope = "per-channel-peer";
         };

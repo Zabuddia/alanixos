@@ -109,6 +109,7 @@
       accounts.buddia = {
         enable = true;
         isNormalUser = true;
+        passwordlessSudo = true;
         extraGroups = [ "wheel" "networkmanager" "input" "kvm" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
@@ -323,26 +324,6 @@
       address = "alan-framework-laptop";
       acceptRoutes = true;
       operator = "buddia";
-    };
-
-    alanix.openclaw = {
-      user = "buddia";
-      enablePasswordlessSudo = true;
-      node = {
-        enable = true;
-        displayName = "alan-framework-laptop";
-        gatewayHost = "127.0.0.1";
-        gatewayPort = 18791;
-        gatewayTls = false;
-        gatewayTokenFile = config.sops.secrets."openclaw/gateway-token".path;
-        enableFullExec = true;
-        sshTunnel = {
-          enable = true;
-          remoteHost = "alan-framework";
-          remotePort = 18789;
-          localPort = 18791;
-        };
-      };
     };
 
     alanix.wifi.networks = [
