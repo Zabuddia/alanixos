@@ -219,10 +219,14 @@
           };
           tools = {
             profile = "minimal";
+            alsoAllow = [ "exec" ];
             elevated.enabled = false;
             exec = {
-              mode = "deny";
+              mode = "full";
+              host = "node";
+              node = "alan-framework-laptop";
               strictInlineEval = true;
+              timeoutSec = 60;
             };
             fs.workspaceOnly = true;
           };

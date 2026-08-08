@@ -1,16 +1,13 @@
 # Tools and Paths
 
-No shell execution or privileged tools are authorized yet.
-
-The `alan-framework-laptop` OpenClaw node is connected only as a transport
-endpoint. Enable individual execution capabilities later, after their approval
-boundary has been designed and tested. An unavailable tool is a hard boundary;
-report it instead of substituting a broader mechanism.
+General command execution is available as the regular `buddia` user on the
+`alan-framework-laptop` OpenClaw node, which is the default execution target.
+Commands have the same access to files and processes as that user. Sudo and
+other privilege escalation are not authorized yet.
 
 Expected future surfaces are:
 
-- OpenClaw node execution for explicitly approved remote hosts.
-- Read-only local diagnostics.
+- OpenClaw nodes on additional explicitly approved remote hosts.
 - A root-owned, validated `alanix-agentctl` helper for narrowly scoped
   privileged actions.
 - OpenClaw automations for interpretive scheduled work.

@@ -334,6 +334,7 @@
         gatewayPort = 18791;
         gatewayTls = false;
         gatewayTokenFile = config.sops.secrets."openclaw/gateway-token".path;
+        enableFullExec = true;
         sshTunnel = {
           enable = true;
           remoteHost = "alan-framework";

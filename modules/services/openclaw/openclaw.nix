@@ -17,6 +17,21 @@ let
 
   openclawPackage = pkgs-unstable.openclaw;
   openclawBin = lib.getExe openclawPackage;
+  nodeExecApprovalsFile = jsonFormat.generate "openclaw-node-exec-approvals.json" {
+    version = 1;
+    defaults = {
+      security = "full";
+      ask = "off";
+      askFallback = "deny";
+      autoAllowSkills = false;
+    };
+    agents.ops = {
+      security = "full";
+      ask = "off";
+      askFallback = "deny";
+      autoAllowSkills = false;
+    };
+  };
   servicePath = lib.makeBinPath (
     [
       pkgs.bash
@@ -127,6 +142,9 @@ let
     export PATH=${lib.escapeShellArg servicePath}:$PATH
     export OPENCLAW_GATEWAY_TOKEN="$(${pkgs.coreutils}/bin/tr -d '\r\n' < ${lib.escapeShellArg cfg.node.gatewayTokenFile})"
     ${pkgs.coreutils}/bin/mkdir -p ${lib.escapeShellArg nodeStateDir}
+    ${lib.optionalString cfg.node.enableFullExec ''
+      ${pkgs.coreutils}/bin/install -m 0600 ${nodeExecApprovalsFile} ${lib.escapeShellArg "${nodeStateDir}/exec-approvals.json"}
+    ''}
 
     exec ${openclawBin} node run \
       --host ${lib.escapeShellArg nodeGatewayHost} \
@@ -251,6 +269,8 @@ in
         type = types.listOf types.str;
         default = [ ];
       };
+
+      enableFullExec = lib.mkEnableOption "unrestricted command execution as the OpenClaw user";
 
       sshTunnel = {
         enable = lib.mkEnableOption "an SSH tunnel to a loopback-only OpenClaw gateway";
