@@ -114,6 +114,9 @@ let
       -o ServerAliveInterval=30 \
       -o ServerAliveCountMax=3 \
       -o StrictHostKeyChecking=yes \
+      -o ControlMaster=no \
+      -o ControlPath=none \
+      -o ControlPersist=no \
       -L ${lib.escapeShellArg "127.0.0.1:${toString cfg.node.sshTunnel.localPort}:127.0.0.1:${toString cfg.node.sshTunnel.remotePort}"} \
       ${lib.optionalString (nodeSshExtraOptions != "") "${nodeSshExtraOptions} \
       "}${lib.escapeShellArg nodeSshTarget}
