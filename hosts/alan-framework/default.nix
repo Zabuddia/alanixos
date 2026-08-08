@@ -250,6 +250,7 @@
           tools = {
             profile = "minimal";
             alsoAllow = [ "exec" "cron" "web_search" "web_fetch" ];
+            loopDetection.enabled = true;
             elevated.enabled = false;
             exec = {
               mode = "full";
