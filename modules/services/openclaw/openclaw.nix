@@ -145,6 +145,9 @@ let
     export PATH=${lib.escapeShellArg servicePath}:$PATH
     export OPENCLAW_GATEWAY_TOKEN="$(${pkgs.coreutils}/bin/tr -d '\r\n' < ${lib.escapeShellArg cfg.node.gatewayTokenFile})"
     ${pkgs.coreutils}/bin/mkdir -p ${lib.escapeShellArg nodeStateDir}
+    ${lib.optionalString cfg.node.enableFullExec ''
+      ${pkgs.coreutils}/bin/mkdir -p ${lib.escapeShellArg gatewayWorkspaceDir}
+    ''}
     ${pkgs.coreutils}/bin/install -m 0600 ${nodeConfigFile} ${lib.escapeShellArg "${nodeStateDir}/openclaw.json"}
     ${lib.optionalString cfg.node.enableFullExec ''
       ${pkgs.coreutils}/bin/install -m 0600 ${nodeExecApprovalsFile} ${lib.escapeShellArg "${nodeStateDir}/exec-approvals.json"}
