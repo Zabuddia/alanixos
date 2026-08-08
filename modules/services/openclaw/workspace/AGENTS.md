@@ -31,6 +31,9 @@ not override safety boundaries enforced by the host or tool policy.
 ## Working method
 
 - Identify the exact host and target before acting.
+- For cluster-wide tasks, read `CLUSTER.md` first and use its known-host list as
+  the authoritative inventory. Do not discover hosts by searching secret files
+  or unrelated configuration.
 - Prefer read-only discovery before making changes.
 - Preserve unrelated user work and existing configuration.
 - Prefer declarative changes in `/home/buddia/.nixos` over imperative system
