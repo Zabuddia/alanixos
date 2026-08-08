@@ -112,6 +112,19 @@ let
       "profileImageUrl"
     ];
   };
+
+  declarativeModels = lib.mapAttrsToList (id: model: {
+    inherit id;
+    base_model_id = model.baseModelId;
+    inherit (model) name;
+    params = model.params // lib.optionalAttrs (model.systemPrompt != "") {
+      system = model.systemPrompt;
+    };
+    meta = lib.optionalAttrs (model.description != "") {
+      inherit (model) description;
+    };
+    access_grants = [ ];
+  }) cfg.models;
 in
 {
   options.alanix.openwebui = {
@@ -296,6 +309,43 @@ in
       }));
       default = { };
       description = "Declarative Open WebUI users keyed by a local label; reconciliation matches them by email.";
+    };
+
+    models = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.submodule ({ ... }: {
+        options = {
+          baseModelId = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "Optional upstream model ID. Leave null to override a discovered model with the same ID.";
+          };
+
+          name = lib.mkOption {
+            type = lib.types.str;
+            description = "Display name for the Open WebUI model.";
+          };
+
+          description = lib.mkOption {
+            type = lib.types.str;
+            default = "";
+            description = "Optional user-facing model description.";
+          };
+
+          systemPrompt = lib.mkOption {
+            type = lib.types.lines;
+            default = "";
+            description = "System prompt applied by Open WebUI to this model.";
+          };
+
+          params = lib.mkOption {
+            type = lib.types.attrs;
+            default = { };
+            description = "Additional Open WebUI inference parameters for this model.";
+          };
+        };
+      }));
+      default = { };
+      description = "Declarative Open WebUI workspace models or same-ID overrides of discovered models.";
     };
 
     expose = serviceExposure.mkOptions {
@@ -577,6 +627,7 @@ in
             DESIRED_BYPASS_WEB_SEARCH_WEB_LOADER=${lib.escapeShellArg (builtins.toJSON webSearchCfg.bypassWebLoader)}
             DESIRED_BRAVE_SEARCH_API_KEY="''${BRAVE_SEARCH_API_KEY:-}"
             DESIRED_SEARXNG_QUERY_URL=${lib.escapeShellArg (if effectiveSearxngQueryUrl == null then "" else effectiveSearxngQueryUrl)}
+            DESIRED_MODELS=${lib.escapeShellArg (builtins.toJSON declarativeModels)}
             DEFAULT_DATABASE_URL=${lib.escapeShellArg "sqlite:///${cfg.stateDir}/data/webui.db"}
 
             ensure_runtime_passfile() {
@@ -899,6 +950,15 @@ PY
               api_post_json "/api/v1/retrieval/config/update" "$payload" "$token" >/dev/null
             }
 
+            sync_models() {
+              local token="$1"
+              local payload
+
+              [ "$DESIRED_MODELS" != "[]" ] || return 0
+              payload="$(printf '%s' "$DESIRED_MODELS" | jq -c '{ models: . }')"
+              api_post_json "/api/v1/models/import" "$payload" "$token" >/dev/null
+            }
+
             fetch_users_json() {
               local token="$1"
               api_get "/api/v1/users/all" "$token" | jq -c '.users // .'
@@ -1007,6 +1067,7 @@ PY
             sync_admin_config "$ACTING_TOKEN"
             sync_openai_config "$ACTING_TOKEN"
             sync_web_search_config "$ACTING_TOKEN"
+            sync_models "$ACTING_TOKEN"
 
             ${ensureLines}
 
@@ -1021,6 +1082,7 @@ PY
 
         restartTriggers = [
           (builtins.toJSON sanitizedUsersForRestart)
+          (builtins.toJSON declarativeModels)
         ];
       };
     }
