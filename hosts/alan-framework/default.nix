@@ -225,7 +225,7 @@
               mode = "full";
               host = "node";
               node = "alan-framework-laptop";
-              strictInlineEval = true;
+              strictInlineEval = false;
               timeoutSec = 60;
             };
             fs.workspaceOnly = true;
