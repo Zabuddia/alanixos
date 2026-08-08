@@ -114,7 +114,7 @@
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
         sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExSf9y7yGFQySwkx42MXCgZ6EkgP2PebAJb4++5X0SB fife.alan@protonmail.com";
-        authorizedHosts = [ "alan-big-nixos" "alan-framework" "alan-laptop-nixos" "alan-node" "alan-optiplex" "alan-tv" "fife-tv" "randy-big-nixos" ];
+        authorizedHosts = [ "alan-big-nixos" "alan-framework" "alan-node" "alan-optiplex" "alan-tv" "fife-tv" "randy-big-nixos" ];
 
         home = {
           enable = true;
@@ -180,7 +180,7 @@
             "github-work" = {
               HostName = "github.com";
               User = "git";
-              IdentityFile = config.sops.secrets."ssh-private-keys/alan-laptop-nixos-work".path;
+              IdentityFile = config.sops.secrets."ssh-private-keys/github-work".path;
               IdentitiesOnly = true;
               ControlPath = "none";
             };

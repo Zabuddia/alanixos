@@ -142,7 +142,7 @@ module = { config, pkgs, ... }: let
 
   tailscale = {
     enable = true;
-    address = "alan-laptop-nixos";
+    address = "example-host";
     acceptRoutes = true;
     loginServer = "https://headscale.fifefin.com";
   };

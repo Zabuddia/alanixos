@@ -75,7 +75,6 @@
           "alan-big-nixos"
           "alan-framework"
           "alan-framework-laptop"
-          "alan-laptop-nixos"
           "alan-node"
           "alan-optiplex"
           "alan-tv"

@@ -46,7 +46,7 @@
         mode = "0600";
       };
 
-      "ssh-private-keys/alan-laptop-nixos-work" = {
+      "ssh-private-keys/github-work" = {
         sopsFile = (import ../../secrets/files.nix).users;
         owner = "buddia";
         group = "users";
