@@ -1268,7 +1268,16 @@ in
       webSearch = {
         enable = true;
         engine = "searxng";
+        resultCount = 6;
+        bypassWebLoader = true;
         searxngQueryUrl = "http://127.0.0.1:8888/search?q=<query>&format=json";
+      };
+
+      models.qwen3-coder-next = {
+        name = "Qwen3 Coder Next";
+        description = "Local coding and operations assistant with grounded web research behavior.";
+        systemPrompt =
+          builtins.readFile ../modules/services/openwebui/prompts/qwen3-coder-next.md;
       };
 
       users.buddia = {

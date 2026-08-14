@@ -156,6 +156,30 @@
       operator = "buddia";
     };
 
+    # OpenClaw is restarted by Home Manager during some system activations.
+    # Run the control-plane rebuild as a system service so it is not a child of
+    # the gateway and can finish after the gateway temporarily disconnects.
+    systemd.services.alanix-rebuild = {
+      description = "Durable NixOS rebuild for alan-framework";
+      restartIfChanged = false;
+      stopIfChanged = false;
+      path = [
+        config.system.build.nixos-rebuild
+        pkgs.coreutils
+        pkgs.git
+        pkgs.nix
+      ];
+      serviceConfig = {
+        Type = "oneshot";
+        WorkingDirectory = "/home/buddia/.nixos";
+        TimeoutStartSec = "infinity";
+      };
+      script = ''
+        exec nixos-rebuild switch \
+          --flake path:/home/buddia/.nixos#alan-framework
+      '';
+    };
+
     alanix.openclaw = {
       user = "buddia";
       gateway = {
@@ -164,7 +188,11 @@
         port = 18789;
         gatewayTokenFile = config.sops.secrets."openclaw/gateway-token".path;
         workspaceFiles = {
-          "AGENTS.md" = ../../modules/services/openclaw/workspace/AGENTS.md;
+          "AGENTS.md" = pkgs.writeText "openclaw-agents.md" (
+            builtins.readFile ../../modules/services/openclaw/workspace/AGENTS.md
+            + "\n\n"
+            + builtins.readFile ../../modules/services/openclaw/workspace/CLUSTER.md
+          );
           "CLUSTER.md" = ../../modules/services/openclaw/workspace/CLUSTER.md;
           "HEARTBEAT.md" = ../../modules/services/openclaw/workspace/HEARTBEAT.md;
           "IDENTITY.md" = ../../modules/services/openclaw/workspace/IDENTITY.md;
@@ -182,12 +210,12 @@
             injectNumCtxForOpenAICompat = true;
             models = [
               {
-                id = "qwen3.6-35b-a3b";
-                name = "Qwen3.6 35B A3B";
+                id = "qwen3-coder-next";
+                name = "Qwen3 Coder Next";
                 api = "openai-completions";
                 reasoning = false;
                 input = [ "text" ];
-                contextWindow = 131072;
+                contextWindow = 65536;
                 maxTokens = 8192;
               }
             ];
@@ -197,11 +225,11 @@
               workspace = "/home/buddia/.openclaw/workspaces/ops";
               skipBootstrap = true;
               model = {
-                primary = "local-litellm/qwen3.6-35b-a3b";
+                primary = "local-litellm/qwen3-coder-next";
                 fallbacks = [ ];
               };
-              models."local-litellm/qwen3.6-35b-a3b" = {
-                alias = "qwen3.6-35b-a3b";
+              models."local-litellm/qwen3-coder-next" = {
+                alias = "qwen3-coder-next";
                 streaming = true;
               };
             };
@@ -213,7 +241,7 @@
                 workspace = "/home/buddia/.openclaw/workspaces/ops";
                 agentDir = "/home/buddia/.openclaw/agents/ops/agent";
                 model = {
-                  primary = "local-litellm/qwen3.6-35b-a3b";
+                  primary = "local-litellm/qwen3-coder-next";
                   fallbacks = [ ];
                 };
               }
@@ -221,7 +249,8 @@
           };
           tools = {
             profile = "minimal";
-            alsoAllow = [ "exec" "cron" ];
+            alsoAllow = [ "exec" "cron" "web_search" "web_fetch" ];
+            loopDetection.enabled = true;
             elevated.enabled = false;
             exec = {
               mode = "full";
@@ -230,6 +259,25 @@
               timeoutSec = 60;
             };
             fs.workspaceOnly = true;
+            web = {
+              search = {
+                enabled = true;
+                provider = "searxng";
+              };
+              fetch.enabled = true;
+            };
+          };
+          plugins.load.paths = [
+            "${pkgs.runCommand "openclaw-searxng-plugin-${pkgs-unstable.openclaw.version}" { } ''
+              cp -R ${pkgs-unstable.openclaw}/lib/openclaw/extensions/searxng "$out"
+            ''}"
+          ];
+          plugins.entries.searxng = {
+            enabled = true;
+            config.webSearch = {
+              baseUrl = "http://alan-big-nixos:18888";
+              language = "en";
+            };
           };
           channels.telegram = {
             enabled = true;
@@ -313,9 +361,9 @@
         port = 4000;
       };
       instances = {
-        # Primary foreground text model for OpenClaw main chat and IDE clients.
+        # Retained in the model cache for optional future use, but not loaded.
         chat = {
-          enable = true;
+          enable = false;
           runtime = "llama";
           host = "127.0.0.1";
           listenHost = "0.0.0.0";
@@ -385,9 +433,9 @@
           extraArgs = [ ];
         };
 
-        # Small fast text model for OpenClaw subagents, ops, and quick triage.
+        # Retained in the model cache for optional future use, but not loaded.
         fast = {
-          enable = true;
+          enable = false;
           runtime = "llama";
           host = "127.0.0.1";
           listenHost = "0.0.0.0";
@@ -421,9 +469,9 @@
           ];
         };
 
-        # Vision model used for image understanding.
+        # Retained in the model cache for optional future use, but not loaded.
         vision = {
-          enable = true;
+          enable = false;
           runtime = "llama";
           host = "127.0.0.1";
           listenHost = "0.0.0.0";
@@ -457,9 +505,9 @@
           extraArgs = [ ];
         };
 
-        # Embeddings model used for OpenClaw memory search.
+        # Retained in the model cache for optional future use, but not loaded.
         embeddings = {
-          enable = true;
+          enable = false;
           runtime = "llama";
           host = "127.0.0.1";
           listenHost = "0.0.0.0";
@@ -490,9 +538,9 @@
           extraArgs = [ "--embeddings" ];
         };
 
-        # Speech-to-text model exposed through LiteLLM's transcription endpoint.
+        # Retained in the model cache for optional future use, but not loaded.
         transcribe = {
-          enable = true;
+          enable = false;
           runtime = "whisper";
           host = "127.0.0.1";
           listenHost = "0.0.0.0";
