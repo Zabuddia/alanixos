@@ -177,7 +177,7 @@
       deviceId = "2BGWQTB-75JJCIW-OEWFP4L-Y2BTROG-IYJ2ESY-IAQ5CIO-QGOXUYW-GBM5HA4";
       bulkStorage = {
         enable = true;
-        device = "/dev/disk/by-id/ata-ST4000DM004-2U9104_ZFN5S7NP-part1";
+        device = "/dev/disk/by-id/ata-ST20000NT001-3MB101_ZYE0MV10-part1";
         paths = [ "media" ];
         mediaServices = [
           "jellyfin"
