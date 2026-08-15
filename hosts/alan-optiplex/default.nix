@@ -98,6 +98,7 @@
             vlc
             vorbis-tools
             whipper
+            marktext
           ];
           unstablePackages = with pkgs-unstable; [
             yt-dlp
