@@ -369,6 +369,32 @@
       output = "HDMI-A-1";
     };
 
+    systemd.user.services.alanix-hdmi-audio = {
+      description = "Restore HDMI audio when the TV reconnects";
+      wantedBy = [ "graphical-session.target" ];
+      partOf = [ "graphical-session.target" ];
+      after = [ "graphical-session.target" ];
+      path = [ pkgs.jq pkgs.pulseaudio pkgs.sway ];
+      script = ''
+        restore_audio() {
+          sleep 1
+          swaymsg -r -t get_outputs | jq -e '.[] | select(.name == "HDMI-A-1" and .active)' >/dev/null || return
+          pactl set-card-profile alsa_card.pci-0000_06_00.1 output:hdmi-stereo || return
+          pactl set-default-sink alsa_output.pci-0000_06_00.1.hdmi-stereo
+          pactl set-sink-mute alsa_output.pci-0000_06_00.1.hdmi-stereo 0
+          pactl list short sink-inputs | while read -r input _; do
+            pactl move-sink-input "$input" alsa_output.pci-0000_06_00.1.hdmi-stereo
+          done
+        }
+
+        restore_audio
+        swaymsg -m -t subscribe '["output"]' | while read -r _; do
+          restore_audio
+        done
+      '';
+      serviceConfig.Restart = "always";
+    };
+
     alanix.sunshine = {
       enable = true;
       autoStart = true;
