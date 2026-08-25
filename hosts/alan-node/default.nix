@@ -15,7 +15,10 @@
     # shared `nrs` alias can use the same passwordless sudo interface.
     security.doas.enable = lib.mkForce false;
     security.sudo.enable = lib.mkForce true;
-    environment.shellAliases.sudo = lib.mkForce "${pkgs.sudo}/bin/sudo";
+    # Use the root-owned setuid wrapper created by NixOS. The sudo binary in
+    # the Nix store is intentionally not setuid and cannot work when invoked
+    # directly.
+    environment.shellAliases.sudo = lib.mkForce "/run/wrappers/bin/sudo";
 
     alanix.system = {
       stateVersion = "25.11";
