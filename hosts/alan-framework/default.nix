@@ -188,7 +188,11 @@
         port = 18789;
         gatewayTokenFile = config.sops.secrets."openclaw/gateway-token".path;
         workspaceFiles = {
-          "AGENTS.md" = ../../modules/services/openclaw/workspace/AGENTS.md;
+          "AGENTS.md" = pkgs.writeText "openclaw-agents.md" (
+            builtins.readFile ../../modules/services/openclaw/workspace/AGENTS.md
+            + "\n\n"
+            + builtins.readFile ../../modules/services/openclaw/workspace/CLUSTER.md
+          );
           "CLUSTER.md" = ../../modules/services/openclaw/workspace/CLUSTER.md;
           "HEARTBEAT.md" = ../../modules/services/openclaw/workspace/HEARTBEAT.md;
           "IDENTITY.md" = ../../modules/services/openclaw/workspace/IDENTITY.md;
@@ -246,6 +250,7 @@
           tools = {
             profile = "minimal";
             alsoAllow = [ "exec" "cron" "web_search" "web_fetch" ];
+            loopDetection.enabled = true;
             elevated.enabled = false;
             exec = {
               mode = "full";
