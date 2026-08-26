@@ -9,6 +9,7 @@
     ./grocy
     ./headscale
     ./headplane
+    ./home-assistant
     ./homebox
     ./icecast
     ./immich

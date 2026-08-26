@@ -62,6 +62,7 @@
           "alan-big-nixos"
           "alan-framework"
           "alan-framework-laptop"
+          "alan-home"
           "alan-node"
           "alan-optiplex"
           "fife-tv"
