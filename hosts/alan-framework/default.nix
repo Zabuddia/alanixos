@@ -210,13 +210,13 @@
             injectNumCtxForOpenAICompat = true;
             models = [
               {
-                id = "qwen3-coder-next";
-                name = "Qwen3 Coder Next";
+                id = "qwen3.8-27b";
+                name = "Qwen3.8 27B";
                 api = "openai-completions";
-                reasoning = false;
-                input = [ "text" ];
-                contextWindow = 65536;
-                maxTokens = 8192;
+                reasoning = true;
+                input = [ "text" "image" ];
+                contextWindow = 131072;
+                maxTokens = 32768;
               }
             ];
           };
@@ -225,11 +225,11 @@
               workspace = "/home/buddia/.openclaw/workspaces/ops";
               skipBootstrap = true;
               model = {
-                primary = "local-litellm/qwen3-coder-next";
+                primary = "local-litellm/qwen3.8-27b";
                 fallbacks = [ ];
               };
-              models."local-litellm/qwen3-coder-next" = {
-                alias = "qwen3-coder-next";
+              models."local-litellm/qwen3.8-27b" = {
+                alias = "qwen3.8-27b";
                 streaming = true;
               };
             };
@@ -241,7 +241,7 @@
                 workspace = "/home/buddia/.openclaw/workspaces/ops";
                 agentDir = "/home/buddia/.openclaw/agents/ops/agent";
                 model = {
-                  primary = "local-litellm/qwen3-coder-next";
+                  primary = "local-litellm/qwen3.8-27b";
                   fallbacks = [ ];
                 };
               }
@@ -399,10 +399,80 @@
           ];
         };
 
-        # Coding-agent model. The IQ4_XS quant keeps this 80B-total/3B-active
-        # MoE model small enough to coexist with the other always-on models.
-        coder = {
+        # Sole active OpenClaw model. Its matching projector enables native
+        # image input, while the MTP sidecar provides four-token drafting.
+        qwen38 = {
           enable = true;
+          runtime = "llama";
+          host = "127.0.0.1";
+          listenHost = "0.0.0.0";
+          port = 8086;
+          alias = "qwen3.8-27b";
+          ctxSize = 131072;
+          batchSize = 2048;
+          ubatchSize = 512;
+          parallel = 1;
+          gpuLayers = "all";
+          flashAttention = "on";
+          threads = null;
+          threadsBatch = null;
+          mmap = true;
+          mlock = false;
+          input = [
+            "text"
+            "image"
+          ];
+          imageMinTokens = null;
+          imageMaxTokens = null;
+          model = {
+            name = "qwen3.8-27b";
+            path = null;
+            url = null;
+            hfRepo = "unsloth/Qwen3.8-27B-GGUF";
+            hfFile = "Qwen3.8-27B-UD-Q5_K_XL.gguf";
+            mmprojPath = null;
+            mmprojUrl = "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/mmproj-F16.gguf";
+          };
+          extraArgs = [
+            "--fit"
+            "off"
+            "--cache-type-k"
+            "q8_0"
+            "--cache-type-v"
+            "q8_0"
+            "--spec-type"
+            "draft-mtp"
+            "--spec-draft-hf"
+            "ggml-org/Qwen3.8-27B-GGUF:Q4_0"
+            "--spec-draft-ngl"
+            "all"
+            "--spec-draft-type-k"
+            "q8_0"
+            "--spec-draft-type-v"
+            "q8_0"
+            "--spec-draft-n-max"
+            "4"
+            "--reasoning"
+            "on"
+            "--temp"
+            "1.0"
+            "--top-p"
+            "0.95"
+            "--top-k"
+            "20"
+            "--min-p"
+            "0.0"
+            "--presence-penalty"
+            "0.0"
+            "--repeat-penalty"
+            "1.0"
+          ];
+        };
+
+        # Retained in the model cache for optional future use, but not loaded.
+        # The IQ4_XS quant keeps this 80B-total/3B-active MoE model compact.
+        coder = {
+          enable = false;
           runtime = "llama";
           host = "127.0.0.1";
           listenHost = "0.0.0.0";
