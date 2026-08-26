@@ -3,7 +3,7 @@
 {
   system = "x86_64-linux";
 
-  module = { config, pkgs, ... }:
+  module = { config, lib, pkgs, ... }:
   let
     lidBacklight = pkgs.writeShellScript "alan-home-lid-backlight" ''
       set -eu
@@ -232,26 +232,33 @@
 
     alanix.wifi = {
       radio.enable = true;
-      networks = [
-        {
-          ssid = "OpenWrt";
-          pskSecret = "wifi-passwords/OpenWrt";
-        }
-      ];
+      networks = [ ];
     };
-    networking.networkmanager.ensureProfiles.profiles.OpenWrt.wifi.band = "bg";
-    networking.networkmanager.wifi.powersave = false;
-    networking.networkmanager.settings = {
-      "device-disable-wifi-scan-rand-mac-address" = {
-        match-device = "driver:wl";
-        "wifi.scan-rand-mac-address" = "no";
-      };
-      "connection-disable-wifi-scan-rand-mac-address" = {
-        match-device = "driver:wl";
-        "wifi.cloned-mac-address" = "preserve";
-        "ethernet.cloned-mac-address" = "preserve";
+    networking = {
+      interfaces.wlp3s0.useDHCP = true;
+      networkmanager.unmanaged = [ "interface-name:wlp3s0" ];
+      wireless = {
+        enable = true;
+        interfaces = [ "wlp3s0" ];
+        autoDetectInterfaces = false;
+        dbusControlled = lib.mkForce false;
+        driver = "wext";
+        scanOnLowSignal = false;
+        secretsFile = config.sops.templates."alan-home-wpa-supplicant-secrets".path;
+        networks.OpenWrt.pskRaw = "ext:openwrt_psk";
       };
     };
+
+    sops.templates."alan-home-wpa-supplicant-secrets" = {
+      content = "openwrt_psk=${config.sops.placeholder."wifi-passwords/OpenWrt"}\n";
+      owner = "wpa_supplicant";
+      group = "wpa_supplicant";
+      mode = "0400";
+    };
+
+    systemd.services.wpa_supplicant-wlp3s0.serviceConfig.BindReadOnlyPaths = [
+      config.sops.templates."alan-home-wpa-supplicant-secrets".path
+    ];
 
     # Advertise and discover local smart-home services over mDNS.
     services.avahi = {
