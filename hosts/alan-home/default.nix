@@ -272,7 +272,22 @@
       name = "Home";
       unitSystem = "us_customary";
       openFirewall = true;
-      config = { };
+      extraComponents = [
+        "default_config"
+        "esphome"
+        "kodi"
+        "met"
+      ];
+      config = {
+        notify = [
+          {
+            platform = "kodi";
+            name = "alan_tv";
+            host = "alan-tv";
+            port = 8080;
+          }
+        ];
+      };
     };
 
     alanix.remote-desktop = {
