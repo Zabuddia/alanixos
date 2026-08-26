@@ -155,7 +155,7 @@ let
 
     percentage="$(
       printf '%s\n' "$batteryInfo" \
-        | ${pkgs.gnused}/bin/sed -n 's/^ *percentage: *\([0-9]\+\)%$/\1/p' \
+        | ${pkgs.gnused}/bin/sed -n 's/^ *percentage: *\([0-9]\+\)\(\.[0-9]\+\)\?%$/\1/p' \
         | ${pkgs.coreutils}/bin/head -n1
     )"
     state="$(

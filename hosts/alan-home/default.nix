@@ -211,6 +211,17 @@
       ];
     };
     networking.networkmanager.wifi.powersave = false;
+    networking.networkmanager.settings = {
+      "device-disable-wifi-scan-rand-mac-address" = {
+        match-device = "driver:wl";
+        "wifi.scan-rand-mac-address" = "no";
+      };
+      "connection-disable-wifi-scan-rand-mac-address" = {
+        match-device = "driver:wl";
+        "wifi.cloned-mac-address" = "preserve";
+        "ethernet.cloned-mac-address" = "preserve";
+      };
+    };
 
     # Advertise and discover local smart-home services over mDNS.
     services.avahi = {
