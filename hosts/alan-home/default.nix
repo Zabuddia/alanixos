@@ -121,6 +121,8 @@
           enable = true;
           profile = "sway/default";
         };
+        chromium.enable = true;
+        vscode.enable = true;
       };
     };
 
