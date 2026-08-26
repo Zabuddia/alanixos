@@ -3,7 +3,35 @@
 {
   system = "x86_64-linux";
 
-  module = { config, pkgs, ... }: {
+  module = { config, pkgs, ... }:
+  let
+    lidBacklight = pkgs.writeShellScript "alan-home-lid-backlight" ''
+      set -eu
+
+      stateFile="''${XDG_RUNTIME_DIR:-/run/user/$(${pkgs.coreutils}/bin/id -u)}/alan-home-lid-backlight"
+
+      case "$1" in
+        close)
+          current="$(${pkgs.brightnessctl}/bin/brightnessctl -d acpi_video0 get)"
+          if [ "$current" -gt 0 ]; then
+            printf '%s\n' "$current" > "$stateFile"
+          fi
+          exec ${pkgs.brightnessctl}/bin/brightnessctl -q -n 0 -d acpi_video0 set 0
+          ;;
+        open)
+          if [ -r "$stateFile" ]; then
+            IFS= read -r previous < "$stateFile"
+            ${pkgs.coreutils}/bin/rm -f "$stateFile"
+            exec ${pkgs.brightnessctl}/bin/brightnessctl -q -n 0 -d acpi_video0 set "$previous"
+          fi
+          ;;
+        *)
+          exit 2
+          ;;
+      esac
+    '';
+  in
+  {
     imports = [
       ./hardware-configuration.nix
       ./secrets.nix
@@ -81,7 +109,7 @@
         enable = true;
         isNormalUser = true;
         passwordlessSudo = true;
-        extraGroups = [ "wheel" "networkmanager" "input" ];
+        extraGroups = [ "wheel" "networkmanager" "input" "video" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
         sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBfgSBeGut2uhEHxAXd0bxErTV0pPoJ9Z2t5/c/+08fy fife.alan@protonmail.com";
         authorizedHosts = [
@@ -134,9 +162,10 @@
           enable = true;
           user = "buddia";
         };
-        createHeadlessOutput = true;
+        createHeadlessOutput = false;
         outputRules = [
-          "output HEADLESS-1 resolution 1920x1080"
+          "bindswitch --reload lid:on exec ${lidBacklight} close"
+          "bindswitch --reload lid:off exec ${lidBacklight} open"
         ];
         idle = {
           lockSeconds = null;
@@ -210,6 +239,7 @@
         }
       ];
     };
+    networking.networkmanager.ensureProfiles.profiles.OpenWrt.wifi.band = "bg";
     networking.networkmanager.wifi.powersave = false;
     networking.networkmanager.settings = {
       "device-disable-wifi-scan-rand-mac-address" = {
@@ -242,7 +272,7 @@
       enable = true;
       autoStart = true;
       port = 5900;
-      output = "HEADLESS-1";
+      output = "eDP-1";
     };
   };
 }
