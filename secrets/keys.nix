@@ -41,13 +41,18 @@
       recipient = "age1jx5wr5fq5yxgdqn9lhcgsa0y8w5fezdvu6mjzwjqxdee7lw654kshz0e9z";
       description = "Root-only runtime key stored at /var/lib/sops-nix/key.txt.";
     };
+
+    alan-home = {
+      recipient = "age17c8t7hl3zgtkdsmtg8yuzejy3nzy6eajzrjjtc2luyhp5zr8duzqn2pwd5";
+      description = "Root-only runtime key stored at /var/lib/sops-nix/key.txt.";
+    };
   };
 
   creationRules = [
     {
       pathRegex = "^secrets/.*\\.ya?ml$";
       editors = [ "alan-framework-laptop" ];
-      hosts = [ "randy-big-nixos" "alan-big-nixos" "alan-framework" "alan-node" "alan-optiplex" "alan-tv" "fife-tv" ];
+      hosts = [ "randy-big-nixos" "alan-big-nixos" "alan-framework" "alan-node" "alan-optiplex" "alan-tv" "fife-tv" "alan-home" ];
     }
   ];
 }
