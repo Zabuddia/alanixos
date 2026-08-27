@@ -18,6 +18,7 @@ let
     ./users/librewolf.nix
     ./users/makemkv.nix
     ./users/melonds.nix
+    ./users/mqtt-launcher.nix
     ./users/nextcloud-client.nix
     ./users/retroarch.nix
     ./users/ryubing.nix

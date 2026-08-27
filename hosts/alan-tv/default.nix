@@ -221,6 +221,57 @@
             requireAuthentication = false;
           };
         };
+        mqttLauncher = {
+          enable = true;
+          broker = "alan-home";
+          topicPrefix = "alan-tv";
+          deviceId = "alan_tv";
+          deviceName = "alan-tv";
+          apps = {
+            kodi = {
+              label = "Kodi";
+              icon = "mdi:kodi";
+              command = config.alanix.users.accounts.buddia.antimicrox.openKodi.command;
+              processNames = config.alanix.users.accounts.buddia.antimicrox.openKodi.processNames;
+            };
+            dolphin = {
+              label = "Dolphin";
+              icon = "mdi:dolphin";
+              command = config.alanix.users.accounts.buddia.antimicrox.openDolphin.command;
+              processNames = config.alanix.users.accounts.buddia.antimicrox.openDolphin.processNames;
+            };
+            eden = {
+              label = "Eden";
+              icon = "mdi:nintendo-switch";
+              command = config.alanix.users.accounts.buddia.antimicrox.openEden.command;
+              processNames = config.alanix.users.accounts.buddia.antimicrox.openEden.processNames;
+            };
+            ryubing = {
+              label = "Ryubing";
+              icon = "mdi:nintendo-switch";
+              command = config.alanix.users.accounts.buddia.antimicrox.openRyubing.command;
+              processNames = config.alanix.users.accounts.buddia.antimicrox.openRyubing.processNames;
+            };
+            retroarch = {
+              label = "RetroArch";
+              icon = "mdi:controller-classic";
+              command = config.alanix.users.accounts.buddia.antimicrox.openRetroarch.command;
+              processNames = config.alanix.users.accounts.buddia.antimicrox.openRetroarch.processNames;
+            };
+            steam = {
+              label = "Steam";
+              icon = "mdi:steam";
+              command = config.alanix.users.accounts.buddia.antimicrox.openSteam.command;
+              processNames = config.alanix.users.accounts.buddia.antimicrox.openSteam.processNames;
+            };
+            heroic = {
+              label = "Heroic";
+              icon = "mdi:gamepad-variant";
+              command = config.alanix.users.accounts.buddia.antimicrox.openHeroic.command;
+              processNames = config.alanix.users.accounts.buddia.antimicrox.openHeroic.processNames;
+            };
+          };
+        };
         dolphin = {
           enable = true;
           gameDirs = [

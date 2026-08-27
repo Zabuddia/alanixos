@@ -277,9 +277,22 @@
         "esphome"
         "kodi"
         "met"
+        "mqtt"
       ];
       config = { };
     };
+
+    services.mosquitto = {
+      enable = true;
+      listeners = [
+        {
+          port = 1883;
+          settings.allow_anonymous = true;
+        }
+      ];
+    };
+
+    networking.firewall.interfaces.${config.services.tailscale.interfaceName}.allowedTCPPorts = [ 1883 ];
 
     alanix.remote-desktop = {
       enable = true;
