@@ -277,6 +277,7 @@
         "esphome"
         "google_translate"
         "kodi"
+        "jellyfin"
         "met"
         "mqtt"
       ];
