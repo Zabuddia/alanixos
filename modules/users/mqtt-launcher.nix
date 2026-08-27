@@ -171,7 +171,13 @@ let
       | ${pkgs.jq}/bin/jq -c --argjson options "$application_options" '.options = $options'
     )"
 
+    status_heartbeat_pid=""
+
     cleanup() {
+      if [ -n "$status_heartbeat_pid" ]; then
+        kill "$status_heartbeat_pid" 2>/dev/null || true
+        wait "$status_heartbeat_pid" 2>/dev/null || true
+      fi
       publish_retained "${cfg.topicPrefix}/status" offline || true
       ${pkgs.coreutils}/bin/rm -f -- "$desktop_catalog"
     }
@@ -186,6 +192,16 @@ let
       ${lib.escapeShellArg closeFocusedPayload}
     publish_retained ${lib.escapeShellArg "${cfg.topicPrefix}/state/application"} ${lib.escapeShellArg applicationIdle}
     publish_retained "${cfg.topicPrefix}/status" online
+
+    # mosquitto_sub reconnects automatically, but its retained last will marks
+    # the launcher offline whenever the broker or network connection drops. It
+    # has no reconnect hook with which to publish a new birth message, so keep
+    # the retained availability fresh. If this process stops, the heartbeat
+    # stops too and the subscriber's last will continues to report it offline.
+    while ${pkgs.coreutils}/bin/sleep 30; do
+      publish_retained "${cfg.topicPrefix}/status" online || true
+    done &
+    status_heartbeat_pid=$!
 
     launch_registered() {
       case "$1" in

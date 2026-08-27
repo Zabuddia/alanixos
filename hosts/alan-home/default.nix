@@ -3,7 +3,7 @@
 {
   system = "x86_64-linux";
 
-  module = { config, lib, pkgs, ... }:
+  module = { config, lib, pkgs, pkgs-unstable, inputs, ... }:
   let
     lidBacklight = pkgs.writeShellScript "alan-home-lid-backlight" ''
       set -eu
@@ -33,9 +33,12 @@
   in
   {
     imports = [
+      (inputs.nixpkgs-unstable + "/nixos/modules/services/home-automation/home-assistant.nix")
       ./hardware-configuration.nix
       ./secrets.nix
     ];
+
+    disabledModules = [ "services/home-automation/home-assistant.nix" ];
 
     # The 2013 MacBook Air's Broadcom adapter needs the proprietary wl driver.
     # broadcom_sta is intentionally allowlisted despite its known security
@@ -269,6 +272,7 @@
 
     alanix.home-assistant = {
       enable = true;
+      package = pkgs-unstable.home-assistant;
       name = "Home";
       unitSystem = "us_customary";
       openFirewall = true;
@@ -280,13 +284,13 @@
         "default_config"
         "esphome"
         "github"
-        "google_translate"
         "holiday"
         "immich"
         "improv_ble"
         "kodi"
         "jellyfin"
         "lichess"
+        "litellm"
         "local_calendar"
         "local_todo"
         "luci"
@@ -305,9 +309,6 @@
         "wake_on_lan"
         "worldclock"
         "wyoming"
-      ];
-      customComponents = [
-        pkgs.home-assistant-custom-components.local_openai
       ];
       config = {
         homeassistant.internal_url = "http://192.168.10.212:8123";

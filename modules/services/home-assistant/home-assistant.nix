@@ -13,15 +13,18 @@ let
       unit_system = cfg.unitSystem;
     };
 
-    http = {
-      server_host = cfg.listenAddress;
-      server_port = cfg.port;
-    };
   };
 in
 {
   options.alanix.home-assistant = {
     enable = lib.mkEnableOption "Home Assistant (Alanix)";
+
+    package = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs.home-assistant;
+      defaultText = lib.literalExpression "pkgs.home-assistant";
+      description = "Home Assistant package to use.";
+    };
 
     name = lib.mkOption {
       type = lib.types.str;
@@ -153,8 +156,8 @@ in
         customLovelaceModules
         extraComponents
         extraPackages
-        openFirewall
         openFirewallForComponents
+        package
         themes
         ;
       config = lib.recursiveUpdate baseConfig cfg.config;
@@ -164,5 +167,7 @@ in
       # configDir.
       configWritable = false;
     };
+
+    networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall [ cfg.port ];
   };
 }
