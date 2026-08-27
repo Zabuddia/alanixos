@@ -280,6 +280,8 @@
         "jellyfin"
         "met"
         "mqtt"
+        "wyoming"
+        "piper"
       ];
       customComponents = [
         pkgs.home-assistant-custom-components.local_openai
