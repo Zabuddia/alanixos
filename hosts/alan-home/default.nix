@@ -350,6 +350,31 @@
               }
             ];
           };
+
+          type_on_alan_tv = {
+            alias = "Type text on alan-tv";
+            description = ''
+              Type text into the application currently focused on the alan-tv
+              media PC. Use this when asked to type, enter, or write text on
+              alan-tv.
+            '';
+            fields.text = {
+              name = "Text";
+              description = "The exact text to type on alan-tv.";
+              required = true;
+              selector.text = { };
+            };
+            sequence = [
+              {
+                action = "mqtt.publish";
+                data = {
+                  topic = "alan-tv/command/type";
+                  payload = ''{{ {"text": text} | to_json }}'';
+                  qos = 1;
+                };
+              }
+            ];
+          };
         };
       };
     };

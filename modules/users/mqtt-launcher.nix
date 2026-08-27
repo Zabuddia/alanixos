@@ -215,6 +215,7 @@ let
       -t ${lib.escapeShellArg "${cfg.topicPrefix}/command/launch"} \
       -t ${lib.escapeShellArg "${cfg.topicPrefix}/command/application"} \
       -t ${lib.escapeShellArg "${cfg.topicPrefix}/command/close"} \
+      -t ${lib.escapeShellArg "${cfg.topicPrefix}/command/type"} \
       -F $'%t\t%p' \
       --will-topic ${lib.escapeShellArg "${cfg.topicPrefix}/status"} \
       --will-payload offline \
@@ -233,6 +234,30 @@ let
             ${lib.escapeShellArg config.appLauncher.closeFocusedCommand}
           else
             publish "${cfg.topicPrefix}/state/error" "unsupported close action: $action"
+          fi
+          continue
+        fi
+
+        if [ "$topic" = ${lib.escapeShellArg "${cfg.topicPrefix}/command/type"} ]; then
+          if ! typed_text="$(
+            printf '%s' "$action" \
+            | ${pkgs.jq}/bin/jq -er '
+                select(type == "object")
+                | .text
+                | select(
+                    type == "string"
+                    and length > 0
+                    and length <= 500
+                    and (test("[\\u0000-\\u001f\\u007f]") | not)
+                  )
+              '
+          )"; then
+            publish "${cfg.topicPrefix}/state/error" "invalid text input"
+            continue
+          fi
+
+          if ! ${pkgs.wtype}/bin/wtype -- "$typed_text"; then
+            publish "${cfg.topicPrefix}/state/error" "could not type text"
           fi
           continue
         fi
