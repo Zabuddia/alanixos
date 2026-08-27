@@ -275,11 +275,54 @@
       extraComponents = [
         "default_config"
         "esphome"
+        "google_translate"
         "kodi"
         "met"
         "mqtt"
       ];
-      config = { };
+      customComponents = [
+        pkgs.home-assistant-custom-components.local_openai
+      ];
+      config = {
+        script = {
+          launch_alan_tv_application = {
+            alias = "Launch an application on alan-tv";
+            description = ''
+              Launch an installed application on the alan-tv media PC. Pass
+              the application's display name, such as Kodi, Dolphin, Steam,
+              Heroic, Eden, Ryubing, or RetroArch.
+            '';
+            fields.application = {
+              name = "Application";
+              description = "Display name of the application to launch.";
+              required = true;
+              selector.text = { };
+            };
+            sequence = [
+              {
+                action = "select.select_option";
+                target.entity_id = "select.alan_tv_application";
+                data.option = "{{ application }}";
+              }
+            ];
+          };
+
+          close_alan_tv_application = {
+            alias = "Close the current application on alan-tv";
+            description = ''
+              Close the application window currently focused on the alan-tv
+              media PC. Use this when asked to close, quit, or exit the current
+              TV application.
+            '';
+            sequence = [
+              {
+                action = "button.press";
+                target.entity_id = "button.alan_tv_close_current_app";
+              }
+            ];
+          };
+        };
+      };
     };
 
     services.mosquitto = {

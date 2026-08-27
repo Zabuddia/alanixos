@@ -73,6 +73,18 @@ let
     inherit device;
   };
 
+  closeFocusedPayload = builtins.toJSON {
+    name = "Close current app";
+    unique_id = "${cfg.deviceId}_close_current_app";
+    command_topic = "${cfg.topicPrefix}/command/close";
+    payload_press = "focused";
+    availability_topic = "${cfg.topicPrefix}/status";
+    payload_available = "online";
+    payload_not_available = "offline";
+    icon = "mdi:close-box";
+    inherit device;
+  };
+
   launchCases = lib.concatStringsSep "\n" (
     lib.mapAttrsToList
       (appName: app: ''
@@ -169,6 +181,9 @@ let
     publish_retained \
       ${lib.escapeShellArg "${cfg.discoveryPrefix}/select/${cfg.deviceId}/application/config"} \
       "$application_select_payload"
+    publish_retained \
+      ${lib.escapeShellArg "${cfg.discoveryPrefix}/button/${cfg.deviceId}/close_current_app/config"} \
+      ${lib.escapeShellArg closeFocusedPayload}
     publish_retained ${lib.escapeShellArg "${cfg.topicPrefix}/state/application"} ${lib.escapeShellArg applicationIdle}
     publish_retained "${cfg.topicPrefix}/status" online
 
@@ -183,6 +198,7 @@ let
       -q 1 \
       -t ${lib.escapeShellArg "${cfg.topicPrefix}/command/launch"} \
       -t ${lib.escapeShellArg "${cfg.topicPrefix}/command/application"} \
+      -t ${lib.escapeShellArg "${cfg.topicPrefix}/command/close"} \
       -F $'%t\t%p' \
       --will-topic ${lib.escapeShellArg "${cfg.topicPrefix}/status"} \
       --will-payload offline \
@@ -192,6 +208,15 @@ let
         if [ "$topic" = ${lib.escapeShellArg "${cfg.topicPrefix}/command/launch"} ]; then
           if ! launch_registered "$action"; then
             publish "${cfg.topicPrefix}/state/error" "unsupported launch action: $action"
+          fi
+          continue
+        fi
+
+        if [ "$topic" = ${lib.escapeShellArg "${cfg.topicPrefix}/command/close"} ]; then
+          if [ "$action" = focused ]; then
+            ${lib.escapeShellArg config.appLauncher.closeFocusedCommand}
+          else
+            publish "${cfg.topicPrefix}/state/error" "unsupported close action: $action"
           fi
           continue
         fi

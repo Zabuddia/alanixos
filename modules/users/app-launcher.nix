@@ -109,6 +109,12 @@ let
 
     exec ${pkgs.gtk3}/bin/gtk-launch "''${desktop_file%.desktop}"
   '';
+
+  closeFocusedCommand = pkgs.writeShellScript "alanix-close-focused-app" ''
+    set -eu
+
+    exec ${pkgs.sway}/bin/swaymsg kill
+  '';
 in
 {
   options.appLauncher = {
@@ -133,12 +139,20 @@ in
       internal = true;
       description = "Safe command for launching an installed desktop application by desktop-file ID.";
     };
+
+    closeFocusedCommand = lib.mkOption {
+      type = lib.types.str;
+      readOnly = true;
+      internal = true;
+      description = "Command that asks Sway to close the currently focused application window.";
+    };
   };
 
   config = {
     appLauncher = {
       inherit launchCommands;
       desktopCommand = toString desktopCommand;
+      closeFocusedCommand = toString closeFocusedCommand;
     };
 
     home.modules = lib.optionals cfg.desktop.enable [ {
