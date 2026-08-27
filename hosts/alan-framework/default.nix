@@ -655,6 +655,29 @@
       };
     };
 
+    alanix.wyoming = {
+      enable = true;
+      openFirewallOnTailscale = true;
+      whisper = {
+        enable = true;
+        listenAddress = "0.0.0.0";
+        port = 10300;
+        sttLibrary = "faster-whisper";
+        model = "large-v3-turbo";
+        language = "en";
+        device = "cpu";
+        computeType = "int8";
+        cpuThreads = 16;
+        beamSize = 1;
+      };
+      piper = {
+        enable = true;
+        listenAddress = "0.0.0.0";
+        port = 10200;
+        voice = "en_US-lessac-medium";
+      };
+    };
+
     alanix.remote-desktop = {
       enable = true;
       autoStart = true;
