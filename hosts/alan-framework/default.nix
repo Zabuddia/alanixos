@@ -623,9 +623,9 @@
           extraArgs = [ "--embeddings" ];
         };
 
-        # Retained in the model cache for optional future use, but not loaded.
+        # Audio transcription model, exposed directly and through LiteLLM.
         transcribe = {
-          enable = false;
+          enable = true;
           runtime = "whisper";
           host = "127.0.0.1";
           listenHost = "0.0.0.0";
