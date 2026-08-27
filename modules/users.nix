@@ -6,6 +6,7 @@ let
   cfg = config.alanix.users;
 
   featureModules = [
+    ./users/app-launcher.nix
     ./users/antimicrox.nix
     ./users/azahar.nix
     ./users/chromium.nix
@@ -13,6 +14,7 @@ let
     ./users/dolphin.nix
     ./users/eden.nix
     ./users/evdevhook2.nix
+    ./users/gaming-apps.nix
     ./users/git.nix
     ./users/kodi.nix
     ./users/librewolf.nix

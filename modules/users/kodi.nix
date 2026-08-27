@@ -403,6 +403,13 @@ in
     }
   ];
 
+  config.appLauncher.apps.kodi = lib.mkIf cfg.enable {
+    label = "Kodi";
+    icon = "mdi:kodi";
+    command = lib.getExe kodiPackage;
+    processNames = [ "kodi" "kodi.bin" ];
+  };
+
   config.home.modules = lib.optionals cfg.enable [
     ({ config, lib, ... }: {
       home.packages = [ kodiPackage ];

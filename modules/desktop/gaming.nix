@@ -1,4 +1,4 @@
-{ config, lib, ... }:
+{ config, lib, pkgs, ... }:
 
 let
   cfg = config.alanix.desktop.gaming;
@@ -27,6 +27,7 @@ in
     };
 
     steam.enable = lib.mkEnableOption "Steam";
+    heroic.enable = lib.mkEnableOption "Heroic Games Launcher";
   };
 
   config = lib.mkIf cfg.enable (lib.mkMerge [
@@ -53,6 +54,10 @@ in
 
     (lib.mkIf cfg.steam.enable {
       programs.steam.enable = true;
+    })
+
+    (lib.mkIf cfg.heroic.enable {
+      environment.systemPackages = [ pkgs.heroic ];
     })
   ]);
 }

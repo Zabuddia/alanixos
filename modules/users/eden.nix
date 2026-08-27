@@ -116,8 +116,12 @@ in
     };
   };
 
-  config.antimicrox.openEden.command =
-    lib.mkIf cfg.enable (lib.mkDefault (lib.getExe package));
+  config.appLauncher.apps.eden = lib.mkIf cfg.enable {
+    label = "Eden";
+    icon = "mdi:nintendo-switch";
+    command = lib.getExe package;
+    processNames = [ "eden" "eden-emu" "Eden" ];
+  };
 
   config.home.modules = lib.optionals cfg.enable [
     ({ config, lib, ... }: {

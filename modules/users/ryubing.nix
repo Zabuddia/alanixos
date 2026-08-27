@@ -155,8 +155,12 @@ in
     };
   };
 
-  config.antimicrox.openRyubing.command =
-    lib.mkIf cfg.enable (lib.mkDefault (lib.getExe cfg.package));
+  config.appLauncher.apps.ryubing = lib.mkIf cfg.enable {
+    label = "Ryubing";
+    icon = "mdi:nintendo-switch";
+    command = lib.getExe cfg.package;
+    processNames = [ "Ryujinx" "ryubing" ];
+  };
 
   config.home.modules = lib.optionals cfg.enable [
     ({ config, lib, ... }: {

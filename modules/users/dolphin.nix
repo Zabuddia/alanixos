@@ -101,6 +101,13 @@ in
     };
   };
 
+  config.appLauncher.apps.dolphin = lib.mkIf cfg.enable {
+    label = "Dolphin";
+    icon = "mdi:dolphin";
+    command = lib.getExe pkgs-unstable.dolphin-emu;
+    processNames = [ "dolphin-emu" ];
+  };
+
   config.home.modules = lib.optionals cfg.enable [
     {
       home.packages = [ pkgs-unstable.dolphin-emu ];

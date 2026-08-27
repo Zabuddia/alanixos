@@ -111,8 +111,12 @@ in
     };
   };
 
-  config.antimicrox.openRetroarch.command =
-    lib.mkIf cfg.enable (lib.mkDefault (lib.getExe cfg.package));
+  config.appLauncher.apps.retroarch = lib.mkIf cfg.enable {
+    label = "RetroArch";
+    icon = "mdi:controller-classic";
+    command = lib.getExe cfg.package;
+    processNames = [ "retroarch" ];
+  };
 
   config.home.modules = lib.optionals cfg.enable [
     ({ lib, ... }: {

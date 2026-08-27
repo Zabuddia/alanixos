@@ -116,10 +116,6 @@ let
   profilePath = "${config.home.directory}/.config/antimicrox/profiles/${cfg.profile.fileName}";
   gameProfilePath = "${config.home.directory}/.config/antimicrox/profiles/game-${cfg.profile.fileName}";
   settingsFilePath = "${config.home.directory}/.config/antimicrox/antimicrox_settings.ini";
-  processNamesOption = default: description: lib.mkOption {
-    type = types.listOf types.str;
-    inherit default description;
-  };
   keyboardProgramPath = "${cfg.onScreenKeyboard.package}/bin/${cfg.onScreenKeyboard.program}";
   keyboardLaunchCommand = lib.escapeShellArgs ([ keyboardProgramPath ] ++ cfg.onScreenKeyboard.extraArgs);
   keyboardToggleCommand = pkgs.writeShellScript "alanix-toggle-${cfg.onScreenKeyboard.program}" ''
@@ -145,59 +141,13 @@ let
 
     exec ${lib.getExe cfg.openScrcpy.package} ${lib.escapeShellArgs cfg.openScrcpy.extraArgs}
   '';
-  processRunningShell = processNames: ''
-    process_names=${lib.escapeShellArg (lib.concatStringsSep "\n" processNames)}
-
-    process_is_running() {
-      while IFS= read -r process_name; do
-        [ -n "$process_name" ] || continue
-        if ${pkgs.procps}/bin/pgrep -x -- "$process_name" >/dev/null 2>&1; then
-          return 0
-        fi
-      done <<< "$process_names"
-      return 1
-    }
-  '';
-  launchOnceCommand = name: command: processNames: pkgs.writeShellScript "alanix-${name}" ''
+  pauseAntimicroxCommand = name: command: pkgs.writeShellScript "alanix-${name}" ''
     set -u
 
-    ${processRunningShell processNames}
-
-    launch_lock_dir="''${XDG_RUNTIME_DIR:-/tmp}/alanix-antimicrox-launch-locks"
-    ${pkgs.coreutils}/bin/mkdir -p "$launch_lock_dir"
-    exec 9>"$launch_lock_dir/${name}.lock"
-
-    if ! ${pkgs.util-linux}/bin/flock -n 9; then
-      exit 0
-    fi
-
-    if process_is_running; then
-      exit 0
-    fi
-
-    exec ${command}
-  '';
-  pauseAntimicroxCommand = name: command: processNames: pkgs.writeShellScript "alanix-${name}" ''
-    set -u
-
-    ${processRunningShell processNames}
-
-    launch_lock_dir="''${XDG_RUNTIME_DIR:-/tmp}/alanix-antimicrox-launch-locks"
     pause_dir="''${XDG_RUNTIME_DIR:-/tmp}/alanix-antimicrox-pause"
     pause_token="$pause_dir/${name}-$$"
 
-    ${pkgs.coreutils}/bin/mkdir -p "$launch_lock_dir"
     ${pkgs.coreutils}/bin/mkdir -p "$pause_dir"
-    exec 9>"$launch_lock_dir/${name}.lock"
-
-    if ! ${pkgs.util-linux}/bin/flock -n 9; then
-      exit 0
-    fi
-
-    if process_is_running; then
-      exit 0
-    fi
-
     printf '%s\n' "$$" > "$pause_token"
 
     was_active=0
@@ -216,50 +166,15 @@ let
     trap 'trap - EXIT; cleanup; exit 130' INT
     trap 'trap - EXIT; cleanup; exit 143' HUP TERM
 
-    ${command} &
-    command_pid=$!
     command_status=0
-    command_done=0
-    app_seen=0
-    attempts=0
-    attempts_after_command=0
-
-    while [ "$attempts" -lt 80 ]; do
-      if process_is_running; then
-        app_seen=1
-        break
-      fi
-
-      if [ "$command_done" -eq 0 ] && ! kill -0 "$command_pid" 2>/dev/null; then
-        wait "$command_pid" || command_status=$?
-        command_done=1
-      fi
-
-      if [ "$command_done" -eq 1 ]; then
-        attempts_after_command=$((attempts_after_command + 1))
-        if [ "$attempts_after_command" -ge 20 ]; then
-          break
-        fi
-      fi
-
-      attempts=$((attempts + 1))
-      ${pkgs.coreutils}/bin/sleep 0.25
-    done
-
-    if [ "$command_done" -eq 0 ]; then
-      wait "$command_pid" || command_status=$?
-    fi
-
-    if [ "$app_seen" -eq 1 ] || process_is_running; then
-      while process_is_running; do
-        ${pkgs.coreutils}/bin/sleep 1
-      done
-    fi
+    ${command} || command_status=$?
 
     trap - EXIT
     cleanup
     exit "$command_status"
   '';
+
+  appLaunchCommand = appId: config.appLauncher.launchCommands.${appId};
 
   keyboardSlot = code: ''
                         <slot>
@@ -458,6 +373,18 @@ let
   usesOpenThunar = usesAction "openThunar";
   usesOpenScrcpy = usesAction "openScrcpy";
 
+  usedAppIds =
+    lib.optionals usesOpenKodi [ cfg.openKodi.appId ]
+    ++ lib.optionals usesOpenDolphin [ cfg.openDolphin.appId ]
+    ++ lib.optionals usesOpenEden [ cfg.openEden.appId ]
+    ++ lib.optionals usesOpenRyubing [ cfg.openRyubing.appId ]
+    ++ lib.optionals usesOpenRetroarch [ cfg.openRetroarch.appId ]
+    ++ lib.optionals usesOpenSteam [ cfg.openSteam.appId ]
+    ++ lib.optionals usesOpenHeroic [ cfg.openHeroic.appId ]
+    ++ lib.optionals usesOpenThunar [ cfg.openThunar.appId ]
+    ++ lib.optionals usesOpenScrcpy [ cfg.openScrcpy.appId ];
+  missingAppIds = lib.filter (appId: !(lib.hasAttr appId config.appLauncher.launchCommands)) usedAppIds;
+
   mappedButtonNames = actions:
     lib.filter (buttonName: lib.hasAttr buttonName actions) controllerButtonOrder;
 
@@ -590,31 +517,31 @@ ${lib.concatStrings (controllerButtons actions)}${lib.concatStrings (controllerT
       "${cfg.onScreenKeyboard.keybinding}" = "exec ${keyboardToggleCommand}";
     }
     // lib.optionalAttrs usesOpenKodi {
-      "${cfg.openKodi.keybinding}" = "exec ${pauseAntimicroxCommand "open-kodi" cfg.openKodi.command cfg.openKodi.processNames}";
+      "${cfg.openKodi.keybinding}" = "exec ${pauseAntimicroxCommand "open-kodi-from-controller" (appLaunchCommand cfg.openKodi.appId)}";
     }
     // lib.optionalAttrs usesOpenDolphin {
-      "${cfg.openDolphin.keybinding}" = "exec ${launchOnceCommand "open-dolphin" cfg.openDolphin.command cfg.openDolphin.processNames}";
+      "${cfg.openDolphin.keybinding}" = "exec ${appLaunchCommand cfg.openDolphin.appId}";
     }
     // lib.optionalAttrs usesOpenEden {
-      "${cfg.openEden.keybinding}" = "exec ${launchOnceCommand "open-eden" cfg.openEden.command cfg.openEden.processNames}";
+      "${cfg.openEden.keybinding}" = "exec ${appLaunchCommand cfg.openEden.appId}";
     }
     // lib.optionalAttrs usesOpenRyubing {
-      "${cfg.openRyubing.keybinding}" = "exec ${launchOnceCommand "open-ryubing" cfg.openRyubing.command cfg.openRyubing.processNames}";
+      "${cfg.openRyubing.keybinding}" = "exec ${appLaunchCommand cfg.openRyubing.appId}";
     }
     // lib.optionalAttrs usesOpenRetroarch {
-      "${cfg.openRetroarch.keybinding}" = "exec ${launchOnceCommand "open-retroarch" cfg.openRetroarch.command cfg.openRetroarch.processNames}";
+      "${cfg.openRetroarch.keybinding}" = "exec ${appLaunchCommand cfg.openRetroarch.appId}";
     }
     // lib.optionalAttrs usesOpenSteam {
-      "${cfg.openSteam.keybinding}" = "exec ${launchOnceCommand "open-steam" cfg.openSteam.command cfg.openSteam.processNames}";
+      "${cfg.openSteam.keybinding}" = "exec ${appLaunchCommand cfg.openSteam.appId}";
     }
     // lib.optionalAttrs usesOpenHeroic {
-      "${cfg.openHeroic.keybinding}" = "exec ${launchOnceCommand "open-heroic" cfg.openHeroic.command cfg.openHeroic.processNames}";
+      "${cfg.openHeroic.keybinding}" = "exec ${appLaunchCommand cfg.openHeroic.appId}";
     }
     // lib.optionalAttrs usesOpenThunar {
-      "${cfg.openThunar.keybinding}" = "exec ${launchOnceCommand "open-thunar" openThunarCommand cfg.openThunar.processNames}";
+      "${cfg.openThunar.keybinding}" = "exec ${appLaunchCommand cfg.openThunar.appId}";
     }
     // lib.optionalAttrs usesOpenScrcpy {
-      "${cfg.openScrcpy.keybinding}" = "exec ${launchOnceCommand "open-scrcpy" scrcpyLaunchCommand cfg.openScrcpy.processNames}";
+      "${cfg.openScrcpy.keybinding}" = "exec ${appLaunchCommand cfg.openScrcpy.appId}";
     }
     // lib.optionalAttrs cfg.workspaceSwitching.enable {
       "${cfg.workspaceSwitching.nextKeybinding}" = "workspace next";
@@ -875,16 +802,10 @@ in
         description = "AntiMicroX key codes to send for the open Kodi shortcut.";
       };
 
-      command = lib.mkOption {
+      appId = lib.mkOption {
         type = types.str;
         default = "kodi";
-        description = "Command run by the Kodi keybinding. AntiMicroX is stopped while this command runs.";
-      };
-
-      processNames = lib.mkOption {
-        type = types.listOf types.str;
-        default = [ "kodi" "kodi.bin" ];
-        description = "Process names that keep AntiMicroX paused after launching Kodi.";
+        description = "Application launcher ID opened by the Kodi controller action.";
       };
     };
 
@@ -901,13 +822,11 @@ in
         description = "AntiMicroX key codes to send for the open Dolphin shortcut.";
       };
 
-      command = lib.mkOption {
+      appId = lib.mkOption {
         type = types.str;
-        default = "dolphin-emu";
-        description = "Command run by the Dolphin keybinding.";
+        default = "dolphin";
+        description = "Application launcher ID opened by the Dolphin controller action.";
       };
-
-      processNames = processNamesOption [ "dolphin-emu" ] "Process names that prevent launching another Dolphin instance.";
     };
 
     openEden = {
@@ -923,13 +842,11 @@ in
         description = "AntiMicroX key codes to send for the open Eden shortcut.";
       };
 
-      command = lib.mkOption {
+      appId = lib.mkOption {
         type = types.str;
-        default = lib.getExe pkgs-unstable.eden;
-        description = "Command run by the Eden keybinding.";
+        default = "eden";
+        description = "Application launcher ID opened by the Eden controller action.";
       };
-
-      processNames = processNamesOption [ "eden" "eden-emu" "Eden" ] "Process names that prevent launching another Eden instance.";
     };
 
     openRyubing = {
@@ -945,13 +862,11 @@ in
         description = "AntiMicroX key codes to send for the open Ryubing shortcut.";
       };
 
-      command = lib.mkOption {
+      appId = lib.mkOption {
         type = types.str;
-        default = lib.getExe pkgs-unstable.ryubing;
-        description = "Command run by the Ryubing keybinding.";
+        default = "ryubing";
+        description = "Application launcher ID opened by the Ryubing controller action.";
       };
-
-      processNames = processNamesOption [ "Ryujinx" "ryubing" ] "Process names that prevent launching another Ryubing instance.";
     };
 
     openRetroarch = {
@@ -967,13 +882,11 @@ in
         description = "AntiMicroX key codes to send for the open RetroArch shortcut.";
       };
 
-      command = lib.mkOption {
+      appId = lib.mkOption {
         type = types.str;
         default = "retroarch";
-        description = "Command run by the RetroArch keybinding.";
+        description = "Application launcher ID opened by the RetroArch controller action.";
       };
-
-      processNames = processNamesOption [ "retroarch" ] "Process names that prevent launching another RetroArch instance.";
     };
 
     openSteam = {
@@ -989,13 +902,11 @@ in
         description = "AntiMicroX key codes to send for the open Steam shortcut.";
       };
 
-      command = lib.mkOption {
+      appId = lib.mkOption {
         type = types.str;
-        default = "steam -gamepadui";
-        description = "Command run by the Steam keybinding.";
+        default = "steam";
+        description = "Application launcher ID opened by the Steam controller action.";
       };
-
-      processNames = processNamesOption [ "steam" "steamwebhelper" ] "Process names that prevent launching another Steam instance.";
     };
 
     openHeroic = {
@@ -1011,13 +922,11 @@ in
         description = "AntiMicroX key codes to send for the open Heroic shortcut.";
       };
 
-      command = lib.mkOption {
+      appId = lib.mkOption {
         type = types.str;
-        default = "heroic --console --fullscreen";
-        description = "Command run by the Heroic keybinding.";
+        default = "heroic";
+        description = "Application launcher ID opened by the Heroic controller action.";
       };
-
-      processNames = processNamesOption [ "heroic" ] "Process names that prevent launching another Heroic instance.";
     };
 
     openThunar = {
@@ -1045,7 +954,11 @@ in
         description = "Optional path Thunar opens to. When null, Thunar uses its default location.";
       };
 
-      processNames = processNamesOption [ "thunar" "Thunar" ] "Process names that prevent launching another Thunar instance.";
+      appId = lib.mkOption {
+        type = types.str;
+        default = "thunar";
+        description = "Application launcher ID opened by the Thunar controller action.";
+      };
     };
 
     openScrcpy = {
@@ -1074,7 +987,11 @@ in
         description = "Extra arguments passed to scrcpy (e.g. [ \"--fullscreen\" ]).";
       };
 
-      processNames = processNamesOption [ "scrcpy" ] "Process names that prevent launching another scrcpy instance.";
+      appId = lib.mkOption {
+        type = types.str;
+        default = "scrcpy";
+        description = "Application launcher ID opened by the scrcpy controller action.";
+      };
     };
 
     workspaceSwitching = {
@@ -1167,6 +1084,20 @@ in
   };
 
   config = {
+    appLauncher.apps.thunar = lib.mkIf usesOpenThunar {
+      label = "Thunar";
+      icon = "mdi:folder";
+      command = openThunarCommand;
+      processNames = [ "thunar" "Thunar" ];
+    };
+
+    appLauncher.apps.scrcpy = lib.mkIf usesOpenScrcpy {
+      label = "Screen mirror";
+      icon = "mdi:cellphone-cast";
+      command = toString scrcpyLaunchCommand;
+      processNames = [ "scrcpy" ];
+    };
+
     _assertions = lib.optionals cfg.enable [
       {
         assertion = swayActive;
@@ -1179,6 +1110,10 @@ in
       {
         assertion = unknownConfiguredButtons == [ ];
         message = "alanix.users.accounts.${name}.antimicrox button actions contain unsupported inputs: ${lib.concatStringsSep ", " unknownConfiguredButtons}.";
+      }
+      {
+        assertion = missingAppIds == [ ];
+        message = "alanix.users.accounts.${name}.antimicrox controller actions reference unregistered appLauncher IDs: ${lib.concatStringsSep ", " missingAppIds}.";
       }
       {
         assertion = (cfg.gameButtonActions == { }) == (cfg.gameButtonActionApps == [ ]);

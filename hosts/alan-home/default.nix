@@ -287,6 +287,7 @@
       listeners = [
         {
           port = 1883;
+          acl = [ "topic readwrite #" ];
           settings.allow_anonymous = true;
         }
       ];
