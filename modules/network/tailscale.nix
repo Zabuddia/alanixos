@@ -28,7 +28,7 @@ let
     else
       "none";
   preferenceFlags =
-    lib.optionals cfg.acceptRoutes [ "--accept-routes=true" ]
+    [ "--accept-routes=${lib.boolToString cfg.acceptRoutes}" ]
     ++ lib.optionals hasAdvertiseRoutes [
       "--advertise-routes=${lib.concatStringsSep "," cfg.advertiseRoutes}"
     ]

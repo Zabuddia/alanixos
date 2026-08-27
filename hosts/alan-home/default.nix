@@ -226,7 +226,7 @@
       enable = true;
       loginServer = "https://headscale.fifefin.com";
       address = hostname;
-      acceptRoutes = true;
+      acceptRoutes = false;
       operator = "buddia";
     };
 
@@ -273,20 +273,45 @@
       unitSystem = "us_customary";
       openFirewall = true;
       extraComponents = [
+        "adguard"
+        "bluetooth"
+        "caldav"
+        "chess_com"
         "default_config"
         "esphome"
+        "github"
         "google_translate"
+        "holiday"
+        "immich"
+        "improv_ble"
         "kodi"
         "jellyfin"
+        "lichess"
+        "local_calendar"
+        "local_todo"
+        "luci"
         "met"
         "mqtt"
-        "wyoming"
+        "owntracks"
         "piper"
+        "remote_calendar"
+        "syncthing"
+        "systemmonitor"
+        "tailscale"
+        "time_date"
+        "ubus"
+        "uptime"
+        "version"
+        "wake_on_lan"
+        "worldclock"
+        "wyoming"
       ];
       customComponents = [
         pkgs.home-assistant-custom-components.local_openai
       ];
       config = {
+        homeassistant.internal_url = "http://192.168.10.212:8123";
+
         script = {
           launch_alan_tv_application = {
             alias = "Launch an application on alan-tv";
