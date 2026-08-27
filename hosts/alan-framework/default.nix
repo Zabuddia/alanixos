@@ -210,6 +210,15 @@
             injectNumCtxForOpenAICompat = true;
             models = [
               {
+                id = "qwen3.6-35b-a3b";
+                name = "Qwen3.6 35B A3B";
+                api = "openai-completions";
+                reasoning = false;
+                input = [ "text" ];
+                contextWindow = 131072;
+                maxTokens = 32768;
+              }
+              {
                 id = "qwen3.8-27b";
                 name = "Qwen3.8 27B";
                 api = "openai-completions";
@@ -225,12 +234,18 @@
               workspace = "/home/buddia/.openclaw/workspaces/ops";
               skipBootstrap = true;
               model = {
-                primary = "local-litellm/qwen3.8-27b";
+                primary = "local-litellm/qwen3.6-35b-a3b";
                 fallbacks = [ ];
               };
-              models."local-litellm/qwen3.8-27b" = {
-                alias = "qwen3.8-27b";
-                streaming = true;
+              models = {
+                "local-litellm/qwen3.6-35b-a3b" = {
+                  alias = "qwen3.6-35b-a3b";
+                  streaming = true;
+                };
+                "local-litellm/qwen3.8-27b" = {
+                  alias = "qwen3.8-27b";
+                  streaming = true;
+                };
               };
             };
             list = [
@@ -241,7 +256,7 @@
                 workspace = "/home/buddia/.openclaw/workspaces/ops";
                 agentDir = "/home/buddia/.openclaw/agents/ops/agent";
                 model = {
-                  primary = "local-litellm/qwen3.8-27b";
+                  primary = "local-litellm/qwen3.6-35b-a3b";
                   fallbacks = [ ];
                 };
               }
@@ -361,9 +376,9 @@
         port = 4000;
       };
       instances = {
-        # Retained in the model cache for optional future use, but not loaded.
+        # Default OpenClaw model.
         chat = {
-          enable = false;
+          enable = true;
           runtime = "llama";
           host = "127.0.0.1";
           listenHost = "0.0.0.0";
@@ -399,8 +414,8 @@
           ];
         };
 
-        # Sole active OpenClaw model. Its matching projector enables native
-        # image input, while the MTP sidecar provides four-token drafting.
+        # Optional multimodal OpenClaw model. Its matching projector enables
+        # native image input, while the MTP sidecar provides four-token drafting.
         qwen38 = {
           enable = true;
           runtime = "llama";
