@@ -148,6 +148,16 @@ in
         extraSetFlags = preferenceFlags;
       };
 
+      # A temporary Headscale/control-plane outage can leave the upstream
+      # autoconnect unit failed even though tailscaled reconnects on its own a
+      # few seconds later.  Give startup outages more time to clear and retry
+      # so system health reflects the recovered connection.
+      systemd.services.tailscaled-autoconnect.serviceConfig = {
+        Restart = "on-failure";
+        RestartSec = "30s";
+        TimeoutStartSec = "5min";
+      };
+
       # Forward MagicDNS queries to 100.100.100.100 when kresd is the system resolver.
       # Without this, kresd can't resolve tailnet names and etcd peer connections fail.
       services.kresd.extraConfig = ''
