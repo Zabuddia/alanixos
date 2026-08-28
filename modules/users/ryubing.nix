@@ -87,6 +87,47 @@ let
     show_confirm_exit = cfg.confirmExit;
   };
   managedSettingsJson = builtins.toJSON managedSettings;
+
+  # Ryujinx updates its save data, metadata, and save-data index as one
+  # transaction. Syncthing sees those as independent files, so allowing it to
+  # sync while Ryujinx is running can combine different transaction states and
+  # leave the index pointing at save directories that do not exist.
+  ryubingLauncher = pkgs.writeShellApplication {
+    name = "ryujinx";
+    runtimeInputs = [
+      pkgs.syncthing
+      pkgs.util-linux
+    ];
+    text = ''
+      sync_folders=(
+        games-ryujinx
+        games-ryujinx-save-meta
+        games-ryujinx-save-data-indexer
+      )
+
+      runtime_dir="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+      exec 9>"$runtime_dir/alanix-ryujinx.lock"
+      flock 9
+
+      # shellcheck disable=SC2329
+      resume_sync() {
+        for folder in "''${sync_folders[@]}"; do
+          syncthing cli config folders "$folder" paused set false >/dev/null 2>&1 || true
+        done
+      }
+      trap resume_sync EXIT
+
+      for folder in "''${sync_folders[@]}"; do
+        syncthing cli config folders "$folder" paused set true >/dev/null 2>&1 || true
+      done
+
+      set +e
+      ${lib.getExe cfg.package} "$@"
+      status=$?
+      set -e
+      exit "$status"
+    '';
+  };
 in
 {
   options.ryubing = {
@@ -158,13 +199,16 @@ in
   config.appLauncher.apps.ryubing = lib.mkIf cfg.enable {
     label = "Ryubing";
     icon = "mdi:nintendo-switch";
-    command = lib.getExe cfg.package;
+    command = lib.getExe ryubingLauncher;
     processNames = [ "Ryujinx" "ryubing" ];
   };
 
   config.home.modules = lib.optionals cfg.enable [
     ({ config, lib, ... }: {
-      home.packages = [ cfg.package ];
+      home.packages = [
+        (lib.hiPrio ryubingLauncher)
+        (lib.lowPrio cfg.package)
+      ];
 
       xdg.configFile."Ryujinx/SDL_GameControllerDB.txt".text = joycondControllerMappings;
 
