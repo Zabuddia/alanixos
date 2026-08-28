@@ -85,6 +85,21 @@ let
     inherit device;
   };
 
+  typeTextPayload = builtins.toJSON {
+    name = "Type text";
+    unique_id = "${cfg.deviceId}_type_text";
+    command_topic = "${cfg.topicPrefix}/command/type";
+    command_template = ''{"text": {{ value | to_json }}}'';
+    availability_topic = "${cfg.topicPrefix}/status";
+    payload_available = "online";
+    payload_not_available = "offline";
+    icon = "mdi:keyboard";
+    min = 1;
+    max = 255;
+    mode = "text";
+    inherit device;
+  };
+
   launchCases = lib.concatStringsSep "\n" (
     lib.mapAttrsToList
       (appName: app: ''
@@ -190,6 +205,9 @@ let
     publish_retained \
       ${lib.escapeShellArg "${cfg.discoveryPrefix}/button/${cfg.deviceId}/close_current_app/config"} \
       ${lib.escapeShellArg closeFocusedPayload}
+    publish_retained \
+      ${lib.escapeShellArg "${cfg.discoveryPrefix}/text/${cfg.deviceId}/type_text/config"} \
+      ${lib.escapeShellArg typeTextPayload}
     publish_retained ${lib.escapeShellArg "${cfg.topicPrefix}/state/application"} ${lib.escapeShellArg applicationIdle}
     publish_retained "${cfg.topicPrefix}/status" online
 
@@ -247,7 +265,7 @@ let
                 | select(
                     type == "string"
                     and length > 0
-                    and length <= 500
+                    and length <= 255
                     and (test("[\\u0000-\\u001f\\u007f]") | not)
                   )
               '

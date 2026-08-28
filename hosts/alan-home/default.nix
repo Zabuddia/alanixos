@@ -276,6 +276,7 @@
       name = "Home";
       unitSystem = "us_customary";
       openFirewall = true;
+      assist.enable = true;
       extraComponents = [
         "adguard"
         "bluetooth"
@@ -312,70 +313,212 @@
       ];
       config = {
         homeassistant.internal_url = "http://192.168.10.212:8123";
-
-        script = {
-          launch_alan_tv_application = {
-            alias = "Launch an application on alan-tv";
-            description = ''
-              Launch an installed application on the alan-tv media PC. Pass
-              the application's display name, such as Kodi, Dolphin, Steam,
-              Heroic, Eden, Ryubing, or RetroArch.
-            '';
-            fields.application = {
-              name = "Application";
-              description = "Display name of the application to launch.";
-              required = true;
-              selector.text = { };
-            };
-            sequence = [
-              {
-                action = "select.select_option";
-                target.entity_id = "select.alan_tv_application";
-                data.option = "{{ application }}";
-              }
-            ];
-          };
-
-          close_alan_tv_application = {
-            alias = "Close the current application on alan-tv";
-            description = ''
-              Close the application window currently focused on the alan-tv
-              media PC. Use this when asked to close, quit, or exit the current
-              TV application.
-            '';
-            sequence = [
-              {
-                action = "button.press";
-                target.entity_id = "button.alan_tv_close_current_app";
-              }
-            ];
-          };
-
-          type_on_alan_tv = {
-            alias = "Type text on alan-tv";
-            description = ''
-              Type text into the application currently focused on the alan-tv
-              media PC. Use this when asked to type, enter, or write text on
-              alan-tv.
-            '';
-            fields.text = {
-              name = "Text";
-              description = "The exact text to type on alan-tv.";
-              required = true;
-              selector.text = { };
-            };
-            sequence = [
-              {
-                action = "mqtt.publish";
-                data = {
-                  topic = "alan-tv/command/type";
-                  payload = ''{{ {"text": text} | to_json }}'';
-                  qos = 1;
-                };
-              }
-            ];
-          };
+        lovelace.dashboards.nixos-lovelace = lib.mkForce {
+          filename = "ui-lovelace.yaml";
+          icon = "mdi:home-assistant";
+          mode = "yaml";
+          show_in_sidebar = true;
+          title = "Jarvis Home";
         };
+      };
+
+      lovelaceConfig = {
+        title = "Home";
+        views = [
+          {
+            title = "Home";
+            path = "home";
+            icon = "mdi:home";
+            cards = [
+              {
+                type = "weather-forecast";
+                entity = "weather.forecast_home";
+                show_current = true;
+                show_forecast = true;
+                forecast_type = "daily";
+              }
+              {
+                type = "calendar";
+                title = "Calendar";
+                initial_view = "listWeek";
+                entities = [
+                  "calendar.alancalendar"
+                  "calendar.united_states_tx"
+                ];
+              }
+              {
+                type = "todo-list";
+                title = "Shopping List";
+                entity = "todo.shopping_list";
+              }
+              {
+                type = "todo-list";
+                title = "To-do List";
+                entity = "todo.to_do_list";
+              }
+              {
+                type = "entities";
+                title = "At a glance";
+                show_header_toggle = false;
+                entities = [
+                  "sensor.date_time"
+                  "sensor.pixel_fold_battery_level"
+                  "sensor.system_monitor_battery"
+                  "sensor.uptime"
+                ];
+              }
+            ];
+          }
+          {
+            title = "TV";
+            path = "tv";
+            icon = "mdi:television";
+            cards = [
+              {
+                type = "media-control";
+                entity = "media_player.alan_tv";
+                name = "alan-tv Kodi";
+              }
+              {
+                type = "entities";
+                title = "Control alan-tv";
+                show_header_toggle = false;
+                entities = [
+                  "button.wake_on_lan_a0_ad_9f_87_68_4e"
+                  "select.alan_tv_application"
+                  "text.alan_tv_type_text"
+                  "script.close_alan_tv_application"
+                ];
+              }
+              {
+                type = "grid";
+                title = "Applications";
+                columns = 4;
+                square = false;
+                cards = map
+                  (entity: {
+                    type = "button";
+                    inherit entity;
+                    tap_action = {
+                      action = "call-service";
+                      service = "button.press";
+                      target.entity_id = entity;
+                    };
+                  })
+                  [
+                    "button.alan_tv_launch_kodi"
+                    "button.alan_tv_launch_steam"
+                    "button.alan_tv_launch_dolphin"
+                    "button.alan_tv_launch_eden"
+                    "button.alan_tv_launch_heroic"
+                    "button.alan_tv_launch_retroarch"
+                    "button.alan_tv_launch_ryubing"
+                    "button.alan_tv_close_current_app"
+                  ];
+              }
+            ];
+          }
+          {
+            title = "Network";
+            path = "network";
+            icon = "mdi:network";
+            cards = [
+              {
+                type = "entities";
+                title = "AdGuard Home";
+                show_header_toggle = false;
+                entities = [
+                  "switch.adguard_home_protection"
+                  "switch.adguard_home_filtering"
+                  "switch.adguard_home_safe_browsing"
+                  "switch.adguard_home_safe_search"
+                  "switch.adguard_home_parental_control"
+                  "switch.adguard_home_query_log"
+                ];
+              }
+              {
+                type = "entities";
+                title = "DNS activity";
+                show_header_toggle = false;
+                entities = [
+                  "sensor.adguard_home_dns_queries"
+                  "sensor.adguard_home_dns_queries_blocked"
+                  "sensor.adguard_home_dns_queries_blocked_ratio"
+                  "sensor.adguard_home_average_processing_speed"
+                ];
+              }
+            ];
+          }
+          {
+            title = "Chess";
+            path = "chess";
+            icon = "mdi:chess-knight";
+            cards = [
+              {
+                type = "entities";
+                title = "Chess.com";
+                show_header_toggle = false;
+                entities = [
+                  "sensor.buddia_bullet_chess_rating"
+                  "sensor.buddia_blitz_chess_rating"
+                  "sensor.buddia_rapid_chess_rating"
+                ];
+              }
+              {
+                type = "entities";
+                title = "Lichess";
+                show_header_toggle = false;
+                entities = [
+                  "sensor.buddia_bullet_rating"
+                  "sensor.buddia_blitz_rating"
+                  "sensor.buddia_rapid_rating"
+                  "sensor.buddia_classical_rating"
+                ];
+              }
+            ];
+          }
+          {
+            title = "System";
+            path = "system";
+            icon = "mdi:server";
+            cards = [
+              {
+                type = "entities";
+                title = "alan-home";
+                show_header_toggle = false;
+                entities = [
+                  "sensor.system_monitor_battery"
+                  "binary_sensor.system_monitor_charging"
+                  "sensor.uptime"
+                  "sensor.home_assistant_version_current_version"
+                ];
+              }
+              {
+                type = "entities";
+                title = "Voice Assistant";
+                show_header_toggle = false;
+                entities = [
+                  "select.home_assistant_voice_0a946b_assistant"
+                  "select.home_assistant_voice_0a946b_wake_word"
+                  "select.home_assistant_voice_0a946b_wake_word_sensitivity"
+                  "switch.home_assistant_voice_0a946b_mute"
+                  "switch.home_assistant_voice_0a946b_wake_sound"
+                ];
+              }
+              {
+                type = "entities";
+                title = "Pixel Fold";
+                show_header_toggle = false;
+                entities = [
+                  "sensor.pixel_fold_battery_level"
+                  "sensor.pixel_fold_battery_state"
+                  "sensor.pixel_fold_charger_type"
+                  "device_tracker.pixel_fold"
+                ];
+              }
+            ];
+          }
+        ];
       };
     };
 

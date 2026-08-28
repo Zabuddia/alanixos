@@ -133,6 +133,12 @@ in
       description = "Packaged custom Lovelace cards to install.";
     };
 
+    lovelaceConfig = lib.mkOption {
+      type = lib.types.nullOr yamlFormat.type;
+      default = null;
+      description = "Declarative configuration for the main Lovelace dashboard.";
+    };
+
     themes = lib.mkOption {
       type = lib.types.listOf lib.types.package;
       default = [ ];
@@ -156,6 +162,7 @@ in
         customLovelaceModules
         extraComponents
         extraPackages
+        lovelaceConfig
         openFirewallForComponents
         package
         themes
