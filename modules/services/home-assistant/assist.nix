@@ -54,6 +54,13 @@ in
       default = "https://invidious.fifefin.com";
       description = "Invidious instance used to find YouTube videos for Kodi.";
     };
+
+    kodiJsonRpcUrl = lib.mkOption {
+      type = lib.types.str;
+      default = "http://alan-tv:8080/jsonrpc";
+      description = "Kodi JSON-RPC endpoint used to search alan-tv's indexed media library.";
+    };
+
   };
 
   config = lib.mkIf (config.alanix.home-assistant.enable && cfg.enable) {
@@ -88,6 +95,15 @@ in
           method = "get";
           timeout = 15;
         };
+
+        kodi_json_rpc = {
+          url = cfg.kodiJsonRpcUrl;
+          method = "post";
+          content_type = "application/json";
+          payload = "{{ payload }}";
+          timeout = 15;
+        };
+
       };
 
       automation = [
@@ -103,21 +119,48 @@ in
               trigger = "conversation";
               id = "pause";
               command = [
-                "(pause|freeze) [the] (movie|video|show) [on (alan|allen) tv]"
+                "(pause|freeze) [the] (music|song|track|audio|media|movie|video|show|episode|playback) [on (alan|allen) tv]"
+                "(pause|freeze) [the] (music|song|track|audio|media|movie|video|show|episode|playback) on lntv"
+                "(pause|freeze) (alan|allen) tv"
+                "(pause|freeze) lntv"
               ];
             }
             {
               trigger = "conversation";
               id = "resume";
               command = [
-                "(play|resume|continue|unpause) [the] (movie|video|show) [on (alan|allen) tv]"
+                "(play|resume|continue|unpause) [the] (music|song|track|audio|media|movie|video|show|episode|playback) [on (alan|allen) tv]"
+                "(play|resume|continue|unpause) [the] (music|song|track|audio|media|movie|video|show|episode|playback) on lntv"
+                "(resume|continue|unpause) (alan|allen) tv"
+                "(resume|continue|unpause) lntv"
               ];
             }
             {
               trigger = "conversation";
               id = "stop";
               command = [
-                "(stop|end) [the] (movie|video|show) [on (alan|allen) tv]"
+                "(stop|end) [the] (music|song|track|audio|media|movie|video|show|episode|playback) [on (alan|allen) tv]"
+                "(stop|end) [the] (music|song|track|audio|media|movie|video|show|episode|playback) on lntv"
+                "(stop|end) (alan|allen) tv"
+                "(stop|end) lntv"
+              ];
+            }
+            {
+              trigger = "conversation";
+              id = "next";
+              command = [
+                "(next|skip) [the] (song|track|episode|video) [on (alan|allen) tv]"
+                "(next|skip) [the] (song|track|episode|video) on lntv"
+                "play [the] next (song|track|episode|video) [on (alan|allen) tv]"
+              ];
+            }
+            {
+              trigger = "conversation";
+              id = "previous";
+              command = [
+                "(previous|last) (song|track|episode|video) [on (alan|allen) tv]"
+                "(previous|last) (song|track|episode|video) on lntv"
+                "play [the] previous (song|track|episode|video) [on (alan|allen) tv]"
               ];
             }
             {
@@ -292,6 +335,26 @@ in
                       target.entity_id = cfg.alanTvMediaPlayer;
                     }
                     { set_conversation_response = "Stopped."; }
+                  ];
+                }
+                {
+                  conditions = [ "{{ trigger.id == 'next' }}" ];
+                  sequence = [
+                    {
+                      action = "media_player.media_next_track";
+                      target.entity_id = cfg.alanTvMediaPlayer;
+                    }
+                    { set_conversation_response = "Skipped."; }
+                  ];
+                }
+                {
+                  conditions = [ "{{ trigger.id == 'previous' }}" ];
+                  sequence = [
+                    {
+                      action = "media_player.media_previous_track";
+                      target.entity_id = cfg.alanTvMediaPlayer;
+                    }
+                    { set_conversation_response = "Previous track."; }
                   ];
                 }
                 {
@@ -711,7 +774,7 @@ in
                   conditions = [ "{{ trigger.id == 'play_video' }}" ];
                   sequence = [
                     {
-                      action = "script.play_youtube_video_on_alan_tv";
+                      action = "script.play_explicit_youtube_video_on_alan_tv";
                       data.query = "{{ trigger.slots.youtube_query }}";
                     }
                     { set_conversation_response = "Playing {{ trigger.slots.youtube_query }}."; }
@@ -1065,6 +1128,495 @@ in
           ];
         };
 
+        play_music_from_kodi_library_on_alan_tv = {
+          alias = "Play music from Kodi's library on alan-tv";
+          description = ''
+            This is the default alan-tv action for a named song, artist, or
+            album, including short requests such as "play Demons on alan-tv".
+            Find it in alan-tv's indexed Kodi music library, add it to Kodi's
+            audio playlist, and start playback. Always use this instead of a
+            YouTube music video unless the user explicitly says YouTube.
+          '';
+          fields = {
+            media_type = {
+              name = "Music type";
+              description = ''
+                What the query names: artist for requests such as "play music
+                by Imagine Dragons", album for a named album, or song for a
+                named track.
+              '';
+              required = true;
+              selector.select.options = [ "artist" "album" "song" ];
+            };
+            query = {
+              name = "Music search";
+              description = "The artist, album, or song name, without command words.";
+              required = true;
+              selector.text = { };
+            };
+            artist = {
+              name = "Artist";
+              description = "Optional artist name used to disambiguate an album or song.";
+              required = false;
+              selector.text = { };
+            };
+          };
+          sequence = [
+            { action = "script.ensure_kodi_on_alan_tv"; }
+            {
+              variables = {
+                requested_type = "{{ media_type | lower | trim }}";
+                requested_query = "{{ query | trim }}";
+                requested_artist = "{{ artist | default('', true) | trim }}";
+              };
+            }
+            {
+              "if" = [
+                ''
+                  {{ requested_type not in ["artist", "album", "song"] or requested_query == "" }}
+                ''
+              ];
+              "then" = [
+                {
+                  stop = "Music type must be artist, album, or song, and the query cannot be blank";
+                  error = true;
+                }
+              ];
+            }
+            {
+              action = "kodi.call_method";
+              target.entity_id = cfg.alanTvMediaPlayer;
+              data = {
+                method = "Playlist.Clear";
+                playlistid = 0;
+              };
+            }
+            {
+              choose = [
+                {
+                  conditions = [ "{{ requested_type == 'artist' }}" ];
+                  sequence = [
+                    {
+                      action = "kodi.add_to_playlist";
+                      target.entity_id = cfg.alanTvMediaPlayer;
+                      data = {
+                        media_type = "ALBUM";
+                        media_name = "ALL";
+                        artist_name = "{{ requested_query }}";
+                      };
+                    }
+                  ];
+                }
+                {
+                  conditions = [ "{{ requested_type in ['album', 'song'] }}" ];
+                  sequence = [
+                    {
+                      action = "kodi.add_to_playlist";
+                      target.entity_id = cfg.alanTvMediaPlayer;
+                      data = {
+                        media_type = ''
+                          {{ "ALBUM" if requested_type == "album" else "SONG" }}
+                        '';
+                        media_name = "{{ requested_query }}";
+                        artist_name = "{{ requested_artist }}";
+                      };
+                    }
+                  ];
+                }
+              ];
+            }
+            {
+              action = "media_player.play_media";
+              target.entity_id = cfg.alanTvMediaPlayer;
+              data = {
+                media_content_type = "playlist";
+                media_content_id = "0";
+              };
+            }
+            {
+              "if" = [ "{{ requested_type == 'artist' }}" ];
+              "then" = [
+                {
+                  action = "media_player.shuffle_set";
+                  target.entity_id = cfg.alanTvMediaPlayer;
+                  data.shuffle = true;
+                }
+              ];
+            }
+            {
+              variables.kodi_music_result = {
+                title = "{{ requested_query }}";
+                media_type = "{{ requested_type }}";
+                artist = "{{ requested_artist if requested_artist else requested_query if requested_type == 'artist' else '' }}";
+              };
+            }
+            {
+              stop = "Kodi library music started";
+              response_variable = "kodi_music_result";
+            }
+          ];
+        };
+
+        search_alan_tv_kodi_library = {
+          alias = "Search alan-tv's Kodi media library";
+          description = ''
+            Search alan-tv's indexed Kodi library for local artists, albums,
+            songs, movies, TV shows, and episodes. Use this before YouTube for
+            every play request that does not explicitly ask for YouTube or an
+            online video. This searches only; use the matching Kodi playback
+            tool after selecting a result.
+          '';
+          fields.query = {
+            name = "Media search";
+            description = ''
+              The core title or name to find. Remove command words and artist
+              qualifiers; for "play Giants by Imagine Dragons", search for
+              "Giants".
+            '';
+            required = true;
+            selector.text = { };
+          };
+          sequence = [
+            { action = "script.ensure_kodi_on_alan_tv"; }
+            {
+              variables.requested_query = "{{ query | trim }}";
+            }
+            {
+              "if" = [ "{{ requested_query == '' }}" ];
+              "then" = [
+                {
+                  stop = "The Kodi library search cannot be blank";
+                  error = true;
+                }
+              ];
+            }
+            {
+              variables.kodi_search_payload = ''
+                {{- [
+                  {
+                    "jsonrpc": "2.0", "id": "artists", "method": "AudioLibrary.GetArtists",
+                    "params": {
+                      "filter": {"field": "artist", "operator": "contains", "value": requested_query | string},
+                      "limits": {"start": 0, "end": 5}
+                    }
+                  },
+                  {
+                    "jsonrpc": "2.0", "id": "albums", "method": "AudioLibrary.GetAlbums",
+                    "params": {
+                      "filter": {"field": "album", "operator": "contains", "value": requested_query | string},
+                      "properties": ["artist", "year"],
+                      "limits": {"start": 0, "end": 5}
+                    }
+                  },
+                  {
+                    "jsonrpc": "2.0", "id": "songs", "method": "AudioLibrary.GetSongs",
+                    "params": {
+                      "filter": {"field": "title", "operator": "contains", "value": requested_query | string},
+                      "properties": ["artist", "album", "year"],
+                      "limits": {"start": 0, "end": 5}
+                    }
+                  },
+                  {
+                    "jsonrpc": "2.0", "id": "movies", "method": "VideoLibrary.GetMovies",
+                    "params": {
+                      "filter": {"field": "title", "operator": "contains", "value": requested_query | string},
+                      "properties": ["year", "playcount", "resume"],
+                      "limits": {"start": 0, "end": 5}
+                    }
+                  },
+                  {
+                    "jsonrpc": "2.0", "id": "tvshows", "method": "VideoLibrary.GetTVShows",
+                    "params": {
+                      "filter": {"field": "title", "operator": "contains", "value": requested_query | string},
+                      "properties": ["year", "episode", "watchedepisodes"],
+                      "limits": {"start": 0, "end": 5}
+                    }
+                  },
+                  {
+                    "jsonrpc": "2.0", "id": "episodes", "method": "VideoLibrary.GetEpisodes",
+                    "params": {
+                      "filter": {"field": "title", "operator": "contains", "value": requested_query | string},
+                      "properties": ["showtitle", "season", "episode", "playcount", "resume"],
+                      "limits": {"start": 0, "end": 5}
+                    }
+                  }
+                ] | to_json -}}
+              '';
+            }
+            {
+              action = "rest_command.kodi_json_rpc";
+              data.payload = "{{ kodi_search_payload }}";
+              response_variable = "kodi_search";
+            }
+            {
+              variables.kodi_library_results = {
+                artists = ''
+                  {{ kodi_search.content | selectattr("id", "equalto", "artists") | map(attribute="result.artists") | first | default([], true) }}
+                '';
+                albums = ''
+                  {{ kodi_search.content | selectattr("id", "equalto", "albums") | map(attribute="result.albums") | first | default([], true) }}
+                '';
+                songs = ''
+                  {{ kodi_search.content | selectattr("id", "equalto", "songs") | map(attribute="result.songs") | first | default([], true) }}
+                '';
+                movies = ''
+                  {{ kodi_search.content | selectattr("id", "equalto", "movies") | map(attribute="result.movies") | first | default([], true) }}
+                '';
+                tvshows = ''
+                  {{ kodi_search.content | selectattr("id", "equalto", "tvshows") | map(attribute="result.tvshows") | first | default([], true) }}
+                '';
+                episodes = ''
+                  {{ kodi_search.content | selectattr("id", "equalto", "episodes") | map(attribute="result.episodes") | first | default([], true) }}
+                '';
+              };
+            }
+            {
+              stop = "Kodi library search complete";
+              response_variable = "kodi_library_results";
+            }
+          ];
+        };
+
+        play_video_from_kodi_library_on_alan_tv = {
+          alias = "Play a movie, TV show, or episode from Kodi on alan-tv";
+          description = ''
+            Resolve and play a local Kodi movie, TV show, or episode by title.
+            For a TV show, play its first unwatched or partially watched
+            regular-season episode. Kodi resumes video when possible. The
+            caller never needs to copy Kodi's internal numeric IDs.
+          '';
+          fields = {
+            media_type = {
+              name = "Video type";
+              description = "The selected search-result type.";
+              required = true;
+              selector.select.options = [ "movie" "tvshow" "episode" ];
+            };
+            query = {
+              name = "Title";
+              description = "The exact movie, TV show, or episode title selected from the library search.";
+              required = true;
+              selector.text = { };
+            };
+            year = {
+              name = "Year";
+              description = "Optional release year used to distinguish titles such as different versions of the same movie.";
+              required = false;
+              selector.number = {
+                min = 1880;
+                max = 2200;
+                step = 1;
+                mode = "box";
+              };
+            };
+            show = {
+              name = "TV show";
+              description = "Optional TV show title used to distinguish an episode with a common name.";
+              required = false;
+              selector.text = { };
+            };
+          };
+          sequence = [
+            { action = "script.ensure_kodi_on_alan_tv"; }
+            {
+              variables = {
+                requested_type = "{{ media_type | lower | trim }}";
+                requested_query = "{{ query | string | trim }}";
+                requested_year = "{{ year | default(0, true) | int(0) }}";
+                requested_show = "{{ show | default('', true) | string | trim }}";
+              };
+            }
+            {
+              "if" = [
+                "{{ requested_type not in ['movie', 'tvshow', 'episode'] or requested_query | string == '' }}"
+              ];
+              "then" = [
+                {
+                  stop = "Video type must be movie, tvshow, or episode, and the title cannot be blank";
+                  error = true;
+                }
+              ];
+            }
+            {
+              variables.kodi_video_search_payload = ''
+                {%- set method = {
+                  "movie": "VideoLibrary.GetMovies",
+                  "tvshow": "VideoLibrary.GetTVShows",
+                  "episode": "VideoLibrary.GetEpisodes"
+                }[requested_type] -%}
+                {%- set filters = [{
+                  "field": "title", "operator": "contains", "value": requested_query | string
+                }] -%}
+                {%- if requested_type == "episode" and requested_show | string -%}
+                  {%- set filters = filters + [{
+                    "field": "tvshow", "operator": "contains", "value": requested_show | string
+                  }] -%}
+                {%- endif -%}
+                {{- {
+                  "jsonrpc": "2.0",
+                  "id": "video",
+                  "method": method,
+                  "params": {
+                    "filter": filters[0] if filters | count == 1 else {"and": filters},
+                    "properties": ["year", "playcount", "resume"] if requested_type != "episode" else ["showtitle", "season", "episode", "playcount", "resume"],
+                    "limits": {"start": 0, "end": 25}
+                  }
+                } | to_json -}}
+              '';
+            }
+            {
+              action = "rest_command.kodi_json_rpc";
+              data.payload = "{{ kodi_video_search_payload }}";
+              response_variable = "kodi_video_search";
+            }
+            {
+              variables.kodi_video_matches = ''
+                {{ kodi_video_search.content.result[requested_type + "s"] | default([], true) }}
+              '';
+            }
+            {
+              variables.exact_video_matches = ''
+                {%- set exact = namespace(items=[]) -%}
+                {%- for item in kodi_video_matches -%}
+                  {%- if item.label | lower == requested_query | string | lower
+                    and (requested_year | int == 0 or item.year | default(0) | int == requested_year | int) -%}
+                    {%- set exact.items = exact.items + [item] -%}
+                  {%- endif -%}
+                {%- endfor -%}
+                {{- exact.items -}}
+              '';
+            }
+            {
+              "if" = [ "{{ exact_video_matches | count == 0 }}" ];
+              "then" = [
+                {
+                  stop = "No exact matching video was found in Kodi's library";
+                  error = true;
+                }
+              ];
+            }
+            {
+              "if" = [ "{{ exact_video_matches | count > 1 }}" ];
+              "then" = [
+                {
+                  stop = "More than one exact Kodi video match was found; specify the release year or TV show";
+                  error = true;
+                }
+              ];
+            }
+            {
+              variables.selected_video = "{{ exact_video_matches | first }}";
+            }
+            {
+              "if" = [ "{{ requested_type == 'tvshow' }}" ];
+              "then" = [
+                {
+                  variables.kodi_episode_payload = ''
+                    {{- {
+                      "jsonrpc": "2.0",
+                      "id": "episodes",
+                      "method": "VideoLibrary.GetEpisodes",
+                      "params": {
+                        "tvshowid": selected_video.tvshowid,
+                        "properties": ["showtitle", "season", "episode", "playcount", "resume"],
+                        "sort": {"method": "episode", "order": "ascending"}
+                      }
+                    } | to_json -}}
+                  '';
+                }
+                {
+                  action = "rest_command.kodi_json_rpc";
+                  data.payload = "{{ kodi_episode_payload }}";
+                  response_variable = "kodi_episodes";
+                }
+                {
+                  variables.show_episodes = "{{ kodi_episodes.content.result.episodes | default([], true) }}";
+                }
+                {
+                  variables.regular_episodes = ''
+                    {{ show_episodes | rejectattr("season", "equalto", 0) | list }}
+                  '';
+                }
+                {
+                  variables.playable_episodes = ''
+                    {{ regular_episodes | selectattr("playcount", "equalto", 0) | list }}
+                  '';
+                }
+                {
+                  "if" = [ "{{ show_episodes | count == 0 }}" ];
+                  "then" = [
+                    {
+                      stop = "The selected Kodi TV show has no episodes";
+                      error = true;
+                    }
+                  ];
+                }
+                {
+                  variables.selected_episode = ''
+                    {{ playable_episodes | first if playable_episodes | count else regular_episodes | first if regular_episodes | count else show_episodes | first }}
+                  '';
+                }
+                {
+                  action = "kodi.call_method";
+                  target.entity_id = cfg.alanTvMediaPlayer;
+                  data = {
+                    method = "Player.Open";
+                    item.episodeid = "{{ selected_episode.episodeid }}";
+                    options.resume = true;
+                  };
+                }
+              ];
+              "else" = [
+                {
+                  choose = [
+                    {
+                      conditions = [ "{{ requested_type == 'movie' }}" ];
+                      sequence = [
+                        {
+                          action = "kodi.call_method";
+                          target.entity_id = cfg.alanTvMediaPlayer;
+                          data = {
+                            method = "Player.Open";
+                            item.movieid = "{{ selected_video.movieid }}";
+                            options.resume = true;
+                          };
+                        }
+                      ];
+                    }
+                    {
+                      conditions = [ "{{ requested_type == 'episode' }}" ];
+                      sequence = [
+                        {
+                          action = "kodi.call_method";
+                          target.entity_id = cfg.alanTvMediaPlayer;
+                          data = {
+                            method = "Player.Open";
+                            item.episodeid = "{{ selected_video.episodeid }}";
+                            options.resume = true;
+                          };
+                        }
+                      ];
+                    }
+                  ];
+                }
+              ];
+            }
+            {
+              variables.kodi_video_result = {
+                title = ''
+                  {{ selected_episode.label if requested_type == "tvshow" else selected_video.label }}
+                '';
+                media_type = "{{ 'episode' if requested_type == 'tvshow' else requested_type }}";
+                show = "{{ selected_video.label if requested_type == 'tvshow' else selected_video.showtitle | default('') }}";
+              };
+            }
+            {
+              stop = "Kodi library video started";
+              response_variable = "kodi_video_result";
+            }
+          ];
+        };
+
         open_invidious_on_alan_tv = {
           alias = "Open Invidious on alan-tv";
           description = ''
@@ -1102,18 +1654,20 @@ in
           ];
         };
 
-        play_youtube_video_on_alan_tv = {
-          alias = "Play a YouTube video on alan-tv";
+        play_explicit_youtube_video_on_alan_tv = {
+          alias = "Play an explicitly requested YouTube video on alan-tv";
           description = ''
-            Search YouTube through Invidious and play the best matching video
-            in Kodi on alan-tv. The query may be a title, description, or a
-            YouTube URL.
+            Use only when the user's current request explicitly contains
+            YouTube, an online/web video, a YouTube channel, or a YouTube URL.
+            Never use this for a generic request to play a song, artist, album,
+            movie, show, episode, or title on alan-tv. Generic play requests
+            must use the Kodi library tools first.
           '';
           fields.query = {
             name = "Video search";
             description = ''
-              Required and never blank. Pass the requested YouTube video title,
-              search terms, or URL without phrases such as "play a YouTube video".
+              Required and never blank. Pass the explicitly requested YouTube
+              video title, search terms, or URL.
             '';
             required = true;
             selector.text = { };
