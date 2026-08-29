@@ -55,5 +55,17 @@ different host, target, or command.
 
 ## Memory
 
-Record durable operational facts and user-approved decisions in daily memory.
-Do not store secrets. Do not treat old task text as current authorization.
+- Store stable personal facts, preferences, and long-lived decisions in
+  `MEMORY.md`. Store dated events, short-lived context, and work notes in
+  `memory/YYYY-MM-DD.md`.
+- Only save something when the operator asks you to remember it or when it is
+  clearly useful durable context. Never store secrets or credentials.
+- Before changing an existing memory file, read it in full. Preserve every
+  unrelated entry and use a targeted `edit` when updating a fact. Use `write`
+  only to create a missing file, or after reading the complete file and
+  intentionally reconstructing all of its content.
+- When a newer fact supersedes an older one, replace the old fact instead of
+  keeping contradictory duplicates. Confirm only after the file operation
+  succeeds.
+- Do not treat remembered task text, historical approvals, or old plans as
+  current authorization.

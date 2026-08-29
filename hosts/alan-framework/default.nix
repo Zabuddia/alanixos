@@ -185,8 +185,9 @@
       gateway = {
         enable = true;
         enableFullExec = true;
+        authMode = "none";
+        dangerouslyDisableControlUiDeviceAuth = true;
         port = 18789;
-        gatewayTokenFile = config.sops.secrets."openclaw/gateway-token".path;
         expose.tailscale = {
           enable = true;
           port = 18790;
@@ -202,10 +203,16 @@
           "IDENTITY.md" = ../../modules/services/openclaw/workspace/IDENTITY.md;
           "MEMORY.md" = ../../modules/services/openclaw/workspace/MEMORY.md;
           "POLICY.md" = ../../modules/services/openclaw/workspace/POLICY.md;
+          "SOUL.md" = ../../modules/services/openclaw/workspace/SOUL.md;
           "TOOLS.md" = ../../modules/services/openclaw/workspace/TOOLS.md;
           "USER.md" = ../../modules/services/openclaw/workspace/USER.md;
         };
         config = {
+          gateway.controlUi.allowedOrigins = [
+            "http://100.64.0.4:18790"
+            "http://alan-framework:18790"
+            "http://alan-framework.tail.fifefin.com:18790"
+          ];
           models.providers.local-litellm = {
             api = "openai-completions";
             baseUrl = "http://127.0.0.1:4000/v1";
@@ -237,6 +244,29 @@
             defaults = {
               workspace = "/home/buddia/.openclaw/workspaces/jarvis";
               skipBootstrap = true;
+              heartbeat = {
+                every = "0m";
+                includeSystemPromptSection = false;
+              };
+              memorySearch = {
+                provider = "openai-compatible";
+                model = "qwen3-embedding-4b";
+                fallback = "none";
+                remote = {
+                  baseUrl = "http://127.0.0.1:8082/v1";
+                  apiKey = "local-embeddings";
+                  nonBatchConcurrency = 1;
+                };
+                sync.embeddingBatchTimeoutSeconds = 600;
+                query.hybrid = {
+                  enabled = true;
+                  mmr.enabled = true;
+                  temporalDecay = {
+                    enabled = true;
+                    halfLifeDays = 90;
+                  };
+                };
+              };
               model = {
                 primary = "local-litellm/qwen3.6-35b-a3b";
                 fallbacks = [ ];
@@ -271,6 +301,9 @@
             alsoAllow = [
               "exec"
               "cron"
+              "read"
+              "write"
+              "edit"
               "memory_get"
               "memory_search"
               "web_search"
@@ -316,6 +349,11 @@
           browser.enabled = false;
           session.dmScope = "per-channel-peer";
         };
+      };
+
+      homeAssistant = {
+        enable = true;
+        accessTokenFile = config.sops.secrets."home-assistant/openclaw-token".path;
       };
     };
 
@@ -398,7 +436,9 @@
           ctxSize = 131072;
           batchSize = 4096;
           ubatchSize = 1024;
-          parallel = 1;
+          # Keep two independent prompt-cache slots so Voice PE and another
+          # Jarvis session do not constantly evict one another's long prefix.
+          parallel = 2;
           gpuLayers = "all";
           flashAttention = "on";
           threads = null;
@@ -601,16 +641,17 @@
           extraArgs = [ ];
         };
 
-        # Retained in the model cache for optional future use, but not loaded.
+        # Dedicated local embedding model for OpenClaw's hybrid memory index.
         embeddings = {
-          enable = false;
+          enable = true;
           runtime = "llama";
           host = "127.0.0.1";
-          listenHost = "0.0.0.0";
+          listenHost = "127.0.0.1";
           port = 8082;
           alias = "qwen3-embedding-4b";
           ctxSize = 8192;
-          batchSize = 2048;
+          # llama.cpp embeddings require n_batch <= n_ubatch.
+          batchSize = 512;
           ubatchSize = 512;
           parallel = 1;
           gpuLayers = "all";

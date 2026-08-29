@@ -38,6 +38,13 @@
         mode = "0400";
       };
 
+      "home-assistant/openclaw-token" = {
+        sopsFile = (import ../../secrets/files.nix).servicePasswords;
+        owner = "buddia";
+        group = "users";
+        mode = "0400";
+      };
+
       "openclaw/telegram-bot-token" = {
         sopsFile = (import ../../secrets/files.nix).servicePasswords;
         owner = "buddia";

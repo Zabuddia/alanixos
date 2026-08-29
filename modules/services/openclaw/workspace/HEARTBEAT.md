@@ -1,3 +1,2 @@
-# Heartbeat
-
-No standing checks are authorized yet. Reply `HEARTBEAT_OK` when invoked.
+<!-- No standing heartbeat checks are configured. Comments-only content makes
+OpenClaw skip idle heartbeat model calls until a real checklist is added. -->

@@ -72,12 +72,12 @@ let
       mode = "local";
       port = cfg.gateway.port;
       bind = "loopback";
-      auth.mode = "token";
+      auth.mode = cfg.gateway.authMode;
       tailscale = {
         mode = "off";
         resetOnExit = false;
       };
-      controlUi.dangerouslyDisableDeviceAuth = false;
+      controlUi.dangerouslyDisableDeviceAuth = cfg.gateway.dangerouslyDisableControlUiDeviceAuth;
     };
   };
   gatewayConfigFile = jsonFormat.generate "openclaw.json" gatewayConfig;
@@ -108,11 +108,16 @@ let
     set -euo pipefail
 
     export PATH=${lib.escapeShellArg servicePath}:$PATH
-    export OPENCLAW_GATEWAY_TOKEN="$(${pkgs.coreutils}/bin/tr -d '\r\n' < ${lib.escapeShellArg cfg.gateway.gatewayTokenFile})"
+    ${lib.optionalString (cfg.gateway.authMode == "token") ''
+      export OPENCLAW_GATEWAY_TOKEN="$(${pkgs.coreutils}/bin/tr -d '\r\n' < ${lib.escapeShellArg cfg.gateway.gatewayTokenFile})"
+    ''}
     ${lib.optionalString cfg.homeAssistant.enable ''
       export OPENCLAW_HOME_ASSISTANT_TOKEN="$(${pkgs.coreutils}/bin/tr -d '\r\n' < ${lib.escapeShellArg cfg.homeAssistant.accessTokenFile})"
     ''}
-    ${pkgs.coreutils}/bin/mkdir -p ${lib.escapeShellArg gatewayStateDir} ${lib.escapeShellArg gatewayWorkspaceDir}
+    ${pkgs.coreutils}/bin/mkdir -p \
+      ${lib.escapeShellArg gatewayStateDir} \
+      ${lib.escapeShellArg gatewayWorkspaceDir} \
+      ${lib.escapeShellArg "${gatewayWorkspaceDir}/memory"}
     ${lib.optionalString cfg.gateway.enableFullExec ''
       ${pkgs.coreutils}/bin/install -m 0600 ${fullExecApprovalsFile} ${lib.escapeShellArg "${gatewayStateDir}/exec-approvals.json"}
     ''}
@@ -121,8 +126,23 @@ let
     exec ${openclawBin} gateway run \
       --port ${toString cfg.gateway.port} \
       --bind loopback \
-      --auth token \
+      --auth ${lib.escapeShellArg cfg.gateway.authMode} \
       --tailscale off
+  '';
+
+  openclawCliLauncher = pkgs.writeShellScript "alanix-openclaw-cli" ''
+    set -euo pipefail
+
+    export OPENCLAW_CONFIG_PATH=${lib.escapeShellArg gatewayConfigPath}
+    export OPENCLAW_STATE_DIR=${lib.escapeShellArg gatewayStateDir}
+    ${lib.optionalString (cfg.gateway.authMode == "token") ''
+      export OPENCLAW_GATEWAY_TOKEN="$(${pkgs.coreutils}/bin/tr -d '\r\n' < ${lib.escapeShellArg cfg.gateway.gatewayTokenFile})"
+    ''}
+    ${lib.optionalString cfg.homeAssistant.enable ''
+      export OPENCLAW_HOME_ASSISTANT_TOKEN="$(${pkgs.coreutils}/bin/tr -d '\r\n' < ${lib.escapeShellArg cfg.homeAssistant.accessTokenFile})"
+    ''}
+
+    exec ${openclawBin} "$@"
   '';
 
   gatewayEndpoint = {
@@ -149,6 +169,21 @@ in
       enable = lib.mkEnableOption "a declarative OpenClaw gateway user service";
 
       enableFullExec = lib.mkEnableOption "unrestricted command execution on the gateway host";
+
+      authMode = lib.mkOption {
+        type = types.enum [
+          "none"
+          "token"
+        ];
+        default = "token";
+        description = "Gateway authentication mode. Use none only behind a separately restricted network boundary.";
+      };
+
+      dangerouslyDisableControlUiDeviceAuth = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Allow the browser Control UI to connect without device identity. Required for unauthenticated remote HTTP and unsafe without a separate network access boundary.";
+      };
 
       port = lib.mkOption {
         type = types.port;
@@ -177,7 +212,7 @@ in
       config = lib.mkOption {
         type = jsonFormat.type;
         default = { };
-        description = "Declarative OpenClaw configuration. Secure gateway settings are enforced by this module.";
+        description = "Declarative OpenClaw configuration. Gateway bind, port, authentication mode, and Tailscale integration are managed by this module.";
       };
 
       workspaceFiles = lib.mkOption {
@@ -250,8 +285,11 @@ in
           message = "alanix.openclaw.user must reference an account with home.enable = true.";
         }
         {
-          assertion = !cfg.gateway.enable || cfg.gateway.gatewayTokenFile != null;
-          message = "alanix.openclaw.gateway.gatewayTokenFile must be set when the gateway is enabled.";
+          assertion =
+            !cfg.gateway.enable
+            || cfg.gateway.authMode != "token"
+            || cfg.gateway.gatewayTokenFile != null;
+          message = "alanix.openclaw.gateway.gatewayTokenFile must be set when token authentication is enabled.";
         }
         {
           assertion = !cfg.homeAssistant.enable || cfg.gateway.enable;
@@ -283,9 +321,10 @@ in
         ${cfg.user} = lib.mkMerge [
           {
             # Keep the conventional per-user command path from shadowing the
-            # reviewed Nix package with a stale npm installation.
+            # reviewed Nix package with a stale npm installation. The wrapper
+            # also loads runtime-only credentials for interactive diagnostics.
             home.file.".local/bin/openclaw" = {
-              source = "${openclawPackage}/bin/openclaw";
+              source = openclawCliLauncher;
               force = true;
             };
           }
@@ -305,12 +344,15 @@ in
               };
 
             systemd.user.services.openclaw-gateway = {
-              Unit = {
-                Description = "OpenClaw gateway";
-                After = [ "network-online.target" ];
-                Wants = [ "network-online.target" ];
-                ConditionPathExists = cfg.gateway.gatewayTokenFile;
-              };
+              Unit =
+                {
+                  Description = "OpenClaw gateway";
+                  After = [ "network-online.target" ];
+                  Wants = [ "network-online.target" ];
+                }
+                // lib.optionalAttrs (cfg.gateway.authMode == "token") {
+                  ConditionPathExists = cfg.gateway.gatewayTokenFile;
+                };
 
               Service = {
                 ExecStart = "${gatewayLauncher}";
