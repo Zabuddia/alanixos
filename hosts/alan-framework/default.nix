@@ -187,6 +187,10 @@
         enableFullExec = true;
         port = 18789;
         gatewayTokenFile = config.sops.secrets."openclaw/gateway-token".path;
+        expose.tailscale = {
+          enable = true;
+          port = 18790;
+        };
         workspaceFiles = {
           "AGENTS.md" = pkgs.writeText "openclaw-agents.md" (
             builtins.readFile ../../modules/services/openclaw/workspace/AGENTS.md
@@ -231,7 +235,7 @@
           };
           agents = {
             defaults = {
-              workspace = "/home/buddia/.openclaw/workspaces/ops";
+              workspace = "/home/buddia/.openclaw/workspaces/jarvis";
               skipBootstrap = true;
               model = {
                 primary = "local-litellm/qwen3.6-35b-a3b";
@@ -250,11 +254,11 @@
             };
             list = [
               {
-                id = "ops";
+                id = "jarvis";
                 default = true;
-                name = "Ops";
-                workspace = "/home/buddia/.openclaw/workspaces/ops";
-                agentDir = "/home/buddia/.openclaw/agents/ops/agent";
+                name = "Jarvis";
+                workspace = "/home/buddia/.openclaw/workspaces/jarvis";
+                agentDir = "/home/buddia/.openclaw/agents/jarvis/agent";
                 model = {
                   primary = "local-litellm/qwen3.6-35b-a3b";
                   fallbacks = [ ];
@@ -264,7 +268,14 @@
           };
           tools = {
             profile = "minimal";
-            alsoAllow = [ "exec" "cron" "web_search" "web_fetch" ];
+            alsoAllow = [
+              "exec"
+              "cron"
+              "memory_get"
+              "memory_search"
+              "web_search"
+              "web_fetch"
+            ];
             loopDetection.enabled = true;
             elevated.enabled = false;
             exec = {

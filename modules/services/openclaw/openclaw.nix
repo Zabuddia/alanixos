@@ -25,7 +25,7 @@ let
       askFallback = "full";
       autoAllowSkills = false;
     };
-    agents.ops = {
+    agents.jarvis = {
       security = "full";
       ask = "off";
       askFallback = "full";
@@ -53,7 +53,21 @@ let
   gatewayStateDir = resolveHomePath cfg.gateway.stateDir;
   gatewayWorkspaceDir = resolveHomePath cfg.gateway.workspaceDir;
   gatewayConfigPath = "${gatewayStateDir}/openclaw.json";
-  gatewayConfig = lib.recursiveUpdate cfg.gateway.config {
+  homeAssistantMcpConfig = lib.optionalAttrs cfg.homeAssistant.enable {
+    mcp.servers.home-assistant = {
+      url = cfg.homeAssistant.url;
+      transport = "streamable-http";
+      timeout = cfg.homeAssistant.timeout;
+      connectTimeout = cfg.homeAssistant.connectTimeout;
+      supportsParallelToolCalls = false;
+      headers.Authorization = "Bearer \${OPENCLAW_HOME_ASSISTANT_TOKEN}";
+    };
+    tools.alsoAllow = lib.unique (
+      lib.attrByPath [ "tools" "alsoAllow" ] [ ] cfg.gateway.config
+      ++ [ "bundle-mcp" ]
+    );
+  };
+  gatewayConfig = lib.recursiveUpdate (lib.recursiveUpdate cfg.gateway.config homeAssistantMcpConfig) {
     gateway = {
       mode = "local";
       port = cfg.gateway.port;
@@ -95,6 +109,9 @@ let
 
     export PATH=${lib.escapeShellArg servicePath}:$PATH
     export OPENCLAW_GATEWAY_TOKEN="$(${pkgs.coreutils}/bin/tr -d '\r\n' < ${lib.escapeShellArg cfg.gateway.gatewayTokenFile})"
+    ${lib.optionalString cfg.homeAssistant.enable ''
+      export OPENCLAW_HOME_ASSISTANT_TOKEN="$(${pkgs.coreutils}/bin/tr -d '\r\n' < ${lib.escapeShellArg cfg.homeAssistant.accessTokenFile})"
+    ''}
     ${pkgs.coreutils}/bin/mkdir -p ${lib.escapeShellArg gatewayStateDir} ${lib.escapeShellArg gatewayWorkspaceDir}
     ${lib.optionalString cfg.gateway.enableFullExec ''
       ${pkgs.coreutils}/bin/install -m 0600 ${fullExecApprovalsFile} ${lib.escapeShellArg "${gatewayStateDir}/exec-approvals.json"}
@@ -153,8 +170,8 @@ in
 
       workspaceDir = lib.mkOption {
         type = types.str;
-        default = ".openclaw/workspaces/ops";
-        description = "Ops workspace directory. Relative paths are resolved inside the OpenClaw user's home.";
+        default = ".openclaw/workspaces/jarvis";
+        description = "Default agent workspace directory. Relative paths are resolved inside the OpenClaw user's home.";
       };
 
       config = lib.mkOption {
@@ -166,7 +183,7 @@ in
       workspaceFiles = lib.mkOption {
         type = types.attrsOf types.path;
         default = { };
-        description = "Declarative files installed in the OpenClaw ops workspace.";
+        description = "Declarative files installed in the OpenClaw default agent workspace.";
       };
 
       linger = lib.mkOption {
@@ -179,6 +196,34 @@ in
         serviceName = "openclaw-gateway";
         serviceDescription = "OpenClaw gateway";
         defaultPublicPort = 18790;
+      };
+    };
+
+    homeAssistant = {
+      enable = lib.mkEnableOption "Home Assistant control through its official MCP Server";
+
+      url = lib.mkOption {
+        type = types.str;
+        default = "http://alan-home:8123/api/mcp/assist";
+        description = "Private URL of Home Assistant's MCP endpoint for the Assist API.";
+      };
+
+      accessTokenFile = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Runtime file containing a Home Assistant long-lived access token.";
+      };
+
+      timeout = lib.mkOption {
+        type = types.ints.positive;
+        default = 20;
+        description = "Home Assistant MCP request timeout in seconds.";
+      };
+
+      connectTimeout = lib.mkOption {
+        type = types.ints.positive;
+        default = 5;
+        description = "Home Assistant MCP connection timeout in seconds.";
       };
     };
 
@@ -207,6 +252,14 @@ in
         {
           assertion = !cfg.gateway.enable || cfg.gateway.gatewayTokenFile != null;
           message = "alanix.openclaw.gateway.gatewayTokenFile must be set when the gateway is enabled.";
+        }
+        {
+          assertion = !cfg.homeAssistant.enable || cfg.gateway.enable;
+          message = "alanix.openclaw.homeAssistant requires the OpenClaw gateway.";
+        }
+        {
+          assertion = !cfg.homeAssistant.enable || cfg.homeAssistant.accessTokenFile != null;
+          message = "alanix.openclaw.homeAssistant.accessTokenFile must be set when Home Assistant MCP is enabled.";
         }
       ]
       ++ serviceExposure.mkAssertions {

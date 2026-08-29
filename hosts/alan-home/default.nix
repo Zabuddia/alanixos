@@ -277,6 +277,7 @@
       unitSystem = "us_customary";
       openFirewall = true;
       assist.enable = true;
+      openclawConversation.enable = true;
       extraComponents = [
         "adguard"
         "bluetooth"
@@ -296,6 +297,7 @@
         "local_todo"
         "luci"
         "met"
+        "mcp_server"
         "mqtt"
         "owntracks"
         "piper"
