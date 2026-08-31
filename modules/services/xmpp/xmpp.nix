@@ -117,6 +117,10 @@ in
         message = "alanix.xmpp requires the neutral clustered alanix.realtime Prosody/TURN runtime.";
       }
       {
+        assertion = !config.alanix.jitsi-meet.enable || !config.alanix.jitsi-meet.prosody.lockdown;
+        message = "alanix.xmpp cannot share Prosody while Jitsi applies its global loopback/s2s lockdown.";
+      }
+      {
         assertion = !cfg.cluster.enable || cfg.cluster.backupDir != null;
         message = "alanix.xmpp.cluster.enable requires alanix.xmpp.cluster.backupDir.";
       }
@@ -220,6 +224,25 @@ in
         };
         extraConfig = lib.mkAfter ''
           modules_enabled = { "turn_external" }
+          -- Jitsi contributes its component modules to the shared daemon's
+          -- global module list. Keep those application-specific modules off
+          -- the personal VirtualHost while retaining shared smacks and
+          -- external_services support.
+          modules_disabled = {
+            "pubsub";
+            "speakerstats";
+            "conference_duration";
+            "muc_lobby_rooms";
+            "muc_breakout_rooms";
+            "av_moderation";
+            "muc_hide_all";
+            "muc_meeting_id";
+            "muc_domain_mapper";
+            "muc_rate_limit";
+            "limits_exception";
+            "persistent_lobby";
+            "room_metadata";
+          }
           turn_external_host = "${realtimeCfg.turn.hostName}"
           turn_external_port = ${toString realtimeCfg.turn.port}
           turn_external_secret = os.getenv("TURN_SECRET") or "prosody-config-validation-only"

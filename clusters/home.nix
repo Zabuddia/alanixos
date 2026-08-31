@@ -952,6 +952,10 @@ in
       backupDir = "/var/backup/jitsi-meet";
 
       jicofo.restPort = 8889;
+      # Prosody is shared with the public fifefin.com XMPP VirtualHost, so the
+      # Jitsi-only global loopback/s2s lockdown cannot be applied to the daemon.
+      # Jitsi authentication and component policy remain in the Jitsi module.
+      prosody.lockdown = false;
       videobridge = {
         privateHttpPort = 9091;
         allowedAddresses = lib.optionals (hostname == "alan-big-nixos") [ "192.168.10.225" ];

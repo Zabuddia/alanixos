@@ -159,8 +159,19 @@ in
       preStart = lib.mkAfter ''
         public_address="$(${lib.getExe pkgs.getent} ahostsv4 ${lib.escapeShellArg cfg.turn.hostName} \
           | ${lib.getExe pkgs.gawk} 'NR == 1 { print $1; exit }')"
+
+        # A newly promoted node can start before cluster DDNS has created or
+        # refreshed the TURN record, and a local resolver may retain the
+        # resulting negative answer. Use the same public-IP source as cluster
+        # DDNS as the bootstrap fallback instead of coupling coturn startup to
+        # DNS propagation.
         if [ -z "$public_address" ]; then
-          echo "Unable to resolve an IPv4 address for ${cfg.turn.hostName}." >&2
+          public_address="$(${lib.getExe pkgs.curl} --ipv4 --fail --silent --show-error \
+            https://cloudflare.com/cdn-cgi/trace \
+            | ${lib.getExe pkgs.gawk} -F= '$1 == "ip" { print $2; exit }')"
+        fi
+        if ! [[ "$public_address" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+          echo "Unable to determine the public IPv4 address for TURN." >&2
           exit 1
         fi
         printf 'external-ip=%s\n' "$public_address" >> /run/coturn/turnserver.cfg
