@@ -7,6 +7,7 @@
 
 let
   cfg = config.alanix.jitsi-meet;
+  realtimeCfg = config.alanix.realtime;
   clusterCfg = cfg.cluster;
   serviceExposure = import ../../../lib/mkServiceExposure.nix { inherit lib pkgs; };
 
@@ -197,41 +198,6 @@ in
       };
     };
 
-    turn = {
-      enable = lib.mkEnableOption "a coturn relay for clients that cannot reach Videobridge directly";
-
-      hostName = lib.mkOption {
-        type = lib.types.str;
-        default = cfg.hostName;
-        defaultText = "alanix.jitsi-meet.hostName";
-        description = "Public hostname advertised for the STUN and TURN services.";
-      };
-
-      port = lib.mkOption {
-        type = lib.types.port;
-        default = 3478;
-        description = "Public UDP and TCP port for STUN and TURN.";
-      };
-
-      relayMinPort = lib.mkOption {
-        type = lib.types.port;
-        default = 49160;
-        description = "First UDP port available for TURN relay allocations.";
-      };
-
-      relayMaxPort = lib.mkOption {
-        type = lib.types.port;
-        default = 49200;
-        description = "Last UDP port available for TURN relay allocations.";
-      };
-
-      secretFile = lib.mkOption {
-        type = lib.types.str;
-        default = "/var/lib/jitsi-meet/turn-secret";
-        description = "Persistent TURN REST authentication secret shared by Prosody and coturn.";
-      };
-    };
-
     expose = serviceExposure.mkOptions {
       serviceName = "jitsi-meet";
       serviceDescription = "Jitsi Meet";
@@ -281,6 +247,10 @@ in
             message = "alanix.jitsi-meet.cluster.enable requires alanix.jitsi-meet.backupDir to be set.";
           }
           {
+            assertion = realtimeCfg.enable;
+            message = "alanix.jitsi-meet requires the neutral alanix.realtime Prosody/TURN runtime.";
+          }
+          {
             assertion =
               (cfg.videobridge.nat.localAddress == null) == (cfg.videobridge.nat.publicAddress == null);
             message = "alanix.jitsi-meet.videobridge.nat.localAddress and publicAddress must be set together.";
@@ -288,14 +258,6 @@ in
           {
             assertion = !exposeCfg.wan.enable || exposeCfg.wan.domain == cfg.hostName;
             message = "alanix.jitsi-meet.expose.wan.domain must match alanix.jitsi-meet.hostName.";
-          }
-          {
-            assertion = !cfg.turn.enable || lib.hasPrefix "/" cfg.turn.secretFile;
-            message = "alanix.jitsi-meet.turn.secretFile must be an absolute path.";
-          }
-          {
-            assertion = !cfg.turn.enable || cfg.turn.relayMinPort <= cfg.turn.relayMaxPort;
-            message = "alanix.jitsi-meet.turn.relayMinPort must not exceed relayMaxPort.";
           }
         ]
         ++ serviceExposure.mkAssertions {
@@ -361,38 +323,18 @@ in
 
         # Current Videobridge releases only advertise UDP ICE candidates.
         # Coturn provides an authenticated TCP path for restrictive client networks.
-        services.coturn = lib.mkIf cfg.turn.enable {
-          enable = true;
-          listening-port = cfg.turn.port;
-          min-port = cfg.turn.relayMinPort;
-          max-port = cfg.turn.relayMaxPort;
-          use-auth-secret = true;
-          static-auth-secret-file = cfg.turn.secretFile;
-          realm = cfg.turn.hostName;
-          no-tls = true;
-          no-dtls = true;
-          no-tcp-relay = true;
-          no-cli = true;
-          extraConfig = ''
-            fingerprint
-            stale-nonce=600
-            no-multicast-peers
-          '';
-        };
-
-        users.groups.jitsi-meet.members = lib.optionals cfg.turn.enable [ "turnserver" ];
-
-        services.prosody.virtualHosts.${cfg.hostName}.extraConfig = lib.mkIf cfg.turn.enable (lib.mkAfter ''
+        services.prosody.virtualHosts.${cfg.hostName}.extraConfig = lib.mkAfter ''
           -- NixOS validates this configuration in the build sandbox, where
           -- runtime secrets do not exist. Prosody receives TURN_SECRET from
-          -- Jitsi's secrets-env file when the service actually starts.
+          -- the neutral realtime environment when the service actually starts.
           external_service_secret = os.getenv("TURN_SECRET") or "prosody-config-validation-only"
           external_services = {
-            { type = "stun"; transport = "udp"; host = "${cfg.turn.hostName}"; port = ${toString cfg.turn.port}; };
-            { type = "turn"; transport = "udp"; host = "${cfg.turn.hostName}"; port = ${toString cfg.turn.port}; secret = true; };
-            { type = "turn"; transport = "tcp"; host = "${cfg.turn.hostName}"; port = ${toString cfg.turn.port}; secret = true; };
+            { type = "stun"; transport = "udp"; host = "${realtimeCfg.turn.hostName}"; port = ${toString realtimeCfg.turn.port}; };
+            { type = "turn"; transport = "udp"; host = "${realtimeCfg.turn.hostName}"; port = ${toString realtimeCfg.turn.port}; secret = true; };
+            { type = "turn"; transport = "tcp"; host = "${realtimeCfg.turn.hostName}"; port = ${toString realtimeCfg.turn.port}; secret = true; };
+            { type = "turns"; transport = "tcp"; host = "${realtimeCfg.turn.hostName}"; port = ${toString realtimeCfg.turn.tlsPort}; secret = true; };
           }
-        '');
+        '';
 
         # Jicofo and Videobridge are local service accounts which reconnect on
         # their own. Disabling stream resumption prevents a stopped bridge's
@@ -402,33 +344,17 @@ in
         '';
 
         systemd.services = {
-          jitsi-meet-init-secrets = lib.mkIf cfg.turn.enable {
-            before = [ "coturn.service" ];
-            script = lib.mkAfter ''
-              if [ ! -f ${lib.escapeShellArg cfg.turn.secretFile} ]; then
-                ${lib.getExe' pkgs.coreutils "tr"} -dc a-zA-Z0-9 </dev/urandom \
-                  | ${lib.getExe' pkgs.coreutils "head"} -c 64 > ${lib.escapeShellArg cfg.turn.secretFile}
-                chmod 0640 ${lib.escapeShellArg cfg.turn.secretFile}
-              fi
-
-              printf 'TURN_SECRET=%s\n' "$(cat ${lib.escapeShellArg cfg.turn.secretFile})" \
-                >> /var/lib/jitsi-meet/secrets-env
-            '';
-          };
-
           # Prosody does not unload host modules such as mod_smacks on a config
           # reload. Restart it so changes to the Jitsi XMPP hosts take effect
           # and in-memory sessions from stopped service accounts are cleared.
           prosody = {
             reloadIfChanged = lib.mkForce false;
-            after = lib.optionals cfg.turn.enable [ "jitsi-meet-init-secrets.service" ];
-            requires = lib.optionals cfg.turn.enable [ "jitsi-meet-init-secrets.service" ];
-            preStart = lib.mkIf cfg.turn.enable (lib.mkAfter ''
+            preStart = lib.mkAfter ''
               if [ -z "''${TURN_SECRET:-}" ]; then
-                echo "TURN_SECRET is missing from Jitsi's runtime environment." >&2
+                echo "TURN_SECRET is missing from the shared realtime runtime." >&2
                 exit 1
               fi
-            '');
+            '';
           };
 
           jicofo = {
@@ -449,36 +375,14 @@ in
             serviceConfig.ExecStartPost = [ videobridgeReadyScript ];
           };
 
-          coturn = lib.mkIf cfg.turn.enable {
-            after = [ "jitsi-meet-init-secrets.service" ];
-            requires = [ "jitsi-meet-init-secrets.service" ];
-            preStart = lib.mkAfter ''
-              public_address="$(${lib.getExe pkgs.getent} ahostsv4 ${lib.escapeShellArg cfg.turn.hostName} \
-                | ${lib.getExe pkgs.gawk} 'NR == 1 { print $1; exit }')"
-              if [ -z "$public_address" ]; then
-                echo "Unable to resolve an IPv4 address for ${cfg.turn.hostName}." >&2
-                exit 1
-              fi
-              printf 'external-ip=%s\n' "$public_address" >> /run/coturn/turnserver.cfg
-            '';
-            serviceConfig.SupplementaryGroups = [ "jitsi-meet" ];
-          };
         };
 
         networking.firewall.allowedUDPPorts =
-          lib.optionals cfg.videobridge.openFirewall [ cfg.videobridge.udpPort ]
-          ++ lib.optionals cfg.turn.enable [ cfg.turn.port ];
-        networking.firewall.allowedUDPPortRanges = lib.optionals cfg.turn.enable [
-          {
-            from = cfg.turn.relayMinPort;
-            to = cfg.turn.relayMaxPort;
-          }
-        ];
+          lib.optionals cfg.videobridge.openFirewall [ cfg.videobridge.udpPort ];
         networking.firewall.allowedTCPPorts =
           lib.optionals (cfg.videobridge.openFirewall && cfg.videobridge.tcpFallback.enable) [
             cfg.videobridge.tcpFallback.port
-          ]
-          ++ lib.optionals cfg.turn.enable [ cfg.turn.port ];
+          ];
       }
 
       (lib.mkIf (!clusterCfg.enable) (

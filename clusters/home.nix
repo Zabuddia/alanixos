@@ -121,6 +121,9 @@ in
           "roundcube.fifefin.com"
           "openwebui.fifefin.com"
           "actual.fifefin.com"
+          "xmpp.fifefin.com"
+          "upload.fifefin.com"
+          "turn.fifefin.com"
         ];
       };
     };
@@ -954,12 +957,6 @@ in
         allowedAddresses = lib.optionals (hostname == "alan-big-nixos") [ "192.168.10.225" ];
       };
 
-      turn = {
-        enable = true;
-        # Headscale's embedded DERP server already uses UDP 3478 for STUN.
-        port = 3479;
-      };
-
       expose.wan = {
         enable = true;
         domain = "jitsi.fifefin.com";
@@ -968,6 +965,43 @@ in
       cluster = {
         enable = true;
         backupInterval = "12h";
+      };
+    };
+
+    # Neutral runtime shared by Jitsi and the personal XMPP virtual host.
+    # It owns daemon lifecycle and only genuinely shared runtime state; each
+    # consumer owns its own Prosody host data and protocol configuration.
+    alanix.realtime = {
+      enable = true;
+      backupDir = "/var/backup/realtime";
+      acme.credentialsFile = config.sops.templates."cloudflare-acme-cluster".path;
+      turn = {
+        hostName = "turn.fifefin.com";
+        # Headscale's embedded DERP server already uses UDP 3478 for STUN.
+        port = 3479;
+      };
+      cluster = {
+        enable = true;
+        backupInterval = "12h";
+      };
+    };
+
+    alanix.xmpp = {
+      enable = true;
+      domain = "fifefin.com";
+      serverDomain = "xmpp.fifefin.com";
+      conferenceDomain = "conference.fifefin.com";
+      uploadDomain = "upload.fifefin.com";
+
+      acme.credentialsFile = config.sops.templates."cloudflare-acme-cluster".path;
+      cluster = {
+        enable = true;
+        backupDir = "/var/backup/xmpp";
+        backupInterval = "12h";
+      };
+      upload.expose.wan = {
+        enable = true;
+        domain = "upload.fifefin.com";
       };
     };
 

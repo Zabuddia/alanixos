@@ -27,6 +27,7 @@
     ./openwebui
     ./radio-streams
     ./radicale
+    ./realtime
     ./remote-desktop
     ./roundcube
     ./searxng
@@ -34,5 +35,6 @@
     ./syncthing
     ./tvheadend
     ./vaultwarden
+    ./xmpp
   ];
 }
