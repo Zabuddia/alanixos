@@ -300,6 +300,7 @@
             profile = "minimal";
             alsoAllow = [
               "exec"
+              "process"
               "cron"
               "read"
               "write"

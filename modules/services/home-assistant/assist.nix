@@ -2,6 +2,16 @@
 
 let
   cfg = config.alanix.home-assistant.assist;
+  liveTvChannelIds = lib.mapAttrs (_: channel: channel.id) cfg.liveTvChannels;
+  liveTvChannelNames = lib.mapAttrs (_: channel: channel.name) cfg.liveTvChannels;
+  liveTvChannelAliases = lib.listToAttrs (
+    lib.concatLists (
+      lib.mapAttrsToList (
+        number: channel:
+        map (alias: lib.nameValuePair (lib.toLower alias) number) channel.aliases
+      ) cfg.liveTvChannels
+    )
+  );
 in
 {
   options.alanix.home-assistant.assist = {
@@ -43,6 +53,18 @@ in
       description = "MQTT text entity used to type on alan-tv.";
     };
 
+    alanTvTypeCommandTopic = lib.mkOption {
+      type = lib.types.str;
+      default = "alan-tv/command/type";
+      description = "MQTT command topic for repeatable alan-tv text entry.";
+    };
+
+    alanTvTypeResultSensor = lib.mkOption {
+      type = lib.types.str;
+      default = "sensor.alan_tv_type_result";
+      description = "MQTT acknowledgement sensor for alan-tv text entry.";
+    };
+
     voiceSatellite = lib.mkOption {
       type = lib.types.str;
       default = "assist_satellite.home_assistant_voice_0a946b_assist_satellite";
@@ -61,6 +83,27 @@ in
       description = "Kodi JSON-RPC endpoint used to search alan-tv's indexed media library.";
     };
 
+    liveTvChannels = lib.mkOption {
+      default = { };
+      description = "Kodi PVR channels available to Home Assistant voice control.";
+      type = lib.types.attrsOf (lib.types.submodule {
+        options = {
+          id = lib.mkOption {
+            type = lib.types.ints.positive;
+            description = "Kodi PVR channel ID.";
+          };
+          name = lib.mkOption {
+            type = lib.types.nonEmptyStr;
+            description = "Station name.";
+          };
+          aliases = lib.mkOption {
+            type = lib.types.listOf lib.types.nonEmptyStr;
+            default = [ ];
+            description = "Spoken network names and call signs.";
+          };
+        };
+      });
+    };
   };
 
   config = lib.mkIf (config.alanix.home-assistant.enable && cfg.enable) {
@@ -109,30 +152,31 @@ in
       automation = [
         {
           id = "alan_tv_local_media_controls";
-          alias = "Local voice controls for alan-tv media";
+          alias = "Kodi-specific voice controls for alan-tv";
           description = ''
-            Handle simple alan-tv transport and volume commands locally so
-            they do not need the LLM conversation agent.
+            Handle Kodi commands that Home Assistant's built-in media intents
+            do not provide. Standard playback, volume, and mute commands use
+            Home Assistant's maintained local sentence library.
           '';
           triggers = [
             {
               trigger = "conversation";
-              id = "pause";
+              id = "pause_compat";
               command = [
-                "(pause|freeze) [the] (music|song|track|audio|media|movie|video|show|episode|playback) [on (alan|allen) tv]"
+                "(pause|freeze) [the] (music|song|track|audio|media|movie|video|show|episode|playback) on (alan|allen) tv"
                 "(pause|freeze) [the] (music|song|track|audio|media|movie|video|show|episode|playback) on lntv"
-                "(pause|freeze) (alan|allen) tv"
-                "(pause|freeze) lntv"
+                "(pause|freeze) (this|the current) (song|track|audio|media|movie|video|show|episode|playback)"
+                "(pause|freeze) (this|it|playback)"
               ];
             }
             {
               trigger = "conversation";
-              id = "resume";
+              id = "resume_compat";
               command = [
-                "(play|resume|continue|unpause) [the] (music|song|track|audio|media|movie|video|show|episode|playback) [on (alan|allen) tv]"
-                "(play|resume|continue|unpause) [the] (music|song|track|audio|media|movie|video|show|episode|playback) on lntv"
-                "(resume|continue|unpause) (alan|allen) tv"
-                "(resume|continue|unpause) lntv"
+                "(resume|continue|unpause) [the] (music|song|track|audio|media|movie|video|show|episode|playback) on (alan|allen) tv"
+                "(resume|continue|unpause) [the] (music|song|track|audio|media|movie|video|show|episode|playback) on lntv"
+                "(resume|continue|unpause) (this|the current) (song|track|audio|media|movie|video|show|episode|playback)"
+                "(resume|continue|unpause) (this|it|playback)"
               ];
             }
             {
@@ -141,70 +185,10 @@ in
               command = [
                 "(stop|end) [the] (music|song|track|audio|media|movie|video|show|episode|playback) [on (alan|allen) tv]"
                 "(stop|end) [the] (music|song|track|audio|media|movie|video|show|episode|playback) on lntv"
+                "(stop|end) (this|the current) (song|track|audio|media|movie|video|show|episode|playback)"
+                "(stop|end) (this|it|playback)"
                 "(stop|end) (alan|allen) tv"
                 "(stop|end) lntv"
-              ];
-            }
-            {
-              trigger = "conversation";
-              id = "next";
-              command = [
-                "(next|skip) [the] (song|track|episode|video) [on (alan|allen) tv]"
-                "(next|skip) [the] (song|track|episode|video) on lntv"
-                "play [the] next (song|track|episode|video) [on (alan|allen) tv]"
-              ];
-            }
-            {
-              trigger = "conversation";
-              id = "previous";
-              command = [
-                "(previous|last) (song|track|episode|video) [on (alan|allen) tv]"
-                "(previous|last) (song|track|episode|video) on lntv"
-                "play [the] previous (song|track|episode|video) [on (alan|allen) tv]"
-              ];
-            }
-            {
-              trigger = "conversation";
-              id = "volume_up";
-              command = [
-                "(turn|raise) [the] volume up [on] (alan|allen) tv"
-                "volume up [on] (alan|allen) tv"
-              ];
-            }
-            {
-              trigger = "conversation";
-              id = "volume_down";
-              command = [
-                "(turn|lower) [the] volume down [on] (alan|allen) tv"
-                "volume down [on] (alan|allen) tv"
-              ];
-            }
-            {
-              trigger = "conversation";
-              id = "volume_set";
-              command = [
-                "set [the] volume to {volume} [percent] on (alan|allen) tv"
-                "set [the] volume [on] (alan|allen) tv to {volume} [percent]"
-                "set (alan|allen) tv [volume] to {volume} [percent]"
-                "turn [the] volume [on] (alan|allen) tv to {volume} [percent]"
-              ];
-            }
-            {
-              trigger = "conversation";
-              id = "mute";
-              command = [
-                "mute [the] (movie|tv|television) [on] (alan|allen) tv"
-                "mute [the] volume [on] (alan|allen) tv"
-                "mute (alan|allen) tv"
-              ];
-            }
-            {
-              trigger = "conversation";
-              id = "unmute";
-              command = [
-                "unmute [the] (movie|tv|television) [on] (alan|allen) tv"
-                "unmute [the] volume [on] (alan|allen) tv"
-                "unmute (alan|allen) tv"
               ];
             }
             {
@@ -283,7 +267,8 @@ in
               trigger = "conversation";
               id = "navigate_back";
               command = [
-                "go back [on (alan|allen) tv]"
+                "go back on (alan|allen) tv"
+                "go back on lntv"
                 "(press|hit) [the] back [button|key] [on (alan|allen) tv]"
               ];
             }
@@ -308,7 +293,7 @@ in
             {
               choose = [
                 {
-                  conditions = [ "{{ trigger.id == 'pause' }}" ];
+                  conditions = [ "{{ trigger.id == 'pause_compat' }}" ];
                   sequence = [
                     {
                       action = "media_player.media_pause";
@@ -318,7 +303,7 @@ in
                   ];
                 }
                 {
-                  conditions = [ "{{ trigger.id == 'resume' }}" ];
+                  conditions = [ "{{ trigger.id == 'resume_compat' }}" ];
                   sequence = [
                     {
                       action = "media_player.media_play";
@@ -335,87 +320,6 @@ in
                       target.entity_id = cfg.alanTvMediaPlayer;
                     }
                     { set_conversation_response = "Stopped."; }
-                  ];
-                }
-                {
-                  conditions = [ "{{ trigger.id == 'next' }}" ];
-                  sequence = [
-                    {
-                      action = "media_player.media_next_track";
-                      target.entity_id = cfg.alanTvMediaPlayer;
-                    }
-                    { set_conversation_response = "Skipped."; }
-                  ];
-                }
-                {
-                  conditions = [ "{{ trigger.id == 'previous' }}" ];
-                  sequence = [
-                    {
-                      action = "media_player.media_previous_track";
-                      target.entity_id = cfg.alanTvMediaPlayer;
-                    }
-                    { set_conversation_response = "Previous track."; }
-                  ];
-                }
-                {
-                  conditions = [ "{{ trigger.id == 'volume_up' }}" ];
-                  sequence = [
-                    {
-                      action = "media_player.volume_up";
-                      target.entity_id = cfg.alanTvMediaPlayer;
-                    }
-                    { set_conversation_response = "Volume raised."; }
-                  ];
-                }
-                {
-                  conditions = [ "{{ trigger.id == 'volume_down' }}" ];
-                  sequence = [
-                    {
-                      action = "media_player.volume_down";
-                      target.entity_id = cfg.alanTvMediaPlayer;
-                    }
-                    { set_conversation_response = "Volume lowered."; }
-                  ];
-                }
-                {
-                  conditions = [ "{{ trigger.id == 'volume_set' }}" ];
-                  sequence = [
-                    {
-                      variables.requested_volume = ''
-                        {{ trigger.slots.volume | string | replace("%", "") | trim | int(-1) }}
-                      '';
-                    }
-                    {
-                      action = "script.set_kodi_volume_on_alan_tv";
-                      data.volume = "{{ requested_volume }}";
-                    }
-                    {
-                      set_conversation_response = ''
-                        Volume set to {{ requested_volume }} percent.
-                      '';
-                    }
-                  ];
-                }
-                {
-                  conditions = [ "{{ trigger.id == 'mute' }}" ];
-                  sequence = [
-                    {
-                      action = "media_player.volume_mute";
-                      target.entity_id = cfg.alanTvMediaPlayer;
-                      data.is_volume_muted = true;
-                    }
-                    { set_conversation_response = "Muted."; }
-                  ];
-                }
-                {
-                  conditions = [ "{{ trigger.id == 'unmute' }}" ];
-                  sequence = [
-                    {
-                      action = "media_player.volume_mute";
-                      target.entity_id = cfg.alanTvMediaPlayer;
-                      data.is_volume_muted = false;
-                    }
-                    { set_conversation_response = "Unmuted."; }
                   ];
                 }
                 {
@@ -722,6 +626,30 @@ in
           mode = "single";
         }
         {
+          id = "alan_tv_local_live_tv";
+          alias = "Local live TV tuning for alan-tv";
+          description = "Tune a configured Kodi PVR channel without involving the LLM.";
+          triggers = [
+            {
+              trigger = "conversation";
+              command = [
+                "(play|watch|put on|tune to|switch to) [live] (channel|station) {channel} [on (alan|allen) tv]"
+                "(change|switch) [the] [live] (channel|station) to {channel} [on (alan|allen) tv]"
+                "(play|watch|put on) {channel} on live (tv|television) [on (alan|allen) tv]"
+              ];
+            }
+          ];
+          actions = [
+            {
+              action = "script.play_live_tv_channel_on_alan_tv";
+              data.channel = "{{ trigger.slots.channel }}";
+              response_variable = "live_tv_result";
+            }
+            { set_conversation_response = "Playing {{ live_tv_result.title }}."; }
+          ];
+          mode = "restart";
+        }
+        {
           id = "alan_tv_local_invidious_controls";
           alias = "Local voice controls for Invidious on alan-tv";
           description = ''
@@ -1008,9 +936,43 @@ in
           };
           sequence = [
             {
-              action = "text.set_value";
-              target.entity_id = cfg.alanTvTypeText;
-              data.value = "{{ text }}";
+              variables.previous_type_sequence = ''
+                {{ states("${cfg.alanTvTypeResultSensor}") }}
+              '';
+            }
+            {
+              action = "mqtt.publish";
+              data = {
+                topic = cfg.alanTvTypeCommandTopic;
+                payload = ''{{ {"text": text} | to_json }}'';
+                qos = 1;
+              };
+            }
+            {
+              wait_template = ''
+                {{ states("${cfg.alanTvTypeResultSensor}") != previous_type_sequence }}
+              '';
+              timeout = "00:00:07";
+              continue_on_timeout = true;
+            }
+            {
+              "if" = [
+                ''
+                  {{ not wait.completed
+                     or state_attr("${cfg.alanTvTypeResultSensor}", "status") != "success" }}
+                ''
+              ];
+              "then" = [
+                {
+                  stop = ''
+                    Alan TV did not confirm text entry: {{
+                      state_attr("${cfg.alanTvTypeResultSensor}", "error")
+                      | default("no acknowledgement", true)
+                    }}
+                  '';
+                  error = true;
+                }
+              ];
             }
           ];
         };
@@ -1053,47 +1015,6 @@ in
                   "menu": "Input.ContextMenu"
                 }[command | lower] }}
               '';
-            }
-          ];
-        };
-
-        set_kodi_volume_on_alan_tv = {
-          alias = "Set Kodi volume on alan-tv";
-          description = ''
-            Set Kodi's volume on alan-tv to an exact percentage from 0 through
-            100. Use this when the user requests a specific volume level.
-          '';
-          fields.volume = {
-            name = "Volume";
-            description = "The requested volume percentage from 0 through 100.";
-            required = true;
-            selector.number = {
-              min = 0;
-              max = 100;
-              step = 1;
-              mode = "box";
-              unit_of_measurement = "%";
-            };
-          };
-          sequence = [
-            {
-              variables.requested_volume = ''
-                {{ volume | string | replace("%", "") | trim | float(-1) }}
-              '';
-            }
-            {
-              "if" = [ "{{ requested_volume < 0 or requested_volume > 100 }}" ];
-              "then" = [
-                {
-                  stop = "Volume must be between 0 and 100 percent";
-                  error = true;
-                }
-              ];
-            }
-            {
-              action = "media_player.volume_set";
-              target.entity_id = cfg.alanTvMediaPlayer;
-              data.volume_level = "{{ requested_volume / 100 }}";
             }
           ];
         };
@@ -1613,6 +1534,56 @@ in
             {
               stop = "Kodi library video started";
               response_variable = "kodi_video_result";
+            }
+          ];
+        };
+
+        play_live_tv_channel_on_alan_tv = {
+          alias = "Play a live TV channel on alan-tv";
+          description = "Play a configured Kodi PVR channel through Home Assistant's standard media player action.";
+          fields.channel = {
+            name = "Live TV channel";
+            description = "A configured channel number, call sign, or network.";
+            required = true;
+            selector.text = { };
+          };
+          sequence = [
+            { variables.requested_channel = "{{ channel | string | trim | lower }}"; }
+            {
+              variables.channel_key = ''
+                {%- set aliases = ${builtins.toJSON liveTvChannelAliases} -%}
+                {{- aliases.get(requested_channel | replace(" ", ""), requested_channel) -}}
+              '';
+            }
+            {
+              "if" = [ "{{ channel_key not in ${builtins.toJSON (builtins.attrNames liveTvChannelIds)} }}" ];
+              "then" = [
+                {
+                  stop = "Unknown live TV channel {{ channel }}. Configured channels are ${lib.concatStringsSep ", " (builtins.attrNames liveTvChannelIds)}.";
+                  error = true;
+                }
+              ];
+            }
+            { action = "script.ensure_kodi_on_alan_tv"; }
+            {
+              action = "media_player.play_media";
+              target.entity_id = cfg.alanTvMediaPlayer;
+              data = {
+                media_content_type = "CHANNEL";
+                media_content_id = "{{ ${builtins.toJSON liveTvChannelIds}[channel_key] }}";
+              };
+            }
+            {
+              variables.live_tv_result = {
+                channel = "{{ channel_key }}";
+                title = ''
+                  {{ channel_key ~ " " ~ ${builtins.toJSON liveTvChannelNames}[channel_key] }}
+                '';
+              };
+            }
+            {
+              stop = "Live TV channel started";
+              response_variable = "live_tv_result";
             }
           ];
         };

@@ -224,6 +224,7 @@
         mqttLauncher = {
           enable = true;
           broker = "alan-home";
+          kodiJsonRpcUrl = "http://127.0.0.1:8080/jsonrpc";
           topicPrefix = "alan-tv";
           deviceId = "alan_tv";
           deviceName = "alan-tv";

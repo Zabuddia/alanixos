@@ -100,6 +100,20 @@ let
     inherit device;
   };
 
+  typeResultPayload = builtins.toJSON {
+    name = "Type result";
+    unique_id = "${cfg.deviceId}_type_result";
+    state_topic = "${cfg.topicPrefix}/state/type_result";
+    value_template = "{{ value_json.sequence }}";
+    json_attributes_topic = "${cfg.topicPrefix}/state/type_result";
+    availability_topic = "${cfg.topicPrefix}/status";
+    payload_available = "online";
+    payload_not_available = "offline";
+    entity_category = "diagnostic";
+    icon = "mdi:keyboard-outline";
+    inherit device;
+  };
+
   launchCases = lib.concatStringsSep "\n" (
     lib.mapAttrsToList
       (appName: app: ''
@@ -208,6 +222,11 @@ let
     publish_retained \
       ${lib.escapeShellArg "${cfg.discoveryPrefix}/text/${cfg.deviceId}/type_text/config"} \
       ${lib.escapeShellArg typeTextPayload}
+    publish_retained \
+      ${lib.escapeShellArg "${cfg.discoveryPrefix}/sensor/${cfg.deviceId}/type_result/config"} \
+      ${lib.escapeShellArg typeResultPayload}
+    publish_retained "${cfg.topicPrefix}/state/type_result" \
+      '{"sequence":0,"status":"idle","application":""}'
     publish_retained ${lib.escapeShellArg "${cfg.topicPrefix}/state/application"} ${lib.escapeShellArg applicationIdle}
     publish_retained "${cfg.topicPrefix}/status" online
 
@@ -227,6 +246,8 @@ let
         *) return 1 ;;
       esac
     }
+
+    type_sequence=0
 
     ${pkgs.mosquitto}/bin/mosquitto_sub "''${mqtt_args[@]}" \
       -q 1 \
@@ -266,16 +287,60 @@ let
                     type == "string"
                     and length > 0
                     and length <= 255
-                    and (test("[\\u0000-\\u001f\\u007f]") | not)
+                    and (explode | all(. >= 32 and . != 127))
                   )
+                | if test("^[[:space:]]*[A-Za-z0-9]([[:space:]]*[-. ][[:space:]]*[A-Za-z0-9]){1,}[[:space:]]*$")
+                  then gsub("[^A-Za-z0-9]"; "")
+                  else .
+                  end
               '
           )"; then
             publish "${cfg.topicPrefix}/state/error" "invalid text input"
+            type_sequence=$((type_sequence + 1))
+            publish_retained "${cfg.topicPrefix}/state/type_result" "$(${pkgs.jq}/bin/jq -nc \
+              --argjson sequence "$type_sequence" \
+              '{sequence: $sequence, status: "error", application: "", error: "invalid text input"}')"
             continue
           fi
 
-          if ! ${pkgs.wtype}/bin/wtype -- "$typed_text"; then
-            publish "${cfg.topicPrefix}/state/error" "could not type text"
+          focused_app="$(${pkgs.sway}/bin/swaymsg -t get_tree -r 2>/dev/null \
+            | ${pkgs.jq}/bin/jq -r '.. | objects | select(.focused? == true) | .app_id // ""' \
+            | ${pkgs.coreutils}/bin/head -n 1 || true)"
+          type_status=success
+          type_error=""
+
+          if [ "$focused_app" = Kodi ] && [ -n ${lib.escapeShellArg (if cfg.kodiJsonRpcUrl == null then "" else cfg.kodiJsonRpcUrl)} ]; then
+            kodi_payload="$(${pkgs.jq}/bin/jq -nc --arg text "$typed_text" '{
+              jsonrpc: "2.0",
+              id: 1,
+              method: "Input.SendText",
+              params: {text: $text, done: false}
+            }')"
+            if ! kodi_response="$(${pkgs.curl}/bin/curl --fail --silent --show-error --max-time 5 \
+              -H 'Content-Type: application/json' \
+              -X POST ${lib.escapeShellArg (if cfg.kodiJsonRpcUrl == null then "http://127.0.0.1/" else cfg.kodiJsonRpcUrl)} \
+              --data "$kodi_payload")" \
+              || [ "$(printf '%s' "$kodi_response" | ${pkgs.jq}/bin/jq -r '.result // ""')" != OK ]; then
+              type_status=error
+              type_error="Kodi did not accept text"
+            fi
+          elif ! ${pkgs.wtype}/bin/wtype -- "$typed_text"; then
+            type_status=error
+            type_error="could not type text"
+          fi
+
+          type_sequence=$((type_sequence + 1))
+          type_result="$(${pkgs.jq}/bin/jq -nc \
+            --argjson sequence "$type_sequence" \
+            --arg status "$type_status" \
+            --arg application "$focused_app" \
+            --arg error "$type_error" \
+            '{sequence: $sequence, status: $status, application: $application}
+             + if $error == "" then {} else {error: $error} end')"
+          publish_retained "${cfg.topicPrefix}/state/type_result" "$type_result"
+
+          if [ "$type_status" != success ]; then
+            publish "${cfg.topicPrefix}/state/error" "$type_error"
           fi
           continue
         fi
@@ -329,6 +394,15 @@ in
       type = lib.types.port;
       default = 1883;
       description = "MQTT broker port.";
+    };
+
+    kodiJsonRpcUrl = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        Optional Kodi JSON-RPC endpoint. When Kodi is focused, text is sent
+        through Input.SendText instead of virtual Wayland keystrokes.
+      '';
     };
 
     topicPrefix = lib.mkOption {
