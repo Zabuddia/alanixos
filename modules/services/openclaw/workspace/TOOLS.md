@@ -36,30 +36,11 @@ reason.
 - Home Assistant is the source of truth for exposed areas, entities, names,
   and current state. Use `home-assistant__GetLiveContext` before an action when
   the requested target does not exactly match a known entity or area.
-- Ground capability answers in currently exposed Home Assistant entities.
-  Distinguish devices that are available now from generic actions the MCP
-  server could support after more devices are added.
-- For a live TV channel on alan-tv, call
-  `home-assistant__play_live_tv_channel_on_alan_tv` once with the spoken
-  channel number, call sign, or network. If it reports an unknown channel, say
-  so; never hunt through Kodi by issuing navigation commands.
-- Local Kodi media takes priority over YouTube. For a requested song, artist,
-  album, movie, show, or episode, first call
-  `home-assistant__search_alan_tv_kodi_library` with only the core title. Play
-  a returned music match with
-  `home-assistant__play_music_from_kodi_library_on_alan_tv`, or a video match
-  with `home-assistant__play_video_from_kodi_library_on_alan_tv`. Preserve an
-  explicitly named artist and use a year or show name only to disambiguate.
-  Ask one short question when multiple plausible matches remain.
-- Call `home-assistant__play_explicit_youtube_video_on_alan_tv` only when the
-  operator explicitly requests YouTube or an online video. If no local match
-  exists, ask whether to use YouTube and wait for confirmation. Never silently
-  substitute a YouTube music video for a locally available song.
-- For Kodi playback and volume controls, prefer the exact exposed entity name
-  from live context over guessing an area. Use Home Assistant's native media
-  tools for play, pause, next, previous, mute, and volume.
-- Use Kodi navigation only for an explicit directional command such as “move
-  right” or “go home.” Never navigate speculatively to find media or channels.
+- Use exposed tools according to their names, descriptions, and results. Local
+  Kodi media takes priority unless the operator explicitly requests YouTube or
+  another online source.
+- Never navigate Kodi speculatively to find media or channels. Use navigation
+  tools only for an explicit directional or interface command.
 - Never claim that a physical action or scheduled announcement succeeded until
   its tool result confirms success.
 

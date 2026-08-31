@@ -632,17 +632,30 @@ in
           triggers = [
             {
               trigger = "conversation";
+              id = "slot";
               command = [
                 "(play|watch|put on|tune to|switch to) [live] (channel|station) {channel} [on (alan|allen) tv]"
                 "(change|switch) [the] [live] (channel|station) to {channel} [on (alan|allen) tv]"
                 "(play|watch|put on) {channel} on live (tv|television) [on (alan|allen) tv]"
               ];
             }
-          ];
+          ] ++ lib.mapAttrsToList (
+            number: channel:
+            let
+              spokenNames = [ number ] ++ channel.aliases;
+            in
+            {
+              trigger = "conversation";
+              id = number;
+              command = [
+                "(play|watch|put on|tune to|switch to) (${lib.concatStringsSep "|" spokenNames}) [on (alan|allen) tv]"
+              ];
+            }
+          ) cfg.liveTvChannels;
           actions = [
             {
               action = "script.play_live_tv_channel_on_alan_tv";
-              data.channel = "{{ trigger.slots.channel }}";
+              data.channel = "{{ trigger.slots.channel if trigger.id == 'slot' else trigger.id }}";
               response_variable = "live_tv_result";
             }
             { set_conversation_response = "Playing {{ live_tv_result.title }}."; }
