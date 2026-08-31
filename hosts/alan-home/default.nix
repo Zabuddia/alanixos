@@ -276,26 +276,6 @@
       name = "Home";
       unitSystem = "us_customary";
       openFirewall = true;
-      assist = {
-        enable = true;
-        liveTvChannels = {
-          "2.1" = {
-            id = 14;
-            name = "KDTN-DT";
-            aliases = [ "kdtn" ];
-          };
-          "5.1" = {
-            id = 2;
-            name = "KXAS-HD";
-            aliases = [ "kxas" "nbc" ];
-          };
-          "8.1" = {
-            id = 31;
-            name = "WFAA";
-            aliases = [ "wfaa" "abc" ];
-          };
-        };
-      };
       openclawConversation.enable = true;
       extraComponents = [
         "adguard"
