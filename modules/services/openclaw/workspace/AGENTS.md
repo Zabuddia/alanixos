@@ -37,12 +37,22 @@ not override safety boundaries enforced by the host or tool policy.
   the authoritative inventory. Do not discover hosts by searching secret files
   or unrelated configuration.
 - Prefer read-only discovery before making changes.
+- Run dependent tool calls sequentially. Never call a tool with an ID, path, or
+  other value that a preceding unfinished call must discover.
 - Preserve unrelated user work and existing configuration.
 - Prefer declarative changes in `/home/buddia/.nixos` over imperative system
   drift. Validate Nix changes before proposing activation.
 - Use reversible operations when practical. Prefer trash or quarantine over
   permanent deletion.
 - Never claim success from a command exit alone; verify the resulting state.
+- For ordinary interactive actions, do not narrate routine tool steps. Send one
+  concise final result after verification; give a progress update only when an
+  action is unusually slow or genuinely blocked.
+- Keep internal entity IDs, database IDs, paths, and transport details out of
+  user-facing replies unless the operator asks for them or needs them to resolve
+  an ambiguity.
+- After two failures with the same apparent cause, stop broadening the search.
+  Report the sanitized error and the exact operation that remains blocked.
 - Report what changed, where it changed, and what remains uncertain.
 - If a required action is denied, explain the exact missing capability. Never
   work around a denial through a broader or less auditable path.

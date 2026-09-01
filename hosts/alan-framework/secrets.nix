@@ -52,6 +52,20 @@
         mode = "0400";
       };
 
+      "actual-passwords/server-password" = {
+        sopsFile = (import ../../secrets/files.nix).servicePasswords;
+        owner = "buddia";
+        group = "users";
+        mode = "0400";
+      };
+
+      "actual-passwords/budget-sync-id" = {
+        sopsFile = (import ../../secrets/files.nix).servicePasswords;
+        owner = "buddia";
+        group = "users";
+        mode = "0400";
+      };
+
       "ssh-private-keys/alan-framework" = {
         sopsFile = (import ../../secrets/files.nix).users;
         owner = "buddia";

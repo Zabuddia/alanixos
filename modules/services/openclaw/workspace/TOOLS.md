@@ -16,14 +16,67 @@ sessions for background work. Define the exact schedule, hosts, actions, and
 delivery behavior; scheduled work receives no additional authorization beyond
 the job definition.
 
+## Actual Budget
+
+- Use the `actual-budget` command for the operator's Actual Budget data. It
+  supplies its own authenticated connection and returns JSON by default. Never
+  inspect its wrapper, process environment, cache, or credential files.
+- Monetary amounts in JSON and command arguments are integer cents: `5000` is
+  $50.00 and `-12350` is -$123.50. Table and CSV output convert amounts to
+  decimal currency. For split transactions, exclude rows where `is_parent` is
+  true when calculating totals to avoid double-counting.
+- `actual-budget accounts list` already returns each account's current balance;
+  use that one command for ordinary account-and-balance requests. Use
+  `accounts balance ID` only for a requested cutoff date or when the list result
+  lacks a balance. Never call `accounts balance` without its required ID.
+- Prefer bounded commands such as `accounts list`, `budgets month`, and
+  `transactions list` with explicit date ranges. Use `query run` only when the
+  ordinary commands cannot answer the request.
+- Budget reads are allowed when relevant to the operator's request. Any command
+  that changes transactions, accounts, categories, rules, schedules, or budget
+  allocations requires an explicit current request. Deletion remains Tier 3
+  and requires confirmation immediately before execution.
+- The host may enforce read-only Actual access and reject mutation commands.
+  Report that restriction plainly; never bypass it with the web UI, raw network
+  requests, direct files, or another credential path.
+
 ## Home Assistant
 
 - Home Assistant is the source of truth for exposed areas, entities, names,
   and current state. Use `home-assistant__GetLiveContext` before an action when
   the requested target does not exactly match a known entity or area.
 - Use exposed tools according to their names, descriptions, and results.
+- Home Assistant button entities are pressed with `HassTurnOn`, using the exact
+  entity name and `domain: "button"`. For Kodi, call `HassTurnOn` directly with
+  `name: "alan-tv Launch Kodi"` and `domain: ["button"]`; to exit the current
+  application, use `name: "alan-tv Close current app"`. These names are already
+  resolved, so do not call `GetLiveContext` first. In voice transcripts, Code,
+  Cody, Codey, and Kody mean Kodi.
+- Use the authenticated Home Assistant tools. Never search files or environment
+  variables for API tokens, and never replace an available tool with raw REST
+  calls.
 - Never claim that a physical action or scheduled announcement succeeded until
   its tool result confirms success.
+
+## Kodi on alan-tv
+
+- Alan TV, Allen TV, LTV, LNTV, and alan-tv all identify the same playback
+  target. Use Home Assistant only to launch or close the app. Use the structured
+  `kodi-control` command for Kodi library, PVR, playback, and seek operations;
+  it performs matching and verification and returns JSON.
+- For a movie, first ensure Kodi is open, then run
+  `kodi-control play-movie "TITLE"`. It resumes saved progress by default; add
+  `--start-over` only when explicitly requested.
+- For live TV, first ensure Kodi is open, then run
+  `kodi-control play-channel "NUMBER OR NAME"`. A partial callsign such as
+  `8.1 WFA` may match `8.1 WFAA` when unambiguous.
+- Use `kodi-control current` to inspect or verify playback,
+  `kodi-control seek-percent PERCENT` to seek, and `kodi-control start-over` to
+  return an active video to its beginning. `find-movie` and `find-channel` are
+  read-only matching commands for resolving ambiguity without starting media.
+- Do not use `HassMediaSearchAndPlay`, construct raw Kodi JSON-RPC, inspect Kodi
+  configuration or logs, or substitute guessed API methods. If `kodi-control`
+  returns an error, report it concisely; never bypass the wrapper.
 
 ## Internet research
 

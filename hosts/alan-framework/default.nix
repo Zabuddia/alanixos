@@ -182,6 +182,14 @@
 
     alanix.openclaw = {
       user = "buddia";
+      actual = {
+        enable = true;
+        serverUrl = "https://actual.fifefin.com";
+        passwordFile = config.sops.secrets."actual-passwords/server-password".path;
+        syncIdFile = config.sops.secrets."actual-passwords/budget-sync-id".path;
+        allowMutations = false;
+      };
+      kodi.enable = true;
       gateway = {
         enable = true;
         enableFullExec = true;
@@ -238,6 +246,15 @@
                 contextWindow = 131072;
                 maxTokens = 32768;
               }
+              {
+                id = "ornith-1.5-35b-a3b";
+                name = "Ornith 1.5 35B A3B";
+                api = "openai-completions";
+                reasoning = true;
+                input = [ "text" ];
+                contextWindow = 65536;
+                maxTokens = 32768;
+              }
             ];
           };
           agents = {
@@ -268,7 +285,7 @@
                 };
               };
               model = {
-                primary = "local-litellm/qwen3.6-35b-a3b";
+                primary = "local-litellm/ornith-1.5-35b-a3b";
                 fallbacks = [ ];
               };
               models = {
@@ -278,6 +295,10 @@
                 };
                 "local-litellm/qwen3.8-27b" = {
                   alias = "qwen3.8-27b";
+                  streaming = true;
+                };
+                "local-litellm/ornith-1.5-35b-a3b" = {
+                  alias = "ornith-1.5-35b-a3b";
                   streaming = true;
                 };
               };
@@ -290,7 +311,7 @@
                 workspace = "/home/buddia/.openclaw/workspaces/jarvis";
                 agentDir = "/home/buddia/.openclaw/agents/jarvis/agent";
                 model = {
-                  primary = "local-litellm/qwen3.6-35b-a3b";
+                  primary = "local-litellm/ornith-1.5-35b-a3b";
                   fallbacks = [ ];
                 };
               }
@@ -533,6 +554,56 @@
             "0.0"
             "--repeat-penalty"
             "1.0"
+          ];
+        };
+
+        # Optional reasoning/tool-calling model for OpenClaw. llama.cpp uses
+        # the official tool-aware Jinja template embedded in this GGUF.
+        ornith = {
+          enable = true;
+          runtime = "llama";
+          host = "127.0.0.1";
+          listenHost = "0.0.0.0";
+          port = 8088;
+          alias = "ornith-1.5-35b-a3b";
+          ctxSize = 65536;
+          batchSize = 2048;
+          ubatchSize = 512;
+          parallel = 1;
+          gpuLayers = "all";
+          flashAttention = "on";
+          threads = null;
+          threadsBatch = null;
+          mmap = true;
+          mlock = false;
+          input = [ "text" ];
+          imageMinTokens = null;
+          imageMaxTokens = null;
+          model = {
+            name = "ornith-1.5-35b-a3b";
+            path = null;
+            url = null;
+            hfRepo = "ornith-ai/Ornith-1.5-35B-A3B-GGUF";
+            hfFile = "Ornith-1.5-35B-Q4_K_M.gguf";
+            mmprojPath = null;
+            mmprojUrl = null;
+          };
+          extraArgs = [
+            "--fit"
+            "off"
+            "--cache-type-k"
+            "f16"
+            "--cache-type-v"
+            "f16"
+            "--jinja"
+            "--reasoning"
+            "on"
+            "--temp"
+            "0.25"
+            "--top-p"
+            "0.95"
+            "--top-k"
+            "20"
           ];
         };
 

@@ -1,0 +1,8 @@
+{
+  "name": "alanix-actual-cli",
+  "private": true,
+  "version": "26.8.1",
+  "dependencies": {
+    "@actual-app/cli": "26.8.1"
+  }
+}
