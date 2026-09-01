@@ -188,7 +188,6 @@
         };
         kodi = {
           enable = true;
-          windowing = "x11";
           invidious = {
             enable = true;
             instanceUrl = "https://invidious.fifefin.com";
