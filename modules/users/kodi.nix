@@ -27,6 +27,10 @@ let
     ++ lib.optionals hasInvidious [ p.invidious ]
     ++ lib.optionals hasJellyfin [ p.jellyfin ]
     ++ lib.optionals hasInputstreamAdaptive [ p.inputstream-adaptive ]);
+  kodiCommand = lib.escapeShellArgs (
+    [ (lib.getExe kodiPackage) ]
+    ++ lib.optional (cfg.windowing != null) "--windowing=${cfg.windowing}"
+  );
 
   tvheadendSettingsXml = server: ''
     <settings version="2">
@@ -166,6 +170,12 @@ in
       type = types.package;
       default = pkgs.kodi-wayland;
       description = "Kodi package to install.";
+    };
+
+    windowing = lib.mkOption {
+      type = types.nullOr (types.enum [ "wayland" "x11" ]);
+      default = null;
+      description = "Optional Kodi window-system override used by every declarative launcher.";
     };
 
     tvheadend = {
@@ -406,7 +416,7 @@ in
   config.appLauncher.apps.kodi = lib.mkIf cfg.enable {
     label = "Kodi";
     icon = "mdi:kodi";
-    command = lib.getExe kodiPackage;
+    command = kodiCommand;
     processNames = [ "kodi" "kodi.bin" ];
   };
 
