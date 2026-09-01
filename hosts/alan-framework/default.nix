@@ -262,8 +262,30 @@
               workspace = "/home/buddia/.openclaw/workspaces/jarvis";
               skipBootstrap = true;
               heartbeat = {
-                every = "0m";
+                every = "1h";
                 includeSystemPromptSection = false;
+                isolatedSession = true;
+                lightContext = true;
+                skipWhenBusy = true;
+                target = "telegram";
+                to = "7336229793";
+              };
+              compaction.memoryFlush = {
+                enabled = true;
+                forceFlushTranscriptBytes = "512kb";
+                systemPrompt = ''
+                  Preserve only verified, reusable context. Prioritize stable
+                  operator preferences, corrections, system topology, naming
+                  conventions, and durable decisions. Never store secrets,
+                  credentials, guesses, transient failures, routine commands,
+                  or historical authorization.
+                '';
+                prompt = ''
+                  Write lasting context to MEMORY.md or today's dated memory
+                  note as appropriate. Update superseded facts instead of
+                  duplicating them. Reply with exactly NO_REPLY if there is
+                  nothing worth retaining.
+                '';
               };
               memorySearch = {
                 provider = "openai-compatible";
@@ -317,6 +339,14 @@
               }
             ];
           };
+          hooks.internal = {
+            enabled = true;
+            entries."session-memory" = {
+              enabled = true;
+              messages = 15;
+              llmSlug = false;
+            };
+          };
           tools = {
             profile = "minimal";
             alsoAllow = [
@@ -358,6 +388,14 @@
             config.webSearch = {
               baseUrl = "http://alan-big-nixos:18888";
               language = "en";
+            };
+          };
+          plugins.entries."memory-core" = {
+            enabled = true;
+            config.dreaming = {
+              enabled = true;
+              frequency = "0 3 * * *";
+              timezone = "America/Chicago";
             };
           };
           channels.telegram = {

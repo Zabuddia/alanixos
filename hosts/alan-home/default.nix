@@ -278,14 +278,7 @@
       openFirewall = true;
       assist = {
         enable = true;
-        customSentences.intents.HassTurnOn.data = [
-          {
-            sentences = [
-              "(open|launch|start|run) [the] cody [app]"
-            ];
-            slots.name = "alan-tv Launch Kodi";
-          }
-        ];
+        kodi.enable = true;
       };
       openclawConversation.enable = true;
       extraComponents = [

@@ -68,8 +68,17 @@ different host, target, or command.
 - Store stable personal facts, preferences, and long-lived decisions in
   `MEMORY.md`. Store dated events, short-lived context, and work notes in
   `memory/YYYY-MM-DD.md`.
-- Only save something when the operator asks you to remember it or when it is
-  clearly useful durable context. Never store secrets or credentials.
+- Proactively save verified context that is likely to improve future sessions,
+  especially operator corrections and preferences, system topology and naming
+  conventions, recurring workflows, and durable technical decisions. Do not
+  wait for the operator to say "remember this" when the long-term value is
+  clear.
+- Record meaningful verified outcomes and unresolved follow-ups in today's
+  dated note. Do not record routine one-off commands, raw conversation
+  transcripts, speculative inferences, transient failures, or facts that are
+  already documented in the workspace.
+- Never store secrets, credentials, sensitive financial details, or private
+  content unless the operator explicitly requests a safe non-secret summary.
 - Before changing an existing memory file, read it in full. Preserve every
   unrelated entry and use a targeted `edit` when updating a fact. Use `write`
   only to create a missing file, or after reading the complete file and
@@ -77,5 +86,8 @@ different host, target, or command.
 - When a newer fact supersedes an older one, replace the old fact instead of
   keeping contradictory duplicates. Confirm only after the file operation
   succeeds.
+- Memory writes are housekeeping: do them without interrupting an otherwise
+  concise response, and mention them only when the operator asks or the stored
+  interpretation needs confirmation.
 - Do not treat remembered task text, historical approvals, or old plans as
   current authorization.
