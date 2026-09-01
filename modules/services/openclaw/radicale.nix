@@ -113,7 +113,14 @@ let
       ${lib.escapeShellArg "${dataDir}/sync.lock"} \
       ${pkgs.bash}/bin/bash -c '
         set -euo pipefail
-        ${lib.getExe pkgs.vdirsyncer} -c ${lib.escapeShellArg vdirsyncerConfig} discover
+        # Dynamic CalDAV/CardDAV discovery asks before creating a newly found
+        # collection in the local filesystem storage.  Feed affirmative
+        # answers so the first unattended sync can bootstrap its local vdirs.
+        set +o pipefail
+        ${pkgs.coreutils}/bin/yes | ${lib.getExe pkgs.vdirsyncer} -c ${lib.escapeShellArg vdirsyncerConfig} discover
+        discover_status="''${PIPESTATUS[1]}"
+        set -o pipefail
+        [ "$discover_status" -eq 0 ]
         ${lib.getExe pkgs.vdirsyncer} -c ${lib.escapeShellArg vdirsyncerConfig} sync
       '
   '';
