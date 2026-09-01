@@ -87,6 +87,7 @@
         };
 
         sh.enable = true;
+        agentControl.enable = true;
 
         azahar.enable = true;
         desktop = {

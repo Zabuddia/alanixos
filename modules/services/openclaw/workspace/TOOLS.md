@@ -78,6 +78,99 @@ the job definition.
   configuration or logs, or substitute guessed API methods. If `kodi-control`
   returns an error, report it concisely; never bypass the wrapper.
 
+## Desktop control
+
+- Use `desktop-control HOST focused` or `desktop-control HOST outputs` for
+  structured current-screen context. Use
+  `desktop-control HOST screenshot > FILE.png` to capture a screen for the
+  configured image model. Keep the image inside the workspace unless the
+  operator names another destination.
+- Use `desktop-control HOST apps` before launching an application whose desktop
+  ID is not already known, then `desktop-control HOST launch APP_ID`. Use
+  `desktop-control HOST close-current` only when the requested target is the
+  currently focused window.
+- Use `desktop-control HOST clipboard-read` for text clipboard reads and pipe
+  text into `desktop-control HOST clipboard-write` for writes. Clipboard
+  contents are private data: do not persist or repeat them beyond the task.
+- The command accepts only inventory hosts and fixed desktop operations. Never
+  replace a denial with raw Sway IPC, process killing, or an SSH shell command.
+
+## Managed browser
+
+- Use the OpenClaw `browser` tool for web interaction. It controls a dedicated,
+  isolated Chromium profile on `alan-framework`, not a browser already open on
+  another computer. Current-screen capture may inspect a visible browser, but
+  OpenClaw must not click, type in, or otherwise automate an already-open
+  everyday browser. That capability is intentionally deferred.
+- Authentication must be completed deliberately in the managed profile. Never
+  copy cookies or credentials from another browser profile.
+
+## Calendar and contacts
+
+- Radicale is the only calendar and contact source. Do not use Nextcloud.
+- Run `radicale-calendar` with normal `khal` arguments for calendar reads and
+  changes. Useful commands include `printcalendars`, `list`, `search`, `new`,
+  `edit`, and `import`. The wrapper synchronizes before the command and again
+  after a successful command.
+- Run `radicale-contacts` with normal `khard` arguments for contact reads and
+  changes. Useful commands include `list`, `show`, `new`, `edit`, `copy`,
+  `move`, and `remove`. It uses the same pre/post synchronization behavior.
+- Use `radicale-sync` to synchronize both data sets without making a query.
+  Never inspect the generated DAV configuration, local cache internals, or
+  credential file.
+
+## Personal files
+
+- `personal-files root` identifies the File Browser folder replicated to this
+  host by Syncthing. Use `list`, `find`, `search`, and `read` for discovery.
+  Use `write`, `mkdir`, and `move` for requested changes.
+- `personal-files trash PATH` moves a target into `.openclaw-trash` inside the
+  same synced root and prints its recovery path. Prefer this to permanent
+  deletion. The command rejects paths that resolve outside the configured root.
+- This is the operator's File Browser/Syncthing file source. Do not fall back to
+  Nextcloud, scan unrelated home directories, or inspect Syncthing internals.
+
+## Media services
+
+- Use `jellyfin-control` for Jellyfin libraries, catalog search, item details,
+  active controllable sessions, and session playback. For a resolved Jellyfin
+  movie, launch Kodi through Home Assistant and use
+  `jellyfin-control play-default ITEM_ID`; the default target is `alan-tv-kodi`.
+- Use `navidrome-control` for music search, albums, artists, playlists,
+  now-playing state, and favorites. Its `call` action exposes other Subsonic
+  endpoints using `KEY=VALUE` arguments when a first-class action is missing.
+  `navidrome-control play SONG_ID` streams the song to the default Kodi target.
+- Use `audiobookshelf-control` for libraries, audiobook/podcast search, item
+  details, and the authenticated API. These catalog commands do not by
+  themselves choose a speaker or player. `audiobookshelf-control play ITEM_ID`
+  queues the item's audio tracks on the default Kodi target.
+- The media wrappers authenticate internally. Never inspect their wrapper
+  source, process environment, or credential files. The `api` escape hatches
+  may modify server state; follow `POLICY.md` and use an exact documented path.
+
+## Forgejo
+
+- Use `forgejo-control me`, `repos`, `repo`, `issues`, `pulls`, and `issue` for
+  repository and work-item reads. Use `create-issue`, `comment`, and
+  `create-pr` only when the operator requests that external effect.
+- `forgejo-control api METHOD /api/v1/... [JSON]` is available for other
+  documented Forgejo operations. Prefer a first-class command when one exists,
+  and treat mutations and deletion according to `POLICY.md`.
+- Local Git operations still use `git`; Forgejo API access does not replace
+  ordinary clone, fetch, commit, or push workflows.
+
+## Bitcoin
+
+- Use `bitcoin-read status`, `bitcoin-read network`,
+  `bitcoin-read transaction TXID`, and `bitcoin-read mempool TXID` for the
+  operator's Bitcoin node on `alan-node`.
+- Use `bitcoin-read wallets` and `bitcoin-read balance WALLET` only for requested
+  wallet-balance reads. The wrapper intentionally has no signing, spending,
+  address-generation, wallet-creation, or arbitrary RPC operation. Never bypass
+  that boundary through SSH, sudo, direct cookie access, or raw RPC.
+- Use current web research for exchange prices; the local node does not provide
+  a fiat price oracle.
+
 ## Internet research
 
 Use `web_search` when the answer depends on current information, when a fact is

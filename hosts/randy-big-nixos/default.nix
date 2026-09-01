@@ -87,6 +87,7 @@
         };
 
         sh.enable = true;
+        agentControl.enable = true;
 
         desktop = {
           enable = true;
@@ -166,6 +167,7 @@
       };
       peers = [
         "alan-big-nixos"
+        "alan-framework"
         "alan-framework-laptop"
         "alan-optiplex"
         "alan-tv"

@@ -165,6 +165,7 @@
         };
 
         sh.enable = true;
+        agentControl.enable = true;
 
         ssh = {
           enable = true;

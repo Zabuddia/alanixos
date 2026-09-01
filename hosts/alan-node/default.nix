@@ -97,6 +97,7 @@
         };
 
         sh.enable = true;
+        agentControl.enable = true;
 
         desktop = {
           enable = true;

@@ -443,7 +443,7 @@ in
   };
 
   config = {
-    appLauncher.desktop.enable = cfg.enable;
+    appLauncher.desktop.enable = lib.mkIf cfg.enable true;
 
     _assertions = lib.optionals cfg.enable [
       {

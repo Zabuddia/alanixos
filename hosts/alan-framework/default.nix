@@ -98,6 +98,7 @@
         };
 
         sh.enable = true;
+        agentControl.enable = true;
 
         desktop = {
           enable = true;
@@ -189,7 +190,49 @@
         syncIdFile = config.sops.secrets."actual-passwords/budget-sync-id".path;
         allowMutations = false;
       };
+      bitcoin.enable = true;
+      browser.enable = true;
+      desktop = {
+        enable = true;
+        hosts = [
+          "alan-big-nixos"
+          "alan-framework"
+          "alan-framework-laptop"
+          "alan-home"
+          "alan-node"
+          "alan-optiplex"
+          "alan-tv"
+          "fife-tv"
+          "randy-big-nixos"
+        ];
+      };
+      files = {
+        enable = true;
+        root = "${config.alanix.syncthing.syncRoot}/filebrowser/users/buddia";
+      };
+      forgejo = {
+        enable = true;
+        passwordFile = config.sops.secrets."forgejo-passwords/buddia".path;
+      };
       kodi.enable = true;
+      media = {
+        jellyfin = {
+          enable = true;
+          passwordFile = config.sops.secrets."jellyfin-passwords/buddia".path;
+        };
+        navidrome = {
+          enable = true;
+          passwordFile = config.sops.secrets."navidrome-passwords/buddia".path;
+        };
+        audiobookshelf = {
+          enable = true;
+          passwordFile = config.sops.secrets."audiobookshelf-passwords/buddia".path;
+        };
+      };
+      radicale = {
+        enable = true;
+        passwordFile = config.sops.secrets."radicale-passwords/buddia".path;
+      };
       gateway = {
         enable = true;
         enableFullExec = true;
@@ -211,6 +254,7 @@
           "IDENTITY.md" = ../../modules/services/openclaw/workspace/IDENTITY.md;
           "MEMORY.md" = ../../modules/services/openclaw/workspace/MEMORY.md;
           "POLICY.md" = ../../modules/services/openclaw/workspace/POLICY.md;
+          "SERVICES.md" = ../../modules/services/openclaw/workspace/SERVICES.md;
           "SOUL.md" = ../../modules/services/openclaw/workspace/SOUL.md;
           "TOOLS.md" = ../../modules/services/openclaw/workspace/TOOLS.md;
           "USER.md" = ../../modules/services/openclaw/workspace/USER.md;
@@ -397,7 +441,6 @@
             groupPolicy = "disabled";
           };
           commands.ownerAllowFrom = [ "telegram:7336229793" ];
-          browser.enabled = false;
           session.dmScope = "per-channel-peer";
         };
       };
@@ -420,6 +463,7 @@
         "alan-framework-laptop"
         "alan-optiplex"
         "alan-tv"
+        "randy-big-nixos"
       ];
       folderSets = [
         "emulation-azahar"
@@ -428,6 +472,7 @@
         "emulation-n64"
         "emulation-retroarch"
         "emulation-ryujinx"
+        "filebrowser-buddia-files"
       ];
       linkFolderSets = [
         "emulation-azahar"

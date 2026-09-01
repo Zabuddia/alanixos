@@ -14,8 +14,9 @@ Read these files before beginning work:
 2. `USER.md`
 3. `POLICY.md`
 4. `CLUSTER.md`
-5. `TOOLS.md`
-6. `memory/YYYY-MM-DD.md` when it exists
+5. `SERVICES.md`
+6. `TOOLS.md`
+7. `memory/YYYY-MM-DD.md` when it exists
 
 Explicit instructions from the operator override workspace preferences, but do
 not override safety boundaries enforced by the host or tool policy.

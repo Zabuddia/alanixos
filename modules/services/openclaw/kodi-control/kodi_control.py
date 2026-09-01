@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 
 class KodiError(RuntimeError):
@@ -180,6 +181,43 @@ def active_video_player(client: KodiClient) -> int:
     raise KodiError("Kodi has no active video player")
 
 
+def wait_for_active_player(
+    client: KodiClient, player_type: str, timeout: float = 8.0
+) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout
+    last_state: dict[str, Any] = {"active": False, "players": []}
+    while time.monotonic() < deadline:
+        last_state = current(client)
+        if any(
+            player.get("type") == player_type
+            and (player.get("properties") or {}).get("speed", 0) != 0
+            for player in last_state.get("players", [])
+        ):
+            return last_state
+        time.sleep(0.25)
+    raise KodiError(f"Kodi did not start an active {player_type} player")
+
+
+def read_audio_urls() -> list[str]:
+    try:
+        value = json.load(sys.stdin)
+    except json.JSONDecodeError as error:
+        raise KodiError("Audio URL input must be a JSON array") from error
+    if not isinstance(value, list) or not value:
+        raise KodiError("At least one audio URL is required")
+    if len(value) > 1000:
+        raise KodiError("Audio playlists are limited to 1000 URLs")
+    urls: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise KodiError("Every audio playlist item must be a URL string")
+        parsed = urlparse(item)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise KodiError("Audio playlist URLs must use HTTP or HTTPS")
+        urls.append(item)
+    return urls
+
+
 def wait_for_playback(
     client: KodiClient, expected_label: str, timeout: float = 8.0
 ) -> dict[str, Any]:
@@ -216,6 +254,10 @@ def parser() -> argparse.ArgumentParser:
     play_channel.add_argument("name")
 
     commands.add_parser("current", help="Show and verify active playback")
+    play_audio_urls = commands.add_parser(
+        "play-audio-urls", help="Replace and play Kodi's audio playlist from JSON stdin"
+    )
+    play_audio_urls.add_argument("label")
     seek = commands.add_parser("seek-percent", help="Seek active video by percentage")
     seek.add_argument("percentage", type=float)
     commands.add_parser("start-over", help="Seek active video to the beginning")
@@ -258,6 +300,18 @@ def main() -> int:
                 )
         elif args.command == "current":
             emit(current(client))
+        elif args.command == "play-audio-urls":
+            urls = read_audio_urls()
+            client.call("Playlist.Clear", {"playlistid": 0})
+            for url in urls:
+                client.call("Playlist.Add", {"playlistid": 0, "item": {"file": url}})
+            client.call("Player.Open", {"item": {"playlistid": 0, "position": 0}})
+            emit(
+                {
+                    "requested": {"label": args.label, "tracks": len(urls)},
+                    "playback": wait_for_active_player(client, "audio"),
+                }
+            )
         elif args.command in {"seek-percent", "start-over"}:
             percentage = 0.0 if args.command == "start-over" else args.percentage
             if percentage < 0.0 or percentage > 100.0:

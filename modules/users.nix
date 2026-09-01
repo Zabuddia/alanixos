@@ -6,6 +6,7 @@ let
   cfg = config.alanix.users;
 
   featureModules = [
+    ./users/agent-control.nix
     ./users/app-launcher.nix
     ./users/antimicrox.nix
     ./users/azahar.nix
