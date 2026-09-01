@@ -229,15 +229,6 @@
             injectNumCtxForOpenAICompat = true;
             models = [
               {
-                id = "qwen3.6-35b-a3b";
-                name = "Qwen3.6 35B A3B";
-                api = "openai-completions";
-                reasoning = false;
-                input = [ "text" ];
-                contextWindow = 131072;
-                maxTokens = 32768;
-              }
-              {
                 id = "qwen3.8-27b";
                 name = "Qwen3.8 27B";
                 api = "openai-completions";
@@ -310,11 +301,11 @@
                 primary = "local-litellm/ornith-1.5-35b-a3b";
                 fallbacks = [ ];
               };
+              imageModel = {
+                primary = "local-litellm/qwen3.8-27b";
+                fallbacks = [ ];
+              };
               models = {
-                "local-litellm/qwen3.6-35b-a3b" = {
-                  alias = "qwen3.6-35b-a3b";
-                  streaming = true;
-                };
                 "local-litellm/qwen3.8-27b" = {
                   alias = "qwen3.8-27b";
                   streaming = true;
@@ -485,9 +476,9 @@
         port = 4000;
       };
       instances = {
-        # Default OpenClaw model.
+        # Retained in the model cache for optional future use, but not loaded.
         chat = {
-          enable = true;
+          enable = false;
           runtime = "llama";
           host = "127.0.0.1";
           listenHost = "0.0.0.0";
