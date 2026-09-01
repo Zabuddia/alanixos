@@ -301,8 +301,9 @@ EOF
               ' <<<"$item")"
               [ "$(jq 'length' <<<"$urls")" -gt 0 ] || { echo "Audiobookshelf item has no playable tracks" >&2; exit 64; }
               playback="$(printf '%s' "$urls" | kodi-control play-audio-urls "$title")"
-              jq -cn --argjson item "$item" --argjson playback "$playback" --arg target "$target" \
-                '{source: "audiobookshelf", target: $target, item: {id: $item.id, title: $item.media.metadata.title, mediaType: $item.mediaType, tracks: ($item.media.tracks | length)}, playback: $playback}'
+              item_summary="$(jq -c '{id, title: .media.metadata.title, mediaType, tracks: (.media.tracks | length)}' <<<"$item")"
+              jq -cn --argjson item "$item_summary" --argjson playback "$playback" --arg target "$target" \
+                '{source: "audiobookshelf", target: $target, item: $item, playback: $playback}'
               ;;
             *) echo "Unsupported media target: $target" >&2; exit 64 ;;
           esac
