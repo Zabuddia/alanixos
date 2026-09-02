@@ -348,6 +348,7 @@
               imageModel = {
                 primary = "local-litellm/qwen3.8-27b";
                 fallbacks = [ ];
+                timeoutMs = 180000;
               };
               models = {
                 "local-litellm/qwen3.8-27b" = {
