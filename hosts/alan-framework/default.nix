@@ -393,6 +393,7 @@
               "edit"
               "memory_get"
               "memory_search"
+              "image"
               "web_search"
               "web_fetch"
             ];
