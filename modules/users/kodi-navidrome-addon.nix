@@ -16,6 +16,8 @@ buildKodiAddon rec {
     hash = "sha256-sgjyVJvDvUhMK6QpDB2p8jmeVSkKKKECiqnL6lnBm4E=";
   };
 
+  patches = [ ./kodi-navidrome-playback-metadata.patch ];
+
   meta = {
     description = "Kodi client for browsing and streaming music from Navidrome";
     homepage = "https://github.com/colinfredynand/plugin.kodi.navidrome";

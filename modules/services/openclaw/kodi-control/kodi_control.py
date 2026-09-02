@@ -268,6 +268,7 @@ def parser() -> argparse.ArgumentParser:
     )
     play_navidrome.add_argument("song_id")
     play_navidrome.add_argument("label")
+    play_navidrome.add_argument("artist")
     seek = commands.add_parser("seek-percent", help="Seek active video by percentage")
     seek.add_argument("percentage", type=float)
     commands.add_parser("start-over", help="Seek active video to the beginning")
@@ -340,12 +341,21 @@ def main() -> int:
             if not args.song_id or len(args.song_id) > 512:
                 raise KodiError("Invalid Navidrome song ID")
             plugin_url = "plugin://plugin.kodi.navidrome/?" + urlencode(
-                {"action": "play_track", "id": args.song_id}
+                {
+                    "action": "play_track",
+                    "id": args.song_id,
+                    "title": args.label,
+                    "artist": args.artist,
+                }
             )
             client.call("Player.Open", {"item": {"file": plugin_url}})
             emit(
                 {
-                    "requested": {"label": args.label, "song_id": args.song_id},
+                    "requested": {
+                        "label": args.label,
+                        "artist": args.artist,
+                        "song_id": args.song_id,
+                    },
                     "playback": wait_for_active_player(client, "audio", timeout=20.0),
                 }
             )

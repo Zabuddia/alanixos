@@ -201,7 +201,8 @@ EOF
             alan-tv-kodi)
               song="$(subsonic getSong --data-urlencode "id=$song_id")"
               title="$(jq -er '.song.title' <<<"$song")"
-              playback="$(kodi-control play-navidrome "$song_id" "$title")"
+              artist="$(jq -er '.song.artist' <<<"$song")"
+              playback="$(kodi-control play-navidrome "$song_id" "$title" "$artist")"
               jq -cn --argjson song "$song" --argjson playback "$playback" --arg target "$target" \
                 '{source: "navidrome", target: $target, item: $song.song, playback: $playback}'
               ;;
