@@ -322,7 +322,7 @@ def main() -> int:
                 raise KodiError("Invalid Audiobookshelf item ID")
             plugin_url = (
                 "plugin://plugin.audio.audiobookshelf/"
-                f"?action=play&item_id={args.item_id}"
+                f"?action=play&item_id={args.item_id}&auto_resume=1"
             )
             client.call("Player.Open", {"item": {"file": plugin_url}})
             emit(

@@ -19,6 +19,8 @@ buildKodiAddon rec {
 
   sourceDir = namespace;
 
+  patches = [ ./kodi-audiobookshelf-openclaw-resume.patch ];
+
   # Upstream currently assumes an unencrypted server and always constructs
   # http://HOST:PORT. Accept a complete URL too, so the add-on can use the
   # existing HTTPS reverse proxy without weakening that service.
