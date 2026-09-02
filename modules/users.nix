@@ -17,7 +17,7 @@ let
     ./users/evdevhook2.nix
     ./users/gaming-apps.nix
     ./users/git.nix
-    ./users/kodi.nix
+    ./users/kodi/kodi.nix
     ./users/librewolf.nix
     ./users/makemkv.nix
     ./users/melonds.nix
