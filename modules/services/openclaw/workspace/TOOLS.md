@@ -82,14 +82,15 @@ the job definition.
 
 - Use `desktop-control HOST focused` or `desktop-control HOST outputs` for
   structured current-screen context. Use
-  `desktop-control HOST screenshot > FILE.png` to capture a screen for the
-  configured image model. Keep the image inside the workspace unless the
-  operator names another destination. Create the destination directory first.
-  After capturing a screenshot, call the `image` tool with that file and a
-  prompt describing what the operator wants inspected. Do not use `read` for
-  screenshots: the primary conversational model is text-only, while `image`
-  delegates analysis to the configured multimodal model. Ask for a concise,
-  factual description unless the operator requests more detail.
+  `desktop-control HOST screenshot > FILE.png && echo "Screenshot saved to
+  FILE.png"` to capture a screen for the configured image model. Keep the image
+  inside the workspace unless the operator names another destination. Create
+  the destination directory first. After capturing a screenshot, immediately
+  call the `image` tool with that file and a prompt describing what the operator
+  wants inspected. Do not run a separate `ls`, `stat`, or `file` check and do
+  not use `read` for screenshots: the primary conversational model is text-only,
+  while `image` delegates analysis to the configured multimodal model. Ask for
+  a concise, factual description unless the operator requests more detail.
 - Use `desktop-control HOST apps` before launching an application whose desktop
   ID is not already known, then `desktop-control HOST launch APP_ID`. Use
   `desktop-control HOST close-current` only when the requested target is the
