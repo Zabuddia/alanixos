@@ -10,6 +10,7 @@ let
 in
 {
   imports = [
+    ./assist/cec.nix
     ./assist/kodi.nix
   ];
 

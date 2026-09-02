@@ -280,6 +280,7 @@
       assist = {
         enable = true;
         kodi.enable = true;
+        cec.enable = true;
       };
       openclawConversation.enable = true;
       extraComponents = [
@@ -390,6 +391,8 @@
                 show_header_toggle = false;
                 entities = [
                   "button.wake_on_lan_a0_ad_9f_87_68_4e"
+                  "switch.alan_tv_power"
+                  "button.alan_tv_switch_input"
                   "select.alan_tv_application"
                   "text.alan_tv_type_text"
                   "script.close_alan_tv_application"

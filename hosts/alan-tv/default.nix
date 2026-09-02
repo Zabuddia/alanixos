@@ -244,6 +244,13 @@
           deviceId = "alan_tv";
           deviceName = "alan-tv";
         };
+        cecControl = {
+          enable = true;
+          broker = "alan-home";
+          topicPrefix = "alan-tv/cec";
+          deviceId = "alan_tv";
+          deviceName = "alan-tv";
+        };
         dolphin = {
           enable = true;
           gameDirs = [

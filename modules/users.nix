@@ -10,6 +10,7 @@ let
     ./users/app-launcher.nix
     ./users/antimicrox.nix
     ./users/azahar.nix
+    ./users/cec-control.nix
     ./users/chromium.nix
     ./users/desktop.nix
     ./users/dolphin.nix
