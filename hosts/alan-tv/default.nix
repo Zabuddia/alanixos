@@ -31,6 +31,7 @@
         git
         htop
         jq
+        libcec
         lm_sensors
         ripgrep
         python3
@@ -54,7 +55,8 @@
         enable = true;
         isNormalUser = true;
         passwordlessSudo = true;
-        extraGroups = [ "wheel" "networkmanager" "input" ];
+        # The Pulse-Eight USB CEC adapter is exposed as a serial device.
+        extraGroups = [ "wheel" "networkmanager" "input" "dialout" ];
         hashedPasswordFile = config.sops.secrets."password-hashes/buddia".path;
 
         sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJhIOpVi6T5JO3hzG/OOtKwZscOBBbwSD1WOoBh012RL fife.alan@protonmail.com";
