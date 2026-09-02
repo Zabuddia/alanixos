@@ -88,7 +88,8 @@ the job definition.
   After capturing a screenshot, call the `image` tool with that file and a
   prompt describing what the operator wants inspected. Do not use `read` for
   screenshots: the primary conversational model is text-only, while `image`
-  delegates analysis to the configured multimodal model.
+  delegates analysis to the configured multimodal model. Ask for a concise,
+  factual description unless the operator requests more detail.
 - Use `desktop-control HOST apps` before launching an application whose desktop
   ID is not already known, then `desktop-control HOST launch APP_ID`. Use
   `desktop-control HOST close-current` only when the requested target is the

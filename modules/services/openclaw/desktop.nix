@@ -12,7 +12,7 @@ let
 
   desktopControl = pkgs.writeShellApplication {
     name = "desktop-control";
-    runtimeInputs = [ pkgs.openssh ];
+    runtimeInputs = [ pkgs.imagemagick pkgs.openssh ];
     text = ''
       usage() {
         cat >&2 <<'EOF'
@@ -61,8 +61,27 @@ ${allowedHostCases}
           ;;
       esac
 
+      resize_screenshot() {
+        magick png:- \
+          -resize '${toString cfg.screenshotMaxWidth}x${toString cfg.screenshotMaxHeight}>' \
+          -strip png:-
+      }
+
       if [ "$host" = "$(hostname)" ]; then
+        if [ "$action" = screenshot ]; then
+          ${lib.escapeShellArg localControl} screenshot | resize_screenshot
+          exit
+        fi
         exec ${lib.escapeShellArg localControl} "$action" "$@"
+      fi
+
+      if [ "$action" = screenshot ]; then
+        ssh \
+          -o BatchMode=yes \
+          -o ConnectTimeout=${toString cfg.connectTimeout} \
+          -- "$host" ${lib.escapeShellArg localControl} screenshot \
+          | resize_screenshot
+        exit
       fi
 
       exec ssh \
@@ -86,6 +105,18 @@ in
       type = lib.types.ints.positive;
       default = 10;
       description = "SSH connection timeout in seconds.";
+    };
+
+    screenshotMaxWidth = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 1280;
+      description = "Maximum width of screenshots returned by desktop-control.";
+    };
+
+    screenshotMaxHeight = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 720;
+      description = "Maximum height of screenshots returned by desktop-control.";
     };
   };
 
