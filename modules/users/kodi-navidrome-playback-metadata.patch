@@ -1,19 +1,11 @@
 diff --git a/default.py b/default.py
-index 749e348..10b9cff 100644
+index 2d4346d..257dd82 100644
 --- a/default.py
 +++ b/default.py
-@@ -1059,6 +1059,6 @@ def list_genre_songs(genre_name):
-     xbmcplugin.endOfDirectory(ADDON_HANDLE)
- 
+@@ -1061 +1061 @@
 -def play_track(track_id):
 +def play_track(track_id, title='', artist=''):
-     """Resolve and play a track"""
-     api = get_api()
-     if not api:
-@@ -1073,7 +1073,13 @@ def play_track(track_id):
-             xbmc.log(f"NAVIDROME: Resolving stream URL: {stream_url}", xbmc.LOGINFO)
-         
-         # Create playable item
+@@ -1076 +1076,7 @@
 -        play_item = xbmcgui.ListItem(path=stream_url)
 +        play_item = xbmcgui.ListItem(label=title, path=stream_url)
 +        music_tag = play_item.getMusicInfoTag()
@@ -22,15 +14,6 @@ index 749e348..10b9cff 100644
 +        if artist:
 +            music_tag.setArtist(artist)
 +        music_tag.setMediaType('song')
-         
-         # Resolve URL
-         xbmcplugin.setResolvedUrl(ADDON_HANDLE, True, play_item)
-@@ -1142,7 +1148,7 @@ def router(paramstring):
-     elif action == "songs":
-         list_songs(int(params.get("offset", 0)))
-     elif action == "play_track":
+@@ -1145 +1151 @@
 -        play_track(params.get("id"))
 +        play_track(params.get("id"), params.get("title", ""), params.get("artist", ""))
-     else:
-         xbmc.log(f"Unknown action: {action}", xbmc.LOGWARNING)
-         root_menu()
