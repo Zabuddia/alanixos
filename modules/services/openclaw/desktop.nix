@@ -10,18 +10,17 @@ let
       "openclaw";
   localControl = "/etc/profiles/per-user/${openclawUser}/bin/alanix-desktop-control";
 
-  desktopControl = pkgs.writeShellApplication {
-    name = "desktop-control";
-    runtimeInputs = [ pkgs.imagemagick pkgs.openssh ];
+  desktopInspect = pkgs.writeShellApplication {
+    name = "desktop-inspect";
+    runtimeInputs = [ pkgs.imagemagick pkgs.jq pkgs.openssh ];
     text = ''
       usage() {
         cat >&2 <<'EOF'
-Usage: desktop-control HOST ACTION [ARGUMENT]
+Usage: desktop-inspect HOST ACTION
 
-Actions: apps, launch APP_ID, close-current, focused, outputs, screenshot,
-         clipboard-read, clipboard-write
+Actions: status, apps, focused, outputs, screenshot, clipboard
 
-Screenshot writes PNG bytes to stdout. Clipboard-write reads text from stdin.
+All actions return JSON except screenshot, which writes PNG bytes to stdout.
 EOF
       }
 
@@ -43,17 +42,8 @@ ${allowedHostCases}
       esac
 
       case "$action" in
-        apps|close-current|focused|outputs|screenshot|clipboard-read|clipboard-write)
+        status|apps|focused|outputs|screenshot|clipboard)
           [ "$#" -eq 0 ] || { usage; exit 2; }
-          ;;
-        launch)
-          [ "$#" -eq 1 ] || { usage; exit 2; }
-          case "$1" in
-            ""|*[!A-Za-z0-9_.+-]*)
-              echo "Invalid desktop application ID: $1" >&2
-              exit 64
-              ;;
-          esac
           ;;
         *)
           usage
@@ -67,27 +57,80 @@ ${allowedHostCases}
           -strip png:-
       }
 
-      if [ "$host" = "$(hostname)" ]; then
-        if [ "$action" = screenshot ]; then
-          ${lib.escapeShellArg localControl} screenshot | resize_screenshot
-          exit
+      remote_action="$action"
+      [ "$action" != clipboard ] || remote_action=clipboard-read
+      run_remote() {
+        if [ "$host" = "$(hostname)" ]; then
+          ${lib.escapeShellArg localControl} "$remote_action"
+        else
+          ssh -o BatchMode=yes -o ConnectTimeout=${toString cfg.connectTimeout} \
+            -- "$host" ${lib.escapeShellArg localControl} "$remote_action"
         fi
-        exec ${lib.escapeShellArg localControl} "$action" "$@"
-      fi
+      }
 
       if [ "$action" = screenshot ]; then
-        ssh \
-          -o BatchMode=yes \
-          -o ConnectTimeout=${toString cfg.connectTimeout} \
-          -- "$host" ${lib.escapeShellArg localControl} screenshot \
-          | resize_screenshot
+        run_remote | resize_screenshot
         exit
       fi
+      if [ "$action" = status ]; then
+        remote_action=focused
+      fi
+      set +e
+      output="$(run_remote 2>&1)"
+      status=$?
+      set -e
+      if [ "$status" -ne 0 ]; then
+        jq -cn --arg host "$host" --arg message "$output" \
+          '{available:false,host:$host,error:{code:"unavailable",message:$message}}'
+        exit 69
+      fi
+      case "$action" in
+        status) jq -cn --arg host "$host" '{available:true,host:$host}' ;;
+        apps) printf '%s\n' "$output" | jq -Rsc --arg host "$host" '{available:true,host:$host,apps:(split("\n")|map(select(length>0)))}' ;;
+        focused) jq -cn --arg host "$host" --argjson value "$output" '{available:true,host:$host,focused:$value}' ;;
+        outputs) jq -cn --arg host "$host" --argjson value "$output" '{available:true,host:$host,outputs:$value}' ;;
+        clipboard) jq -cn --arg host "$host" --arg value "$output" '{available:true,host:$host,text:$value}' ;;
+      esac
+    '';
+  };
 
-      exec ssh \
-        -o BatchMode=yes \
-        -o ConnectTimeout=${toString cfg.connectTimeout} \
-        -- "$host" ${lib.escapeShellArg localControl} "$action" "$@"
+  desktopControl = pkgs.writeShellApplication {
+    name = "desktop-control";
+    runtimeInputs = [ pkgs.jq pkgs.openssh ];
+    text = ''
+      usage() {
+        echo "Usage: desktop-control HOST {launch APP_ID|close-app|clipboard-write}" >&2
+      }
+      host="''${1:-}"; action="''${2:-}"
+      [ "$#" -ge 2 ] || { usage; exit 2; }
+      shift 2
+      case "$host" in
+${allowedHostCases}
+        *) echo "Desktop host is not allowlisted: $host" >&2; exit 64 ;;
+      esac
+      case "$action" in
+        launch)
+          [ "$#" -eq 1 ] || { usage; exit 2; }
+          case "$1" in ""|*[!A-Za-z0-9_.+-]*) echo "Invalid desktop application ID: $1" >&2; exit 64 ;; esac
+          ;;
+        close-app|clipboard-write) [ "$#" -eq 0 ] || { usage; exit 2; } ;;
+        *) usage; exit 2 ;;
+      esac
+      set +e
+      if [ "$host" = "$(hostname)" ]; then
+        output="$(${lib.escapeShellArg localControl} "$action" "$@" 2>&1)"
+      else
+        output="$(ssh -o BatchMode=yes -o ConnectTimeout=${toString cfg.connectTimeout} \
+          -- "$host" ${lib.escapeShellArg localControl} "$action" "$@" 2>&1)"
+      fi
+      status=$?
+      set -e
+      if [ "$status" -ne 0 ]; then
+        jq -cn --arg host "$host" --arg action "$action" --arg message "$output" \
+          '{ok:false,available:false,host:$host,operation:$action,error:{code:"unavailable",message:$message}}'
+        exit 69
+      fi
+      jq -cn --arg host "$host" --arg action "$action" '{ok:true,available:true,host:$host,operation:$action}'
     '';
   };
 in
@@ -136,6 +179,6 @@ in
       }
     ];
 
-    alanix.openclaw.packages = [ desktopControl ];
+    alanix.openclaw.packages = [ desktopInspect desktopControl ];
   };
 }

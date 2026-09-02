@@ -3,6 +3,24 @@
 let
   cfg = config.alanix.openclaw.media;
   passwordPath = value: if value != null then value else "";
+  targetCases = lib.concatStringsSep "\n" (
+    lib.mapAttrsToList
+      (name: target: "        ${lib.escapeShellArg name}) exec ${lib.getExe target.command} \"$@\" ;;")
+      cfg.targets
+  );
+
+  mediaTarget = pkgs.writeShellApplication {
+    name = "media-target";
+    text = ''
+      target="''${1:-}"
+      [ "$#" -ge 2 ] || { echo "Usage: media-target TARGET OPERATION [ARGUMENTS...]" >&2; exit 2; }
+      shift
+      case "$target" in
+${targetCases}
+        *) echo "Unknown playback target: $target" >&2; exit 64 ;;
+      esac
+    '';
+  };
 
   jellyfinControl = pkgs.writeShellApplication {
     name = "jellyfin-control";
@@ -84,21 +102,22 @@ EOF
         play-default)
           [ "$#" -ge 1 ] && [ "$#" -le 2 ] || { usage; exit 2; }
           target="''${2:-$default_target}"
-          case "$target" in
-            alan-tv-kodi)
-              item="$(request GET "/Users/$user_id/Items/$1")"
-              item_type="$(jq -r '.Type' <<<"$item")"
-              [ "$item_type" = Movie ] || {
-                echo "Jellyfin default playback currently supports Movie items; received $item_type" >&2
-                exit 64
-              }
-              title="$(jq -er '.Name' <<<"$item")"
-              playback="$(kodi-control play-movie "$title")"
-              jq -cn --argjson item "$item" --argjson playback "$playback" --arg target "$target" \
-                '{source: "jellyfin", target: $target, item: {id: $item.Id, title: $item.Name, type: $item.Type}, playback: $playback}'
+          item="$(request GET "/Users/$user_id/Items/$1")"
+          item_type="$(jq -r '.Type' <<<"$item")"
+          title="$(jq -er '.Name' <<<"$item")"
+          case "$item_type" in
+            Movie) request="$(jq -cn --arg id "$1" --arg title "$title" '{source:"jellyfin",media_type:"movie",id:$id,title:$title}')" ;;
+            Episode)
+              series="$(jq -er '.SeriesName' <<<"$item")"
+              season="$(jq -er '.ParentIndexNumber' <<<"$item")"
+              episode="$(jq -er '.IndexNumber' <<<"$item")"
+              request="$(jq -cn --arg id "$1" --arg title "$title" --arg show "$series" --argjson season "$season" --argjson episode "$episode" '{source:"jellyfin",media_type:"episode",id:$id,title:$title,show:$show,season:$season,episode:$episode}')"
               ;;
-            *) echo "Unsupported media target: $target" >&2; exit 64 ;;
+            *) echo "Playback resolution supports Jellyfin Movie and Episode items; received $item_type" >&2; exit 64 ;;
           esac
+          playback="$(printf '%s' "$request" | media-target "$target" play)"
+          jq -cn --argjson item "$item" --argjson playback "$playback" --arg target "$target" \
+            '{source: "jellyfin", target: $target, item: {id: $item.Id, title: $item.Name, type: $item.Type}, playback: $playback}'
           ;;
         pause|resume|stop|next|previous)
           [ "$#" -eq 1 ] || { usage; exit 2; }
@@ -197,17 +216,13 @@ EOF
           [ "$#" -ge 1 ] && [ "$#" -le 2 ] || { usage; exit 2; }
           song_id="$1"
           target="''${2:-$default_target}"
-          case "$target" in
-            alan-tv-kodi)
-              song="$(subsonic getSong --data-urlencode "id=$song_id")"
-              title="$(jq -er '.song.title' <<<"$song")"
-              artist="$(jq -er '.song.artist' <<<"$song")"
-              playback="$(kodi-control play-navidrome "$song_id" "$title" "$artist")"
-              jq -cn --argjson song "$song" --argjson playback "$playback" --arg target "$target" \
-                '{source: "navidrome", target: $target, item: $song.song, playback: $playback}'
-              ;;
-            *) echo "Unsupported media target: $target" >&2; exit 64 ;;
-          esac
+          song="$(subsonic getSong --data-urlencode "id=$song_id")"
+          title="$(jq -er '.song.title' <<<"$song")"
+          artist="$(jq -er '.song.artist' <<<"$song")"
+          request="$(jq -cn --arg id "$song_id" --arg title "$title" --arg artist "$artist" '{source:"navidrome",media_type:"song",id:$id,title:$title,artist:$artist}')"
+          playback="$(printf '%s' "$request" | media-target "$target" play)"
+          jq -cn --argjson song "$song" --argjson playback "$playback" --arg target "$target" \
+            '{source: "navidrome", target: $target, item: $song.song, playback: $playback}'
           ;;
         call)
           [ "$#" -ge 1 ] || { usage; exit 2; }
@@ -286,18 +301,15 @@ EOF
           [ "$#" -ge 1 ] && [ "$#" -le 2 ] || { usage; exit 2; }
           item_id="$1"
           target="''${2:-$default_target}"
-          case "$target" in
-            alan-tv-kodi)
-              item="$(request GET "/api/items/$item_id?expanded=1")"
-              title="$(jq -er '.media.metadata.title' <<<"$item")"
-              [ "$(jq '.media.tracks | length' <<<"$item")" -gt 0 ] || { echo "Audiobookshelf item has no playable tracks" >&2; exit 64; }
-              playback="$(kodi-control play-audiobookshelf "$item_id" "$title")"
-              item_summary="$(jq -c '{id, title: .media.metadata.title, mediaType, tracks: (.media.tracks | length)}' <<<"$item")"
-              jq -cn --argjson item "$item_summary" --argjson playback "$playback" --arg target "$target" \
-                '{source: "audiobookshelf", target: $target, item: $item, playback: $playback}'
-              ;;
-            *) echo "Unsupported media target: $target" >&2; exit 64 ;;
-          esac
+          item="$(request GET "/api/items/$item_id?expanded=1")"
+          title="$(jq -er '.media.metadata.title' <<<"$item")"
+          [ "$(jq '.media.tracks | length' <<<"$item")" -gt 0 ] || { echo "Audiobookshelf item has no playable tracks" >&2; exit 64; }
+          media_type="$(jq -r '.mediaType' <<<"$item")"
+          request="$(jq -cn --arg id "$item_id" --arg title "$title" --arg media_type "$media_type" '{source:"audiobookshelf",media_type:$media_type,id:$id,title:$title}')"
+          playback="$(printf '%s' "$request" | media-target "$target" play)"
+          item_summary="$(jq -c '{id, title: .media.metadata.title, mediaType, tracks: (.media.tracks | length)}' <<<"$item")"
+          jq -cn --argjson item "$item_summary" --argjson playback "$playback" --arg target "$target" \
+            '{source: "audiobookshelf", target: $target, item: $item, playback: $playback}'
           ;;
         api)
           [ "$#" -ge 2 ] && [ "$#" -le 3 ] || { usage; exit 2; }
@@ -320,9 +332,19 @@ in
 {
   options.alanix.openclaw.media = {
     defaultTarget = lib.mkOption {
-      type = lib.types.enum [ "alan-tv-kodi" ];
+      type = lib.types.strMatching "^[A-Za-z0-9.-]+$";
       default = "alan-tv-kodi";
       description = "Structured playback target used when a media command does not name one.";
+    };
+    targets = lib.mkOption {
+      default = { };
+      description = "Declaratively registered playback targets, independent of media catalogs.";
+      type = lib.types.attrsOf (lib.types.submodule {
+        options.command = lib.mkOption {
+          type = lib.types.package;
+          description = "Executable accepting a stable playback operation and arguments.";
+        };
+      });
     };
     jellyfin = serviceOptions "Jellyfin" "https://jellyfin.fifefin.com";
     navidrome = serviceOptions "Navidrome" "https://navidrome.fifefin.com";
@@ -330,11 +352,16 @@ in
   };
 
   config = lib.mkMerge [
+    (lib.mkIf (cfg.jellyfin.enable || cfg.navidrome.enable || cfg.audiobookshelf.enable) {
+      assertions = [
+        { assertion = builtins.hasAttr cfg.defaultTarget cfg.targets; message = "alanix.openclaw.media.defaultTarget must name a registered playback target."; }
+      ];
+      alanix.openclaw.packages = [ mediaTarget ];
+    })
     (lib.mkIf cfg.jellyfin.enable {
       assertions = [
         { assertion = config.alanix.openclaw.gateway.enable; message = "Jellyfin access requires alanix.openclaw.gateway.enable."; }
         { assertion = cfg.jellyfin.passwordFile != null; message = "alanix.openclaw.media.jellyfin.passwordFile must be set."; }
-        { assertion = config.alanix.openclaw.kodi.enable; message = "Jellyfin default playback requires alanix.openclaw.kodi.enable."; }
       ];
       alanix.openclaw.packages = [ jellyfinControl ];
     })
@@ -342,7 +369,6 @@ in
       assertions = [
         { assertion = config.alanix.openclaw.gateway.enable; message = "Navidrome access requires alanix.openclaw.gateway.enable."; }
         { assertion = cfg.navidrome.passwordFile != null; message = "alanix.openclaw.media.navidrome.passwordFile must be set."; }
-        { assertion = config.alanix.openclaw.kodi.enable; message = "Navidrome default playback requires alanix.openclaw.kodi.enable."; }
       ];
       alanix.openclaw.packages = [ navidromeControl ];
     })
@@ -350,7 +376,6 @@ in
       assertions = [
         { assertion = config.alanix.openclaw.gateway.enable; message = "Audiobookshelf access requires alanix.openclaw.gateway.enable."; }
         { assertion = cfg.audiobookshelf.passwordFile != null; message = "alanix.openclaw.media.audiobookshelf.passwordFile must be set."; }
-        { assertion = config.alanix.openclaw.kodi.enable; message = "Audiobookshelf default playback requires alanix.openclaw.kodi.enable."; }
       ];
       alanix.openclaw.packages = [ audiobookshelfControl ];
     })

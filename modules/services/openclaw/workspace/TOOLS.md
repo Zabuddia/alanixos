@@ -70,19 +70,23 @@ the job definition.
 - For live TV, first ensure Kodi is open, then run
   `kodi-control play-channel "NUMBER OR NAME"`. A partial callsign such as
   `8.1 WFA` may match `8.1 WFAA` when unambiguous.
-- Use `kodi-control current` to inspect or verify playback,
+- Use `kodi-control status` to inspect or verify normalized playback (`playing`,
+  `paused`, or `stopped`), and `kodi-control pause`, `resume`, or `stop` for
+  explicit playback control. Use
   `kodi-control seek-percent PERCENT` to seek, and `kodi-control start-over` to
   return an active video to its beginning. `find-movie` and `find-channel` are
   read-only matching commands for resolving ambiguity without starting media.
+- `kodi-control raw METHOD [PARAMS_JSON]` is an expert/debug escape hatch. Do
+  not use it for an operation covered by a structured command.
 - Do not use `HassMediaSearchAndPlay`, construct raw Kodi JSON-RPC, inspect Kodi
   configuration or logs, or substitute guessed API methods. If `kodi-control`
   returns an error, report it concisely; never bypass the wrapper.
 
 ## Desktop control
 
-- Use `desktop-control HOST focused` or `desktop-control HOST outputs` for
+- Use `desktop-inspect HOST focused` or `desktop-inspect HOST outputs` for
   structured current-screen context. Use
-  `desktop-control HOST screenshot > FILE.png && echo "Screenshot saved to
+  `desktop-inspect HOST screenshot > FILE.png && echo "Screenshot saved to
   FILE.png"` to capture a screen for the configured image model. Keep the image
   inside the workspace unless the operator names another destination. Create
   the destination directory first. After capturing a screenshot, immediately
@@ -91,11 +95,12 @@ the job definition.
   not use `read` for screenshots: the primary conversational model is text-only,
   while `image` delegates analysis to the configured multimodal model. Ask for
   a concise, factual description unless the operator requests more detail.
-- Use `desktop-control HOST apps` before launching an application whose desktop
+- Use `desktop-inspect HOST status` to distinguish an available session from an
+  offline, asleep, or sessionless host. Use `desktop-inspect HOST apps` before launching an application whose desktop
   ID is not already known, then `desktop-control HOST launch APP_ID`. Use
-  `desktop-control HOST close-current` only when the requested target is the
+  `desktop-control HOST close-app` only when the requested target is the
   currently focused window.
-- Use `desktop-control HOST clipboard-read` for text clipboard reads and pipe
+- Use `desktop-inspect HOST clipboard` for text clipboard reads and pipe
   text into `desktop-control HOST clipboard-write` for writes. Clipboard
   contents are private data: do not persist or repeat them beyond the task.
 - The command accepts only inventory hosts and fixed desktop operations. Never
@@ -114,13 +119,16 @@ the job definition.
 ## Calendar and contacts
 
 - Radicale is the only calendar and contact source. Do not use Nextcloud.
-- Run `radicale-calendar` with normal `khal` arguments for calendar reads and
-  changes. Useful commands include `printcalendars`, `list`, `search`, `new`,
-  `edit`, and `import`. The wrapper synchronizes before the command and again
-  after a successful command.
-- Run `radicale-contacts` with normal `khard` arguments for contact reads and
-  changes. Useful commands include `list`, `show`, `new`, `edit`, `copy`,
-  `move`, and `remove`. It uses the same pre/post synchronization behavior.
+- Use `radicale-calendar collections|list|search [QUERY]|get ID` for reads.
+  Use `create COLLECTION`, `update ID`, and `delete ID`; create/update accept a
+  JSON object on stdin and return normalized JSON. Event fields are `title`,
+  `start`, `end`, `description`, and `location`.
+- Use `radicale-contacts addressbooks|list|search [QUERY]|get ID` for reads.
+  Use `create ADDRESSBOOK`, `update ID`, and `delete ID`; contact fields are
+  `name`, `emails`, `phones`, `organization`, and `note`.
+- These stable commands synchronize before every operation and after successful
+  writes. The `radicale-calendar-raw` and `radicale-contacts-raw` commands are
+  expert/debug escape hatches for backend-specific operations.
 - Use `radicale-sync` to synchronize both data sets without making a query.
   Never inspect the generated DAV configuration, local cache internals, or
   credential file.

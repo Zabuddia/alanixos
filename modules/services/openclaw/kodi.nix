@@ -34,6 +34,12 @@ in
       default = 10;
       description = "SSH connection timeout in seconds.";
     };
+
+    targetName = lib.mkOption {
+      type = lib.types.strMatching "^[A-Za-z0-9.-]+$";
+      default = "${cfg.host}-kodi";
+      description = "Declarative media playback target name provided by this Kodi instance.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -45,5 +51,6 @@ in
     ];
 
     alanix.openclaw.packages = [ kodiControl ];
+    alanix.openclaw.media.targets.${cfg.targetName}.command = kodiControl;
   };
 }

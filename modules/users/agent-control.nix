@@ -21,7 +21,7 @@ Usage: alanix-desktop-control ACTION [ARGUMENT]
 Actions:
   apps                 List installed desktop application IDs
   launch APP_ID        Launch an installed desktop application
-  close-current        Close the focused Sway window
+  close-app            Close the focused application
   focused              Return focused-window metadata as JSON
   outputs              Return active Sway outputs as JSON
   screenshot           Write a PNG of the current desktop to stdout
@@ -89,7 +89,7 @@ EOF
             ${lib.escapeShellArg config.appLauncher.desktopCommand} "$1"
           exec swaymsg exec -- "$launch_command"
           ;;
-        close-current)
+        close-app)
           [ "$#" -eq 0 ] || { usage; exit 2; }
           exec ${lib.escapeShellArg config.appLauncher.closeFocusedCommand}
           ;;

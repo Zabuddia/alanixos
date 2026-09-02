@@ -21,6 +21,10 @@ let
     else
       cfg.dataDir;
   passwordFile = if cfg.passwordFile != null then cfg.passwordFile else "";
+  radicalePython = pkgs.python3.withPackages (pythonPackages: [
+    pythonPackages.icalendar
+    pythonPackages.vobject
+  ]);
 
   vdirsyncerConfig = pkgs.writeText "openclaw-vdirsyncer.conf" ''
     [general]
@@ -137,12 +141,13 @@ let
     text = ''
       ${syncCommand}
       set +e
-      ${lib.getExe' pkgs.khal "khal"} --config ${lib.escapeShellArg khalConfig} "$@"
+      ${radicalePython}/bin/python ${./radicale-control/radicale_control.py} \
+        --calendar-root ${lib.escapeShellArg "${dataDir}/calendars"} \
+        --contact-root ${lib.escapeShellArg "${dataDir}/contacts"} \
+        calendar "$@"
       status=$?
       set -e
-      if [ "$status" -eq 0 ]; then
-        ${syncCommand}
-      fi
+      case "''${1:-}:$status" in create:0|update:0|delete:0) ${syncCommand} ;; esac
       exit "$status"
     '';
   };
@@ -152,13 +157,30 @@ let
     text = ''
       ${syncCommand}
       set +e
-      ${lib.getExe pkgs.khard} --config ${lib.escapeShellArg khardConfig} "$@"
+      ${radicalePython}/bin/python ${./radicale-control/radicale_control.py} \
+        --calendar-root ${lib.escapeShellArg "${dataDir}/calendars"} \
+        --contact-root ${lib.escapeShellArg "${dataDir}/contacts"} \
+        contact "$@"
       status=$?
       set -e
-      if [ "$status" -eq 0 ]; then
-        ${syncCommand}
-      fi
+      case "''${1:-}:$status" in create:0|update:0|delete:0) ${syncCommand} ;; esac
       exit "$status"
+    '';
+  };
+
+  radicaleCalendarRaw = pkgs.writeShellApplication {
+    name = "radicale-calendar-raw";
+    text = ''
+      ${syncCommand}
+      exec ${lib.getExe' pkgs.khal "khal"} --config ${lib.escapeShellArg khalConfig} "$@"
+    '';
+  };
+
+  radicaleContactsRaw = pkgs.writeShellApplication {
+    name = "radicale-contacts-raw";
+    text = ''
+      ${syncCommand}
+      exec ${lib.getExe pkgs.khard} --config ${lib.escapeShellArg khardConfig} "$@"
     '';
   };
 in
@@ -211,6 +233,8 @@ in
       radicaleSync
       radicaleCalendar
       radicaleContacts
+      radicaleCalendarRaw
+      radicaleContactsRaw
     ];
   };
 }
