@@ -196,6 +196,14 @@
             markItemsWatched = true;
           };
           jellyfin.enable = true;
+          navidrome = {
+            enable = true;
+            username = "buddia";
+            passwordFile = config.sops.secrets."navidrome-passwords/buddia".path;
+            enableTranscoding = false;
+            enableScrobbling = true;
+            enableNowPlaying = true;
+          };
           audiobookshelf = {
             enable = true;
             username = "buddia";
@@ -215,9 +223,6 @@
           };
           mediaSources.video = [
             { name = "Videos"; path = "${config.alanix.syncthing.syncRoot}/media/videos"; }
-          ];
-          mediaSources.music = [
-            { name = "Music"; path = "${config.alanix.syncthing.syncRoot}/media/music"; }
           ];
           iptvSimple = {
             enable = true;
@@ -348,7 +353,6 @@
         "emulation-retroarch"
         "emulation-ryujinx"
         "videos"
-        "music"
       ];
       linkFolderSets = [
         "emulation-azahar"

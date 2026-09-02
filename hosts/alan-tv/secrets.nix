@@ -77,4 +77,11 @@
     mode = "0400";
   };
 
+  sops.secrets."navidrome-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "buddia";
+    group = "users";
+    mode = "0400";
+  };
+
 }

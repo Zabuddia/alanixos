@@ -201,10 +201,7 @@ EOF
             alan-tv-kodi)
               song="$(subsonic getSong --data-urlencode "id=$song_id")"
               title="$(jq -er '.song.title' <<<"$song")"
-              encoded_username="$(jq -rn --arg value "$username" '$value|@uri')"
-              encoded_id="$(jq -rn --arg value "$song_id" '$value|@uri')"
-              stream_url="$url/rest/stream.view?u=$encoded_username&t=$token&s=$salt&v=1.16.1&c=alanix-openclaw&id=$encoded_id"
-              playback="$(jq -cn --arg url "$stream_url" '[$url]' | kodi-control play-audio-urls "$title")"
+              playback="$(kodi-control play-navidrome "$song_id" "$title")"
               jq -cn --argjson song "$song" --argjson playback "$playback" --arg target "$target" \
                 '{source: "navidrome", target: $target, item: $song.song, playback: $playback}'
               ;;

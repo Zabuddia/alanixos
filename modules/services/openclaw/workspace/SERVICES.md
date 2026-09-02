@@ -55,7 +55,9 @@ browser automation for these services.
   Home Assistant launches or closes the application, while `kodi-control`
   performs structured library, PVR, playback, and seek actions.
 - Jellyfin supplies movies, shows, recordings, and videos. Navidrome supplies
-  music, Audiobookshelf supplies audiobooks, and Kavita supplies ebooks.
+  music through its Kodi add-on; `alan-tv` does not synchronize or index the
+  music folder locally. Audiobookshelf supplies audiobooks, and Kavita supplies
+  ebooks.
 - TVHeadend is deployed on `fife-tv` and `randy-big-nixos`. The HDHomeRun at the
   configured LAN endpoint supplies live television to Jellyfin.
 

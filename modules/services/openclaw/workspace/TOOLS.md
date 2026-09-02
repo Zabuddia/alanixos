@@ -145,7 +145,9 @@ the job definition.
 - Use `navidrome-control` for music search, albums, artists, playlists,
   now-playing state, and favorites. Its `call` action exposes other Subsonic
   endpoints using `KEY=VALUE` arguments when a first-class action is missing.
-  `navidrome-control play SONG_ID` streams the song to the default Kodi target.
+  `navidrome-control play SONG_ID` asks the declaratively configured Navidrome
+  Kodi add-on to stream the song to the default Kodi target. Do not construct a
+  direct Navidrome stream URL or use Kodi's local music library instead.
 - Use `audiobookshelf-control` for libraries, audiobook/podcast search, item
   details, and the authenticated API. These catalog commands do not by
   themselves choose a speaker or player. `audiobookshelf-control play ITEM_ID`

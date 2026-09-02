@@ -15,6 +15,9 @@ let
   invidiousUsername = lib.escapeXML (lib.optionalString (cfg.invidious.username != null) cfg.invidious.username);
   hasInputstreamAdaptive = cfg.inputstreamAdaptive.enable;
   hasJellyfin = cfg.jellyfin.enable;
+  hasNavidrome = cfg.navidrome.enable;
+  hasNavidromeAuth = hasNavidrome && cfg.navidrome.passwordFile != null;
+  navidromeUsername = lib.escapeXML (lib.optionalString (cfg.navidrome.username != null) cfg.navidrome.username);
   hasAudiobookshelf = cfg.audiobookshelf.enable;
   hasAudiobookshelfAuth = hasAudiobookshelf && cfg.audiobookshelf.passwordFile != null;
   audiobookshelfUsername = lib.escapeXML (lib.optionalString (cfg.audiobookshelf.username != null) cfg.audiobookshelf.username);
@@ -29,6 +32,7 @@ let
     ++ lib.optionals hasIptvSimple [ p.pvr-iptvsimple ]
     ++ lib.optionals hasInvidious [ p.invidious ]
     ++ lib.optionals hasJellyfin [ p.jellyfin ]
+    ++ lib.optionals hasNavidrome [ (p.callPackage ./kodi-navidrome-addon.nix { }) ]
     ++ lib.optionals hasAudiobookshelf [ (p.callPackage ./kodi-audiobookshelf-addon.nix { }) ]
     ++ lib.optionals hasInputstreamAdaptive [ p.inputstream-adaptive ]);
 
@@ -94,6 +98,7 @@ let
     ++ lib.optionals hasIptvSimple [ "pvr.iptvsimple" ]
     ++ lib.optionals hasInvidious [ "plugin.video.invidious" ]
     ++ lib.optionals hasJellyfin [ "plugin.video.jellyfin" ]
+    ++ lib.optionals hasNavidrome [ "plugin.kodi.navidrome" ]
     ++ lib.optionals hasAudiobookshelf [ "plugin.audio.audiobookshelf" ]
     ++ lib.optionals hasInputstreamAdaptive [ "inputstream.adaptive" ];
 
@@ -241,6 +246,46 @@ in
 
     jellyfin = {
       enable = lib.mkEnableOption "Jellyfin Kodi add-on";
+    };
+
+    navidrome = {
+      enable = lib.mkEnableOption "Navidrome Kodi add-on";
+
+      serverUrl = lib.mkOption {
+        type = types.str;
+        default = "https://navidrome.fifefin.com";
+        description = "Navidrome base URL used by the Kodi add-on.";
+      };
+
+      username = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Navidrome account username used by the Kodi add-on.";
+      };
+
+      passwordFile = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Path to the Navidrome password. Read at activation time and never stored in the Nix store.";
+      };
+
+      enableTranscoding = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether Navidrome should transcode music streamed to Kodi.";
+      };
+
+      enableScrobbling = lib.mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether Kodi reports completed plays to Navidrome.";
+      };
+
+      enableNowPlaying = lib.mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether Kodi reports its current track to Navidrome.";
+      };
     };
 
     audiobookshelf = {
@@ -441,6 +486,14 @@ in
       message = "kodi.remoteControl.passwordFile must be set when kodi.remoteControl.requireAuthentication is true";
     }
     {
+      assertion = !(hasNavidrome && cfg.navidrome.username == null);
+      message = "kodi.navidrome.username must be set when the Navidrome add-on is enabled";
+    }
+    {
+      assertion = !(hasNavidrome && cfg.navidrome.passwordFile == null);
+      message = "kodi.navidrome.passwordFile must be set when the Navidrome add-on is enabled";
+    }
+    {
       assertion = !(hasAudiobookshelf && cfg.audiobookshelf.username == null);
       message = "kodi.audiobookshelf.username must be set when the Audiobookshelf add-on is enabled";
     }
@@ -514,6 +567,32 @@ in
           printf '%s\n' '    <setting id="instance_username">${invidiousUsername}</setting>'
           printf '    <setting id="instance_password">%s</setting>\n' "$escaped_password"
           printf '%s\n' '    <setting id="mark_items_watched">${lib.boolToString cfg.invidious.markItemsWatched}</setting>'
+          printf '%s\n' '</settings>'
+        } > "$settingsFile"
+        chmod 600 "$settingsFile"
+      '');
+
+      home.activation.writeNavidromeSettings = lib.mkIf hasNavidromeAuth (lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+        settingsFile="${config.home.homeDirectory}/.kodi/userdata/addon_data/plugin.kodi.navidrome/settings.xml"
+        mkdir -p "$(dirname "$settingsFile")"
+        rm -f "$settingsFile"
+        password=$(< "${cfg.navidrome.passwordFile}")
+        escaped_password=$(printf '%s\n' "$password" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g')
+        {
+          printf '%s\n' '<settings version="2">'
+          printf '%s\n' '    <setting id="server_url">${lib.escapeXML (lib.removeSuffix "/" cfg.navidrome.serverUrl)}</setting>'
+          printf '%s\n' '    <setting id="username">${navidromeUsername}</setting>'
+          printf '    <setting id="password">%s</setting>\n' "$escaped_password"
+          printf '%s\n' '    <setting id="enable_transcoding">${lib.boolToString cfg.navidrome.enableTranscoding}</setting>'
+          printf '%s\n' '    <setting id="max_bitrate">320</setting>'
+          printf '%s\n' '    <setting id="transcode_format">mp3</setting>'
+          printf '%s\n' '    <setting id="enable_scrobbling">${lib.boolToString cfg.navidrome.enableScrobbling}</setting>'
+          printf '%s\n' '    <setting id="scrobble_threshold">50</setting>'
+          printf '%s\n' '    <setting id="enable_now_playing">${lib.boolToString cfg.navidrome.enableNowPlaying}</setting>'
+          printf '%s\n' '    <setting id="items_per_page">500</setting>'
+          printf '%s\n' '    <setting id="show_track_numbers">true</setting>'
+          printf '%s\n' '    <setting id="api_timeout">15</setting>'
+          printf '%s\n' '    <setting id="enable_debug">false</setting>'
           printf '%s\n' '</settings>'
         } > "$settingsFile"
         chmod 600 "$settingsFile"

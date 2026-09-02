@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 
 class KodiError(RuntimeError):
@@ -263,6 +263,11 @@ def parser() -> argparse.ArgumentParser:
     )
     play_audiobookshelf.add_argument("item_id")
     play_audiobookshelf.add_argument("label")
+    play_navidrome = commands.add_parser(
+        "play-navidrome", help="Play a Navidrome song through its Kodi add-on"
+    )
+    play_navidrome.add_argument("song_id")
+    play_navidrome.add_argument("label")
     seek = commands.add_parser("seek-percent", help="Seek active video by percentage")
     seek.add_argument("percentage", type=float)
     commands.add_parser("start-over", help="Seek active video to the beginning")
@@ -328,6 +333,19 @@ def main() -> int:
             emit(
                 {
                     "requested": {"label": args.label, "item_id": args.item_id},
+                    "playback": wait_for_active_player(client, "audio", timeout=20.0),
+                }
+            )
+        elif args.command == "play-navidrome":
+            if not args.song_id or len(args.song_id) > 512:
+                raise KodiError("Invalid Navidrome song ID")
+            plugin_url = "plugin://plugin.kodi.navidrome/?" + urlencode(
+                {"action": "play_track", "id": args.song_id}
+            )
+            client.call("Player.Open", {"item": {"file": plugin_url}})
+            emit(
+                {
+                    "requested": {"label": args.label, "song_id": args.song_id},
                     "playback": wait_for_active_player(client, "audio", timeout=20.0),
                 }
             )
