@@ -214,7 +214,10 @@
         enable = true;
         passwordFile = config.sops.secrets."forgejo-passwords/buddia".path;
       };
-      kodi.enable = true;
+      kodi = {
+        enable = true;
+        invidiousUrl = "https://invidious.fifefin.com";
+      };
       media = {
         jellyfin = {
           enable = true;
@@ -236,12 +239,15 @@
       gateway = {
         enable = true;
         enableFullExec = true;
-        authMode = "none";
+        authMode = "token";
         dangerouslyDisableControlUiDeviceAuth = true;
         port = 18789;
+        gatewayTokenFile = config.sops.secrets."openclaw/gateway-token".path;
         expose.tailscale = {
           enable = true;
           port = 18790;
+          tls = true;
+          tlsName = config.alanix.tailscale.address;
         };
         workspaceFiles = {
           "AGENTS.md" = pkgs.writeText "openclaw-agents.md" (
@@ -261,9 +267,8 @@
         };
         config = {
           gateway.controlUi.allowedOrigins = [
-            "http://100.64.0.4:18790"
-            "http://alan-framework:18790"
-            "http://alan-framework.tail.fifefin.com:18790"
+            "https://100.64.0.4:18790"
+            "https://alan-framework:18790"
           ];
           models.providers.local-litellm = {
             api = "openai-completions";

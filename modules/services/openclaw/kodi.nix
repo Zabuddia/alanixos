@@ -9,6 +9,7 @@ let
         --host ${lib.escapeShellArg cfg.host} \
         --url ${lib.escapeShellArg cfg.rpcUrl} \
         --connect-timeout ${toString cfg.connectTimeout} \
+        ${lib.optionalString (cfg.invidiousUrl != null) "--invidious-url ${lib.escapeShellArg cfg.invidiousUrl}"} \
         "$@"
     '';
   };
@@ -27,6 +28,17 @@ in
       type = lib.types.str;
       default = "http://localhost:8080/jsonrpc";
       description = "Kodi JSON-RPC URL as seen from the target host.";
+    };
+
+    invidiousUrl = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        Invidious instance URL used to resolve YouTube channels and videos.
+        Required for the play-youtube-video and play-youtube-channel-latest
+        commands; should match the instance configured for the target Kodi's
+        Invidious add-on.
+      '';
     };
 
     connectTimeout = lib.mkOption {

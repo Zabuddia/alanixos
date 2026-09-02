@@ -9,7 +9,12 @@ import subprocess
 import sys
 import time
 from typing import Any
-from urllib.parse import urlencode, urlparse
+from urllib.error import URLError
+from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.request import Request, urlopen
+
+YOUTUBE_VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+YOUTUBE_CHANNEL_ID_RE = re.compile(r"^UC[A-Za-z0-9_-]{22}$")
 
 
 class KodiError(RuntimeError):
@@ -126,6 +131,86 @@ def choose(items: list[dict[str, Any]], query: str, label_key: str) -> dict[str,
     )
 
 
+class InvidiousClient:
+    def __init__(self, base_url: str, timeout: int) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+
+    def get(self, path: str, **params: Any) -> Any:
+        url = f"{self.base_url}/api/v1/{path.lstrip('/')}"
+        if params:
+            url = f"{url}?{urlencode(params)}"
+        request = Request(url, headers={"Accept": "application/json"})
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                return json.load(response)
+        except URLError as error:
+            raise KodiError(f"Invidious request failed: {error}") from error
+        except json.JSONDecodeError as error:
+            raise KodiError("Invidious returned invalid JSON") from error
+
+
+def require_invidious(args: argparse.Namespace) -> InvidiousClient:
+    if not args.invidious_url:
+        raise KodiError("Invidious is not configured for this Kodi target")
+    return InvidiousClient(args.invidious_url, args.connect_timeout)
+
+
+def parse_youtube_video_id(value: str) -> str:
+    value = value.strip()
+    if YOUTUBE_VIDEO_ID_RE.fullmatch(value):
+        return value
+
+    parsed = urlparse(value)
+    host = parsed.netloc.lower()
+    if host.endswith("youtu.be"):
+        candidate = parsed.path.strip("/")
+        if YOUTUBE_VIDEO_ID_RE.fullmatch(candidate):
+            return candidate
+    else:
+        query = parse_qs(parsed.query)
+        candidate = query.get("v", [""])[0]
+        if YOUTUBE_VIDEO_ID_RE.fullmatch(candidate):
+            return candidate
+        match = re.search(r"/(?:shorts|embed|live)/([A-Za-z0-9_-]{11})", parsed.path)
+        if match:
+            return match.group(1)
+
+    raise KodiError(f"Could not parse a YouTube video ID from {value!r}")
+
+
+def find_youtube_channel(invidious: InvidiousClient, query: str) -> dict[str, Any]:
+    if YOUTUBE_CHANNEL_ID_RE.fullmatch(query):
+        return {"id": query, "author": query}
+
+    results = invidious.get("search", q=query, type="channel")
+    if not isinstance(results, list):
+        raise KodiError("Invidious channel search failed")
+    channels = [
+        {
+            "id": item.get("authorId"),
+            "author": item.get("author"),
+            "sub_count": item.get("subCount"),
+        }
+        for item in results
+        if item.get("type") == "channel" and item.get("authorId")
+    ]
+    if not channels:
+        raise KodiError(f"No YouTube channel found for {query!r}")
+    return choose(channels, query, "author")
+
+
+def latest_youtube_channel_video(invidious: InvidiousClient, channel_id: str) -> dict[str, Any]:
+    result = invidious.get(f"channels/{channel_id}/videos")
+    videos = result.get("videos") if isinstance(result, dict) else result
+    if not isinstance(videos, list) or not videos:
+        raise KodiError("This YouTube channel has no videos")
+    video_id = videos[0].get("videoId")
+    if not video_id:
+        raise KodiError("Invidious did not return a playable video ID")
+    return videos[0]
+
+
 def movies(client: KodiClient) -> list[dict[str, Any]]:
     result = client.call(
         "VideoLibrary.GetMovies",
@@ -179,6 +264,8 @@ def source_name(item: dict[str, Any]) -> str | None:
         return "audiobookshelf"
     if path.startswith("plugin://plugin.kodi.navidrome/"):
         return "navidrome"
+    if path.startswith("plugin://plugin.video.invidious/"):
+        return "invidious"
     if path.startswith("pvr://") or item.get("type") == "channel":
         return "pvr"
     if path:
@@ -324,6 +411,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--host", required=True, help=argparse.SUPPRESS)
     result.add_argument("--url", required=True, help=argparse.SUPPRESS)
     result.add_argument("--connect-timeout", type=int, default=10, help=argparse.SUPPRESS)
+    result.add_argument("--invidious-url", default=None, help=argparse.SUPPRESS)
     commands = result.add_subparsers(dest="command", required=True)
 
     find_movie = commands.add_parser("find-movie", help="Find one unambiguous movie")
@@ -340,6 +428,20 @@ def parser() -> argparse.ArgumentParser:
     find_channel.add_argument("name")
     play_channel = commands.add_parser("play-channel", help="Find and tune a TV channel")
     play_channel.add_argument("name")
+
+    find_youtube_channel = commands.add_parser(
+        "find-youtube-channel", help="Find one unambiguous YouTube channel"
+    )
+    find_youtube_channel.add_argument("query")
+    play_youtube_video = commands.add_parser(
+        "play-youtube-video", help="Play a specific YouTube video by ID or URL"
+    )
+    play_youtube_video.add_argument("video")
+    play_youtube_channel_latest = commands.add_parser(
+        "play-youtube-channel-latest",
+        help="Play the most recent video from a YouTube channel",
+    )
+    play_youtube_channel_latest.add_argument("query")
 
     commands.add_parser("status", aliases=["current"], help="Show normalized playback state")
     commands.add_parser("play", help="Play a normalized media request from JSON stdin")
@@ -453,6 +555,39 @@ def main() -> int:
                         "playback": wait_for_playback(client, str(channel["label"])),
                     }
                 )
+        elif args.command == "find-youtube-channel":
+            invidious = require_invidious(args)
+            emit({"match": find_youtube_channel(invidious, args.query)})
+        elif args.command == "play-youtube-video":
+            video_id = parse_youtube_video_id(args.video)
+            plugin_url = "plugin://plugin.video.invidious/?" + urlencode(
+                {"action": "play_video", "video_id": video_id}
+            )
+            client.call("Player.Open", {"item": {"file": plugin_url}})
+            emit(
+                {
+                    "requested": {"video_id": video_id},
+                    "playback": wait_for_active_player(client, "video", timeout=20.0),
+                }
+            )
+        elif args.command == "play-youtube-channel-latest":
+            invidious = require_invidious(args)
+            channel = find_youtube_channel(invidious, args.query)
+            video = latest_youtube_channel_video(invidious, channel["id"])
+            plugin_url = "plugin://plugin.video.invidious/?" + urlencode(
+                {"action": "play_video", "video_id": video["videoId"]}
+            )
+            client.call("Player.Open", {"item": {"file": plugin_url}})
+            emit(
+                {
+                    "requested": {
+                        "channel": channel,
+                        "video_id": video["videoId"],
+                        "title": video.get("title"),
+                    },
+                    "playback": wait_for_active_player(client, "video", timeout=20.0),
+                }
+            )
         elif args.command in {"status", "current"}:
             emit(current(client))
         elif args.command in {"pause", "resume", "stop"}:

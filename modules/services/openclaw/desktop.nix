@@ -99,7 +99,7 @@ ${allowedHostCases}
     runtimeInputs = [ pkgs.jq pkgs.openssh ];
     text = ''
       usage() {
-        echo "Usage: desktop-control HOST {launch APP_ID|close-app|clipboard-write}" >&2
+        echo "Usage: desktop-control HOST {launch APP_ID|close-app|clipboard-write|reboot|shutdown}" >&2
       }
       host="''${1:-}"; action="''${2:-}"
       [ "$#" -ge 2 ] || { usage; exit 2; }
@@ -113,7 +113,7 @@ ${allowedHostCases}
           [ "$#" -eq 1 ] || { usage; exit 2; }
           case "$1" in ""|*[!A-Za-z0-9_.+-]*) echo "Invalid desktop application ID: $1" >&2; exit 64 ;; esac
           ;;
-        close-app|clipboard-write) [ "$#" -eq 0 ] || { usage; exit 2; } ;;
+        close-app|clipboard-write|reboot|shutdown) [ "$#" -eq 0 ] || { usage; exit 2; } ;;
         *) usage; exit 2 ;;
       esac
       set +e

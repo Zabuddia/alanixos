@@ -148,7 +148,7 @@ let
   gatewayEndpoint = {
     address = "127.0.0.1";
     port = cfg.gateway.port;
-    protocol = "tcp";
+    protocol = "http";
   };
 in
 {

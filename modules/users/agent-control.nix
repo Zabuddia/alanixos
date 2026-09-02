@@ -27,6 +27,8 @@ Actions:
   screenshot           Write a PNG of the current desktop to stdout
   clipboard-read       Write the current text clipboard to stdout
   clipboard-write      Replace the text clipboard with stdin
+  reboot               Reboot this host
+  shutdown             Power off this host
 EOF
       }
 
@@ -34,6 +36,19 @@ EOF
       if [ "$#" -gt 0 ]; then
         shift
       fi
+
+      # Power actions need no graphical session, so dispatch them before the
+      # Sway session detection below.
+      case "$action" in
+        reboot)
+          [ "$#" -eq 0 ] || { usage; exit 2; }
+          exec sudo systemctl reboot
+          ;;
+        shutdown)
+          [ "$#" -eq 0 ] || { usage; exit 2; }
+          exec sudo systemctl poweroff
+          ;;
+      esac
 
       runtime_dir="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
       export XDG_RUNTIME_DIR="$runtime_dir"

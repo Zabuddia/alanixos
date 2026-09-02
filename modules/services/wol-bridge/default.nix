@@ -1,0 +1,5 @@
+{
+  imports = [
+    ./wol-bridge.nix
+  ];
+}

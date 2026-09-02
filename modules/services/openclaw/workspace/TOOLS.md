@@ -76,6 +76,13 @@ the job definition.
   `kodi-control seek-percent PERCENT` to seek, and `kodi-control start-over` to
   return an active video to its beginning. `find-movie` and `find-channel` are
   read-only matching commands for resolving ambiguity without starting media.
+- For a specific YouTube video, run `kodi-control play-youtube-video ID_OR_URL`
+  (accepts a bare video ID or a youtube.com/youtu.be URL). For "play the
+  latest video from CHANNEL", run
+  `kodi-control play-youtube-channel-latest "CHANNEL NAME"`. `find-youtube-channel`
+  is the read-only match-resolution command. These play through the Kodi
+  Invidious add-on and require it to be configured; if `kodi-control` reports
+  Invidious is not configured, say so rather than retrying.
 - `kodi-control raw METHOD [PARAMS_JSON]` is an expert/debug escape hatch. Do
   not use it for an operation covered by a structured command.
 - Do not use `HassMediaSearchAndPlay`, construct raw Kodi JSON-RPC, inspect Kodi
@@ -105,6 +112,19 @@ the job definition.
   contents are private data: do not persist or repeat them beyond the task.
 - The command accepts only inventory hosts and fixed desktop operations. Never
   replace a denial with raw Sway IPC, process killing, or an SSH shell command.
+- Use `desktop-control HOST reboot` or `desktop-control HOST shutdown` to
+  actually power-cycle or power off a physical inventory host. This is Tier 2
+  (see POLICY.md): only run it when the operator names the exact host and
+  action. Do not simulate a reboot by toggling a `media_player` or other
+  Home Assistant entity off and on — that only changes software playback
+  state, never reflects the machine's real power state, and will loop
+  forever waiting for a state change that isn't coming. If `desktop-control`
+  reports the host unavailable, say so; do not retry indefinitely.
+- To power on a host that is fully off, press its Wake on LAN button in Home
+  Assistant (`button.wake_on_lan_*` / `button.wol_*`). This only works for
+  hosts on the same LAN as the button's bridge (currently alan-home's LAN) and
+  only if the target's NIC/firmware supports waking from off; it will not
+  wake `randy-big-nixos` or `fife-tv`, which are on other networks.
 
 ## Managed browser
 

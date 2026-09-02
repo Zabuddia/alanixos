@@ -35,6 +35,7 @@
     ./syncthing
     ./tvheadend
     ./vaultwarden
+    ./wol-bridge
     ./xmpp
   ];
 }

@@ -524,9 +524,48 @@
                   "device_tracker.pixel_fold"
                 ];
               }
+              {
+                type = "entities";
+                title = "Wake on LAN";
+                show_header_toggle = false;
+                entities = [
+                  "button.wake_on_lan_a0_ad_9f_87_68_4e"
+                  "button.wol_alan_framework"
+                  "button.wol_alan_framework_laptop"
+                  "button.wol_alan_big_nixos"
+                  "button.wol_alan_node"
+                  "button.wol_alan_optiplex"
+                ];
+              }
             ];
           }
         ];
+      };
+    };
+
+    alanix.wolBridge = {
+      enable = true;
+      hosts = {
+        alan_framework = {
+          mac = "9c:bf:0d:01:1a:90";
+          deviceName = "alan-framework";
+        };
+        alan_framework_laptop = {
+          mac = "44:f7:9f:da:6c:d7";
+          deviceName = "alan-framework-laptop";
+        };
+        alan_big_nixos = {
+          mac = "7c:10:c9:44:38:aa";
+          deviceName = "alan-big-nixos";
+        };
+        alan_node = {
+          mac = "58:91:80:00:01:c6";
+          deviceName = "alan-node";
+        };
+        alan_optiplex = {
+          mac = "6c:2b:59:f8:0a:44";
+          deviceName = "alan-optiplex";
+        };
       };
     };
 
