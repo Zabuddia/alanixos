@@ -292,15 +292,8 @@ EOF
             alan-tv-kodi)
               item="$(request GET "/api/items/$item_id?expanded=1")"
               title="$(jq -er '.media.metadata.title' <<<"$item")"
-              urls="$(jq -c --arg base "$url" --arg token "$token" '
-                [
-                  .media.tracks[].contentUrl
-                  | (split("/") | map(@uri) | join("/")) as $path
-                  | $base + $path + "?token=" + ($token | @uri)
-                ]
-              ' <<<"$item")"
-              [ "$(jq 'length' <<<"$urls")" -gt 0 ] || { echo "Audiobookshelf item has no playable tracks" >&2; exit 64; }
-              playback="$(printf '%s' "$urls" | kodi-control play-audio-urls "$title")"
+              [ "$(jq '.media.tracks | length' <<<"$item")" -gt 0 ] || { echo "Audiobookshelf item has no playable tracks" >&2; exit 64; }
+              playback="$(kodi-control play-audiobookshelf "$item_id" "$title")"
               item_summary="$(jq -c '{id, title: .media.metadata.title, mediaType, tracks: (.media.tracks | length)}' <<<"$item")"
               jq -cn --argjson item "$item_summary" --argjson playback "$playback" --arg target "$target" \
                 '{source: "audiobookshelf", target: $target, item: $item, playback: $playback}'

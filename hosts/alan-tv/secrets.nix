@@ -70,4 +70,11 @@
     mode = "0400";
   };
 
+  sops.secrets."audiobookshelf-passwords/buddia" = {
+    sopsFile = (import ../../secrets/files.nix).servicePasswords;
+    owner = "buddia";
+    group = "users";
+    mode = "0400";
+  };
+
 }

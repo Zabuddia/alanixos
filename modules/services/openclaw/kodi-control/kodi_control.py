@@ -258,6 +258,11 @@ def parser() -> argparse.ArgumentParser:
         "play-audio-urls", help="Replace and play Kodi's audio playlist from JSON stdin"
     )
     play_audio_urls.add_argument("label")
+    play_audiobookshelf = commands.add_parser(
+        "play-audiobookshelf", help="Play an Audiobookshelf item through its Kodi add-on"
+    )
+    play_audiobookshelf.add_argument("item_id")
+    play_audiobookshelf.add_argument("label")
     seek = commands.add_parser("seek-percent", help="Seek active video by percentage")
     seek.add_argument("percentage", type=float)
     commands.add_parser("start-over", help="Seek active video to the beginning")
@@ -310,6 +315,20 @@ def main() -> int:
                 {
                     "requested": {"label": args.label, "tracks": len(urls)},
                     "playback": wait_for_active_player(client, "audio"),
+                }
+            )
+        elif args.command == "play-audiobookshelf":
+            if not re.fullmatch(r"[A-Za-z0-9_-]+", args.item_id):
+                raise KodiError("Invalid Audiobookshelf item ID")
+            plugin_url = (
+                "plugin://plugin.audio.audiobookshelf/"
+                f"?action=play&item_id={args.item_id}"
+            )
+            client.call("Player.Open", {"item": {"file": plugin_url}})
+            emit(
+                {
+                    "requested": {"label": args.label, "item_id": args.item_id},
+                    "playback": wait_for_active_player(client, "audio", timeout=20.0),
                 }
             )
         elif args.command in {"seek-percent", "start-over"}:

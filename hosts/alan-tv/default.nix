@@ -196,6 +196,13 @@
             markItemsWatched = true;
           };
           jellyfin.enable = true;
+          audiobookshelf = {
+            enable = true;
+            username = "buddia";
+            passwordFile = config.sops.secrets."audiobookshelf-passwords/buddia".path;
+            enableDownloads = false;
+            syncProgress = true;
+          };
           inputstreamAdaptive = {
             enable = true;
             streamSelectionType = "fixed-res";

@@ -15,6 +15,9 @@ let
   invidiousUsername = lib.escapeXML (lib.optionalString (cfg.invidious.username != null) cfg.invidious.username);
   hasInputstreamAdaptive = cfg.inputstreamAdaptive.enable;
   hasJellyfin = cfg.jellyfin.enable;
+  hasAudiobookshelf = cfg.audiobookshelf.enable;
+  hasAudiobookshelfAuth = hasAudiobookshelf && cfg.audiobookshelf.passwordFile != null;
+  audiobookshelfUsername = lib.escapeXML (lib.optionalString (cfg.audiobookshelf.username != null) cfg.audiobookshelf.username);
   hasRemoteControl = cfg.remoteControl.enable;
   hasRemoteControlAuth = hasRemoteControl && cfg.remoteControl.requireAuthentication;
   hasRemoteControlUsername = hasRemoteControlAuth && cfg.remoteControl.username != null;
@@ -26,6 +29,7 @@ let
     ++ lib.optionals hasIptvSimple [ p.pvr-iptvsimple ]
     ++ lib.optionals hasInvidious [ p.invidious ]
     ++ lib.optionals hasJellyfin [ p.jellyfin ]
+    ++ lib.optionals hasAudiobookshelf [ (p.callPackage ./kodi-audiobookshelf-addon.nix { }) ]
     ++ lib.optionals hasInputstreamAdaptive [ p.inputstream-adaptive ]);
 
   tvheadendSettingsXml = server: ''
@@ -90,6 +94,7 @@ let
     ++ lib.optionals hasIptvSimple [ "pvr.iptvsimple" ]
     ++ lib.optionals hasInvidious [ "plugin.video.invidious" ]
     ++ lib.optionals hasJellyfin [ "plugin.video.jellyfin" ]
+    ++ lib.optionals hasAudiobookshelf [ "plugin.audio.audiobookshelf" ]
     ++ lib.optionals hasInputstreamAdaptive [ "inputstream.adaptive" ];
 
   withTrailingSlash = path:
@@ -236,6 +241,40 @@ in
 
     jellyfin = {
       enable = lib.mkEnableOption "Jellyfin Kodi add-on";
+    };
+
+    audiobookshelf = {
+      enable = lib.mkEnableOption "Audiobookshelf Kodi add-on";
+
+      serverUrl = lib.mkOption {
+        type = types.str;
+        default = "https://audiobookshelf.fifefin.com";
+        description = "Audiobookshelf base URL used by the Kodi add-on.";
+      };
+
+      username = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Audiobookshelf account username used by the Kodi add-on.";
+      };
+
+      passwordFile = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Path to the Audiobookshelf password. Read at activation time and never stored in the Nix store.";
+      };
+
+      enableDownloads = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether the Audiobookshelf add-on may download media onto the Kodi host.";
+      };
+
+      syncProgress = lib.mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether the add-on synchronizes audiobook and podcast progress with Audiobookshelf.";
+      };
     };
 
     inputstreamAdaptive = {
@@ -401,6 +440,14 @@ in
       assertion = !(hasRemoteControlAuth && cfg.remoteControl.passwordFile == null);
       message = "kodi.remoteControl.passwordFile must be set when kodi.remoteControl.requireAuthentication is true";
     }
+    {
+      assertion = !(hasAudiobookshelf && cfg.audiobookshelf.username == null);
+      message = "kodi.audiobookshelf.username must be set when the Audiobookshelf add-on is enabled";
+    }
+    {
+      assertion = !(hasAudiobookshelf && cfg.audiobookshelf.passwordFile == null);
+      message = "kodi.audiobookshelf.passwordFile must be set when the Audiobookshelf add-on is enabled";
+    }
   ];
 
   config.appLauncher.apps.kodi = lib.mkIf cfg.enable {
@@ -467,6 +514,34 @@ in
           printf '%s\n' '    <setting id="instance_username">${invidiousUsername}</setting>'
           printf '    <setting id="instance_password">%s</setting>\n' "$escaped_password"
           printf '%s\n' '    <setting id="mark_items_watched">${lib.boolToString cfg.invidious.markItemsWatched}</setting>'
+          printf '%s\n' '</settings>'
+        } > "$settingsFile"
+        chmod 600 "$settingsFile"
+      '');
+
+      home.activation.writeAudiobookshelfSettings = lib.mkIf hasAudiobookshelfAuth (lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+        settingsFile="${config.home.homeDirectory}/.kodi/userdata/addon_data/plugin.audio.audiobookshelf/settings.xml"
+        mkdir -p "$(dirname "$settingsFile")"
+        rm -f "$settingsFile"
+        password=$(< "${cfg.audiobookshelf.passwordFile}")
+        escaped_password=$(printf '%s\n' "$password" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g')
+        {
+          printf '%s\n' '<settings version="2">'
+          printf '%s\n' '    <setting id="ipaddress">${lib.escapeXML (lib.removeSuffix "/" cfg.audiobookshelf.serverUrl)}</setting>'
+          printf '%s\n' '    <setting id="port"></setting>'
+          printf '%s\n' '    <setting id="username">${audiobookshelfUsername}</setting>'
+          printf '    <setting id="password">%s</setting>\n' "$escaped_password"
+          printf '%s\n' '    <setting id="api_key"></setting>'
+          printf '%s\n' '    <setting id="show_progress_markers">true</setting>'
+          printf '%s\n' '    <setting id="group_libraries_by_type">false</setting>'
+          printf '%s\n' '    <setting id="enable_downloads">${lib.boolToString cfg.audiobookshelf.enableDownloads}</setting>'
+          printf '%s\n' '    <setting id="sync_audiobook_progress">${lib.boolToString cfg.audiobookshelf.syncProgress}</setting>'
+          printf '%s\n' '    <setting id="audiobook_sync_interval">1</setting>'
+          printf '%s\n' '    <setting id="audiobook_sync_on_stop">${lib.boolToString cfg.audiobookshelf.syncProgress}</setting>'
+          printf '%s\n' '    <setting id="sync_podcast_progress">${lib.boolToString cfg.audiobookshelf.syncProgress}</setting>'
+          printf '%s\n' '    <setting id="podcast_sync_interval">1</setting>'
+          printf '%s\n' '    <setting id="podcast_sync_on_stop">${lib.boolToString cfg.audiobookshelf.syncProgress}</setting>'
+          printf '%s\n' '    <setting id="offline_sync_on_connect">true</setting>'
           printf '%s\n' '</settings>'
         } > "$settingsFile"
         chmod 600 "$settingsFile"
