@@ -266,6 +266,7 @@
           stopEmulationControllerHotkey = "Home";
         };
         evdevhook2.enable = true;
+        librewolf.enable = true;
         melonds.enable = true;
         retroarch = {
           enable = true;
