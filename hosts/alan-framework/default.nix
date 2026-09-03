@@ -246,8 +246,6 @@
         expose.tailscale = {
           enable = true;
           port = 18790;
-          tls = true;
-          tlsName = config.alanix.tailscale.address;
         };
         workspaceFiles = {
           "AGENTS.md" = pkgs.writeText "openclaw-agents.md" (
@@ -267,8 +265,9 @@
         };
         config = {
           gateway.controlUi.allowedOrigins = [
-            "https://100.64.0.4:18790"
-            "https://alan-framework:18790"
+            "http://100.64.0.4:18790"
+            "http://alan-framework:18790"
+            "https://openclaw.fifefin.com"
           ];
           models.providers.local-litellm = {
             api = "openai-completions";
@@ -456,6 +455,57 @@
         enable = true;
         accessTokenFile = config.sops.secrets."home-assistant/openclaw-token".path;
       };
+    };
+
+    # A separate, real-cert HTTPS front door for the OpenClaw gateway, for
+    # clients (mobile apps, browsers) that require TLS certificate
+    # validation. Home Assistant's OpenClaw integration keeps using the
+    # plain ws://alan-framework:18790 endpoint above instead, since it
+    # has no way to trust a self-signed cert. Tailscale-only: bound to
+    # this host's tailscale address, DNS-01 issued so no public A/AAAA
+    # record is required to point anywhere reachable from the internet.
+    sops.templates."cloudflare-acme" = {
+      content = "CLOUDFLARE_DNS_API_TOKEN=${config.sops.placeholder."cloudflare/api-token"}";
+      owner = "root";
+    };
+
+    security.acme = {
+      acceptTerms = true;
+      defaults.email = "fife.alan@protonmail.com";
+      certs."openclaw.fifefin.com" = {
+        dnsProvider = "cloudflare";
+        environmentFile = config.sops.templates."cloudflare-acme".path;
+      };
+    };
+
+    services.caddy.enable = true;
+    services.caddy.virtualHosts."openclaw-gateway-tls" = {
+      hostName = "https://openclaw.fifefin.com";
+      useACMEHost = "openclaw.fifefin.com";
+      listenAddresses = [ "100.64.0.4" ];
+      extraConfig = ''
+        reverse_proxy 127.0.0.1:18789
+      '';
+    };
+
+    networking.firewall.interfaces.${config.services.tailscale.interfaceName}.allowedTCPPorts = [ 443 ];
+
+    alanix.cloudflare.dns = {
+      enable = true;
+      credentialsFile = config.sops.templates."cloudflare-env".path;
+      zones."fifefin.com".records = [
+        {
+          name = "openclaw";
+          type = "A";
+          content = "100.64.0.4";
+          comment = "OpenClaw gateway HTTPS endpoint (tailnet-only, alan-framework)";
+        }
+      ];
+    };
+
+    sops.templates."cloudflare-env" = {
+      content = "CLOUDFLARE_API_TOKEN=${config.sops.placeholder."cloudflare/api-token"}";
+      owner = "root";
     };
 
     alanix.wifi.radio.enable = false;
