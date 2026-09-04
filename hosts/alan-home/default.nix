@@ -316,6 +316,7 @@
         "wake_on_lan"
         "worldclock"
         "wyoming"
+        "zha"
       ];
       config = {
         homeassistant.internal_url = "http://192.168.10.212:8123";
