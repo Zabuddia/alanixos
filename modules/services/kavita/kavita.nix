@@ -375,6 +375,51 @@ in
                 "
               fi
             fi
+
+            library_relations_ready="$(sqlite3 "$db_path" "
+              SELECT CASE WHEN COUNT(*) = 5 THEN 1 ELSE 0 END
+              FROM sqlite_master
+              WHERE type = 'table'
+                AND name IN ('Library', 'Series', 'LibraryFileTypeGroup', 'FolderPath', 'AppUserSideNavStream');
+            ")"
+            if [ "$library_relations_ready" = "1" ]; then
+              orphan_library_rows="$(sqlite3 "$db_path" "
+                SELECT
+                  (SELECT COUNT(*) FROM Series s
+                    WHERE NOT EXISTS (SELECT 1 FROM Library l WHERE l.Id = s.LibraryId))
+                  + (SELECT COUNT(*) FROM LibraryFileTypeGroup ft
+                    WHERE NOT EXISTS (SELECT 1 FROM Library l WHERE l.Id = ft.LibraryId))
+                  + (SELECT COUNT(*) FROM FolderPath fp
+                    WHERE NOT EXISTS (SELECT 1 FROM Library l WHERE l.Id = fp.LibraryId))
+                  + (SELECT COUNT(*) FROM AppUserSideNavStream sns
+                    WHERE sns.LibraryId IS NOT NULL
+                      AND NOT EXISTS (SELECT 1 FROM Library l WHERE l.Id = sns.LibraryId));
+              ")"
+              if [ "$orphan_library_rows" -gt 0 ]; then
+                repair_dir=${lib.escapeShellArg cfg.dataDir}/config/corrupt-db-repairs
+                stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+                orphan_copy="$repair_dir/$(basename "$db_path").$stamp.orphan-library-relations"
+
+                install -d -m 0700 "$repair_dir"
+                cp -a "$db_path" "$orphan_copy"
+                echo "Removing $orphan_library_rows orphaned Kavita library relation row(s) from $db_path; original saved at $orphan_copy" >&2
+
+                sqlite3 "$db_path" "
+                  PRAGMA foreign_keys = ON;
+                  BEGIN IMMEDIATE;
+                  DELETE FROM Series
+                    WHERE NOT EXISTS (SELECT 1 FROM Library l WHERE l.Id = Series.LibraryId);
+                  DELETE FROM LibraryFileTypeGroup
+                    WHERE NOT EXISTS (SELECT 1 FROM Library l WHERE l.Id = LibraryFileTypeGroup.LibraryId);
+                  DELETE FROM FolderPath
+                    WHERE NOT EXISTS (SELECT 1 FROM Library l WHERE l.Id = FolderPath.LibraryId);
+                  DELETE FROM AppUserSideNavStream
+                    WHERE LibraryId IS NOT NULL
+                      AND NOT EXISTS (SELECT 1 FROM Library l WHERE l.Id = AppUserSideNavStream.LibraryId);
+                  COMMIT;
+                "
+              fi
+            fi
           done
         '';
       };
