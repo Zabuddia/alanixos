@@ -1064,7 +1064,7 @@ in
     alanix.kavita = {
       enable = true;
       listenAddress = "127.0.0.1";
-      port = 5000;
+      port = 5005;
       backupDir = "/var/backup/kavita";
       extraGroups = [ "users" ];
 
@@ -1103,7 +1103,7 @@ in
         tailscale = {
           enable = true;
           address = config.alanix.tailscale.address;
-          port = 5000;
+          port = 15005;
         };
       };
 
