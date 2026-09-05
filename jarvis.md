@@ -22,27 +22,39 @@ If a `[LOCAL / Home Assistant]` command works but unnecessarily routes through O
 
 There are currently two simple on/off lights:
 
-- Living Room Light 1
-- Living Room Light 2
+- Living Room Light
+- Hallway Light
 
 No brightness control is required.
 
-## 1.1 Living Room Light 1
+### Home Assistant setup required
 
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn on living room light one."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn off living room light one."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Is living room light one on?"**
+The physical Zigbee devices were originally exposed by ZHA as switches. Home Assistant could control each one by name, but commands such as **"Turn on all lights"** did not match locally because there were no exposed entities in the `light` domain. The unmatched command therefore fell through to OpenClaw.
 
-## 1.2 Living Room Light 2
+To make Home Assistant's built-in light intents work, create a **Change device type of a switch** (`Switch as X`) helper for each switch:
 
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn on living room light two."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn off living room light two."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Is living room light two on?"**
+- `switch.living_room_light` → `light.living_room_light`
+- `switch.hallway_light` → `light.hallway_light`
 
-## 1.3 Both Living Room Lights
+Expose the two `light.*` helpers to Assist, and hide and unexpose the underlying `switch.*` entities. The light helpers and the Home Assistant Voice PE must be assigned to the same **Living Room** area so area-relative commands are handled locally. These helpers and their Assist exposure settings are managed in Home Assistant, not in the NixOS configuration.
 
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn on both living room lights."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn off both living room lights."**
+## 1.1 Living Room Light
+
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Turn on/off living room light."**
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Turn living room light on/off."**
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Is living room light on/off?"**
+
+## 1.2 Hallway Light
+
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Turn on/off hallway light."**
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Turn hallway light on/off."**
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Is hallway light on/off?"**
+
+## 1.3 All Lights
+
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Turn on/off all lights."**
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Turn lights on/off."**
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Are all lights on/off?"**
 
 ---
 
@@ -52,15 +64,20 @@ The physical TV is controlled through a Pulse-Eight USB-CEC adapter connected to
 
 Only power and power-state reporting are required for now.
 
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn on the TV."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn off the TV."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Is the TV on?"**
+### Home Assistant setup required
+
+The media PC sends TV power commands and reports the observed CEC power state to Home Assistant through MQTT. Add the MQTT integration, rename the discovered power entity to `switch.tv` with the name **TV**, assign its device to **Living Room**, and expose only `switch.tv` to Assist.
+
+The MQTT power entity must have the `switch` device class so Home Assistant's built-in TV on/off intents accept it. No custom Assist sentences are needed; old TV sentences must be removed so they do not override the built-in intents with stale entity names.
+
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Turn on/off the TV."**
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Turn the TV on/off"**
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Is the TV on/off?"**
 
 ### State verification
 
-- [ ] If the TV is turned on with its physical remote, Home Assistant eventually reports it as on.
-- [ ] If the TV is turned off with its physical remote, Home Assistant eventually reports it as off.
-- [ ] Jarvis reports the observed TV state rather than merely assuming a CEC command succeeded.
+- [x] If the TV is turned on with its physical remote, Home Assistant eventually reports it as on.
+- [x] If the TV is turned off with its physical remote, Home Assistant eventually reports it as off.
 
 ---
 

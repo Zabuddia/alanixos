@@ -247,6 +247,7 @@
         cecControl = {
           enable = true;
           broker = "alan-home";
+          pollIntervalSeconds = 10;
           topicPrefix = "alan-tv/cec";
           deviceId = "alan_tv";
           deviceName = "alan-tv";

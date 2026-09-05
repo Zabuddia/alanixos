@@ -19,6 +19,7 @@ let
     payload_off = "OFF";
     state_on = "ON";
     state_off = "OFF";
+    device_class = "switch";
     availability_topic = "${cfg.topicPrefix}/status";
     payload_available = "online";
     payload_not_available = "offline";
@@ -41,6 +42,8 @@ let
   bridge = pkgs.writeShellScript "alanix-cec-control" ''
     set -euo pipefail
 
+    cec_lock="''${XDG_RUNTIME_DIR:-/tmp}/alanix-cec-control.lock"
+
     mqtt_args=(
       -h ${lib.escapeShellArg cfg.broker}
       -p ${toString cfg.port}
@@ -55,15 +58,19 @@ let
     }
 
     cec_send() {
-      printf '%s\n' "$1" | ${pkgs.libcec}/bin/cec-client ${lib.optionalString (cfg.adapter != null) (lib.escapeShellArg cfg.adapter)} -s -d 1
+      printf '%s\n' "$1" \
+        | ${pkgs.coreutils}/bin/timeout 15 \
+            ${pkgs.util-linux}/bin/flock -w 15 "$cec_lock" \
+            ${pkgs.libcec}/bin/cec-client ${lib.optionalString (cfg.adapter != null) (lib.escapeShellArg cfg.adapter)} -s -d 1
     }
 
     poll_power_state() {
       status="$(cec_send 'pow 0' | ${pkgs.gnugrep}/bin/grep -oE 'power status: [a-z]+' | ${pkgs.coreutils}/bin/cut -d' ' -f3 || true)"
       case "$status" in
-        on) publish_retained "${cfg.topicPrefix}/state/power" ON ;;
-        standby) publish_retained "${cfg.topicPrefix}/state/power" OFF ;;
+        on) publish_retained "${cfg.topicPrefix}/state/power" ON || true ;;
+        standby) publish_retained "${cfg.topicPrefix}/state/power" OFF || true ;;
       esac
+      return 0
     }
 
     poll_pid=""
@@ -83,7 +90,7 @@ let
 
     poll_power_state
     while ${pkgs.coreutils}/bin/sleep ${toString cfg.pollIntervalSeconds}; do
-      poll_power_state
+      poll_power_state || true
     done &
     poll_pid=$!
 

@@ -9,11 +9,6 @@ let
   );
 in
 {
-  imports = [
-    ./assist/cec.nix
-    ./assist/kodi.nix
-  ];
-
   options.alanix.home-assistant.assist = {
     enable = lib.mkEnableOption "declarative Home Assistant Assist sentences";
 
