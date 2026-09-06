@@ -87,7 +87,29 @@ Kodi runs on the computer attached to the TV.
 
 These tests are about controlling Kodi itself, not directly controlling Jellyfin/Navidrome/Audiobookshelf.
 
-**Default media-control rule:** if a media-control command does not explicitly name a device or playback target, Home Assistant should apply it to **Kodi on `alan-media-pc`**. These short default commands should remain **LOCAL / Home Assistant** and should not require OpenClaw.
+**Default media-control rule:** if a media-control command does not explicitly name a device or playback target, Home Assistant should apply it to **Kodi on `alan-tv`**. These short default commands should remain **LOCAL / Home Assistant** and should not require OpenClaw.
+
+### Home Assistant setup required
+
+The following entity-registry settings are managed in the Home Assistant UI:
+
+- Assign the MQTT `switch.kodi` entity to **Living Room** and expose it to Assist.
+- Rename the Kodi integration's media-player entity to **Kodi** and set its entity ID to `media_player.living_room_kodi`.
+- Assign `media_player.living_room_kodi` to **Living Room** and expose it to Assist.
+
+Keep both entities exposed. `switch.kodi` controls whether the Kodi application is running, while `media_player.living_room_kodi` provides playback state and controls.
+
+## 3.0 Kodi Application
+
+- [ ] `switch.kodi` appears under the `alan-tv` MQTT device and is available.
+- [ ] Turning `switch.kodi` on launches Kodi and the switch reports on.
+- [ ] Turning `switch.kodi` off closes Kodi and the switch reports off.
+- [ ] Closing Kodi locally makes `switch.kodi` report off.
+- [ ] Turning the switch off does not close another focused application when Kodi is not running.
+- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Open Kodi."**
+- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Close Kodi."**
+- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn on Kodi."**
+- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn off Kodi."**
 
 ## 3.1 Kodi Playback State
 
@@ -98,14 +120,14 @@ These tests are about controlling Kodi itself, not directly controlling Jellyfin
 - [ ] **[LOCAL / Home Assistant]** Say exactly: **"How far into the current media am I?"**
 - [ ] **[LOCAL / Home Assistant]** Say exactly: **"How much time is left?"**
 
-Expected target for every command above when no target is named: **Kodi on `alan-media-pc`**.
+Expected target for every command above when no target is named: **Kodi on `alan-tv`**.
 
 ## 3.2 Kodi Subtitles
 
 - [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn on subtitles."**
 - [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn off subtitles."**
 
-Expected target when no target is named: **Kodi on `alan-media-pc`**.
+Expected target when no target is named: **Kodi on `alan-tv`**.
 
 ## 3.3 Kodi Mute and Volume
 
@@ -116,7 +138,7 @@ Expected target when no target is named: **Kodi on `alan-media-pc`**.
 - [ ] **[LOCAL / Home Assistant]** Say exactly: **"Set the volume to fifty percent."**
 - [ ] **[LOCAL / Home Assistant]** Say exactly: **"What is the volume?"**
 
-Expected target for every command above when no target is named: **Kodi on `alan-media-pc`**.
+Expected target for every command above when no target is named: **Kodi on `alan-tv`**.
 
 ## 3.4 Kodi Metadata
 
@@ -335,7 +357,7 @@ For computer-control commands, the preferred behavior is:
 
 - If the user **explicitly names a computer**, operate on that computer.
 - If no computer is specified, use the configured default computer.
-- Current default computer: `alan-media-pc`.
+- Current default computer: `alan-tv`.
 
 ## 11.1 Online / Status
 
@@ -652,10 +674,10 @@ The following should use Home Assistant/local intent handling when supported:
 - [ ] **"Turn on the TV."** → LOCAL
 - [ ] **"Turn off the TV."** → LOCAL
 - [ ] **"Is the TV on?"** → LOCAL
-- [ ] **"Pause."** → LOCAL → defaults to Kodi on `alan-media-pc`
-- [ ] **"Resume."** → LOCAL → defaults to Kodi on `alan-media-pc`
-- [ ] **"Mute."** → LOCAL → defaults to Kodi on `alan-media-pc`
-- [ ] **"Set the volume to fifty percent."** → LOCAL → defaults to Kodi on `alan-media-pc`
+- [ ] **"Pause."** → LOCAL → defaults to Kodi on `alan-tv`
+- [ ] **"Resume."** → LOCAL → defaults to Kodi on `alan-tv`
+- [ ] **"Mute."** → LOCAL → defaults to Kodi on `alan-tv`
+- [ ] **"Set the volume to fifty percent."** → LOCAL → defaults to Kodi on `alan-tv`
 - [ ] **"Wake alan-framework-laptop."** → LOCAL when HA exposes the WOL entity.
 
 For every test above:
@@ -690,8 +712,8 @@ Once individual sections work, keep this small set as the **fast regression suit
 
 - [ ] **[LOCAL]** "Turn on living room light one."
 - [ ] **[LOCAL]** "Is the TV on?"
-- [ ] **[LOCAL]** "Pause." → Kodi on `alan-media-pc`
-- [ ] **[LOCAL]** "Set the volume to fifty percent." → Kodi on `alan-media-pc`
+- [ ] **[LOCAL]** "Pause." → Kodi on `alan-tv`
+- [ ] **[LOCAL]** "Set the volume to fifty percent." → Kodi on `alan-tv`
 - [ ] **[LLM]** "Play the movie The Incredibles from Jellyfin on Kodi."
 - [ ] **[LLM]** "Do I have the song Believer by Imagine Dragons in Navidrome?"
 - [ ] **[LLM]** "What is my progress in the book Harry Potter and the Sorcerer's Stone in Audiobookshelf?"
