@@ -95,6 +95,10 @@ let
     poll_power_state
     while ${pkgs.coreutils}/bin/sleep ${toString cfg.pollIntervalSeconds}; do
       poll_power_state || true
+      # A disconnected mosquitto_sub publishes its retained offline Last Will.
+      # Republish availability periodically so an internal MQTT reconnect
+      # clears that stale status without requiring a service restart.
+      publish_retained "${cfg.topicPrefix}/status" online || true
     done &
     poll_pid=$!
 

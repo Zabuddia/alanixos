@@ -67,9 +67,8 @@ the job definition.
 - Alan TV, Allen TV, and alan-tv identify the same Kodi target. Home
   Assistant handles normal Kodi application power and playback controls.
   OpenClaw uses `kodi-control` only as the verified playback handoff for
-  Jellyfin, Navidrome, Audiobookshelf, and Invidious.
-- Before every Jellyfin, Navidrome, Audiobookshelf, or Invidious playback
-  request targeting Kodi, perform this preflight in order:
+  Jellyfin, Navidrome, Audiobookshelf, Invidious, and live TV.
+- Before every playback request targeting Kodi, perform this preflight in order:
   1. Read Home Assistant's current switch context. Use the returned `TV` and
      `alan-tv Kodi` states rather than searching for the shorter name `Kodi`.
   2. If `TV` is off, call `HassTurnOn` with `name: "TV"` and
@@ -89,6 +88,10 @@ the job definition.
   `kodi-control play-youtube-channel-latest "CHANNEL NAME"`. Titles and channels
   are resolved through the configured Invidious instance. These commands play
   through Kodi's Invidious add-on and verify that playback begins.
+- For live TV, run `kodi-control play-channel "CHANNEL"`. It accepts numeric
+  channels such as `8.1` and the configured aliases `ABC`, `NBC`, `CBS`, and
+  `FOX`. Do not resolve or guess any other station name; ask for its channel
+  number. The command tunes Kodi's PVR channel and verifies playback.
 - Do not call Kodi JSON-RPC directly, inspect Kodi configuration or logs, or
   substitute guessed API methods. Report a wrapper error concisely.
 
@@ -170,14 +173,16 @@ the job definition.
 ## Media services
 
 - Use `jellyfin-control search-movies "QUERY"` for movies and
-  `jellyfin-control search-series "QUERY"` for TV series. To list a season,
+  `jellyfin-control search-series "QUERY"` for TV series, and
+  `jellyfin-control search-videos "QUERY"` for other videos. To list a season,
   resolve the series first and run `jellyfin-control episodes SERIES_ID SEASON`.
 - Use `jellyfin-control activity` for every Jellyfin currently-playing/client
   question. It returns only sessions that have a current media item.
-- To play a resolved movie or episode, complete the ordered TV-then-Kodi checks
+- To play a resolved movie, episode, or video, complete the ordered TV-then-Kodi checks
   above, then run
-  `jellyfin-control play ITEM_ID`. This matches the Jellyfin item in Kodi's
-  synchronized Jellyfin library and verifies playback before reporting success.
+  `jellyfin-control play ITEM_ID`. Movies and episodes are matched in Kodi's
+  synchronized Jellyfin library; other videos are handed directly to Kodi's
+  Jellyfin add-on by item ID. Playback is verified before reporting success.
 - `jellyfin-control` authenticates internally. Never inspect its process
   environment or credential file.
 - Use `navidrome-control search-song "TITLE" "ARTIST"` for a specific song,
@@ -196,6 +201,8 @@ the job definition.
 - Use `audiobookshelf-control search-books "QUERY"` to find a book and
   `audiobookshelf-control books` to list the audiobook library. Use
   `audiobookshelf-control in-progress` for books currently in progress.
+- After resolving a book ID, use `audiobookshelf-control book ITEM_ID` for its
+  metadata and total `durationSeconds`.
 - After resolving a book ID, use `audiobookshelf-control progress ITEM_ID` for
   its progress and remaining time. Durations and positions have explicit
   seconds-based field names, and progress is returned as `progressFraction`.

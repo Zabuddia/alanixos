@@ -163,6 +163,25 @@ def episodes(client: KodiClient) -> list[dict[str, Any]]:
     return result.get("episodes", []) if isinstance(result, dict) else []
 
 
+def live_tv_channels(client: KodiClient) -> list[dict[str, Any]]:
+    result = client.call("PVR.GetChannelGroups", {"channeltype": "tv"})
+    groups = result.get("channelgroups", []) if isinstance(result, dict) else []
+    channels: dict[int, dict[str, Any]] = {}
+    for group in groups:
+        group_result = client.call(
+            "PVR.GetChannels",
+            {
+                "channelgroupid": group["channelgroupid"],
+                "properties": ["channel", "channeltype", "hidden", "locked"],
+            },
+        )
+        if not isinstance(group_result, dict):
+            continue
+        for channel in group_result.get("channels", []):
+            channels[int(channel["channelid"])] = channel
+    return list(channels.values())
+
+
 def current_item(client: KodiClient) -> dict[str, Any] | None:
     players = client.call("Player.GetActivePlayers") or []
     if not players:
@@ -278,6 +297,9 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--url", required=True, help=argparse.SUPPRESS)
     result.add_argument("--connect-timeout", type=int, default=10, help=argparse.SUPPRESS)
     result.add_argument("--invidious-url", default=None, help=argparse.SUPPRESS)
+    result.add_argument(
+        "--live-tv-aliases", type=json.loads, default={}, help=argparse.SUPPRESS
+    )
     commands = result.add_subparsers(dest="command", required=True)
 
     movie = commands.add_parser("play-jellyfin-movie", help="Play a Jellyfin movie synced into Kodi")
@@ -287,6 +309,15 @@ def parser() -> argparse.ArgumentParser:
     episode.add_argument("show")
     episode.add_argument("season", type=int)
     episode.add_argument("episode", type=int)
+    jellyfin_video = commands.add_parser(
+        "play-jellyfin-video", help="Play a Jellyfin video through its Kodi add-on"
+    )
+    jellyfin_video.add_argument("item_id")
+    jellyfin_video.add_argument("title")
+    channel = commands.add_parser(
+        "play-channel", help="Play a numbered or explicitly aliased live-TV channel"
+    )
+    channel.add_argument("channel")
     song = commands.add_parser("play-navidrome-song", help="Play one Navidrome song through its Kodi add-on")
     song.add_argument("song_id")
     song.add_argument("title")
@@ -336,6 +367,55 @@ def main() -> int:
             episode = matches[0]
             client.call("Player.Open", {"item": {"episodeid": episode["episodeid"]}, "options": {"resume": True}})
             emit({"requested": episode, "playing": wait_for_playback(client, str(episode["title"]))})
+        elif args.command == "play-jellyfin-video":
+            if not re.fullmatch(r"[A-Za-z0-9-]+", args.item_id):
+                raise KodiError("Invalid Jellyfin item ID")
+            plugin_url = "plugin://plugin.video.jellyfin/?" + urlencode(
+                {"mode": "play", "id": args.item_id}
+            )
+            client.call(
+                "Player.Open",
+                {"item": {"file": plugin_url}, "options": {"resume": True}},
+            )
+            emit(
+                {
+                    "requested": {"id": args.item_id, "title": args.title},
+                    "playing": wait_for_playback(client, args.title),
+                }
+            )
+        elif args.command == "play-channel":
+            requested = args.channel.strip()
+            aliases = {
+                str(name).casefold(): str(number)
+                for name, number in args.live_tv_aliases.items()
+            }
+            channel_number = aliases.get(requested.casefold(), requested)
+            if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", channel_number):
+                allowed = ", ".join(sorted(args.live_tv_aliases))
+                raise KodiError(
+                    f"Live TV requires a channel number or one of these aliases: {allowed}"
+                )
+            matches = [
+                item for item in live_tv_channels(client)
+                if str(item.get("channel", "")) == channel_number
+            ]
+            if len(matches) != 1:
+                raise KodiError(
+                    f"Expected one Kodi live-TV channel numbered {channel_number}; "
+                    f"found {len(matches)}"
+                )
+            channel = matches[0]
+            client.call("Player.Open", {"item": {"channelid": channel["channelid"]}})
+            emit(
+                {
+                    "requested": {
+                        "name": requested,
+                        "channel": channel_number,
+                        "label": channel.get("label"),
+                    },
+                    "playing": wait_for_playback(client, str(channel.get("label", ""))),
+                }
+            )
         elif args.command == "play-navidrome-song":
             track = {"id": args.song_id, "title": args.title, "artist": args.artist}
             client.call("Player.Open", {"item": {"file": navidrome_url(track)}})

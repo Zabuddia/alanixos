@@ -20,6 +20,7 @@ Usage: jellyfin-control ACTION [ARGUMENTS]
 Actions:
   search-movies QUERY
   search-series QUERY
+  search-videos QUERY
   episodes SERIES_ID SEASON
   item ITEM_ID
   activity
@@ -63,6 +64,10 @@ EOF
           [ "$#" -eq 1 ] || { usage; exit 2; }
           search "$1" Series
           ;;
+        search-videos)
+          [ "$#" -eq 1 ] || { usage; exit 2; }
+          search "$1" Video
+          ;;
         episodes)
           [ "$#" -eq 2 ] || { usage; exit 2; }
           valid_id "$1"
@@ -98,8 +103,11 @@ EOF
               episode="$(jq -er '.IndexNumber' <<<"$item")"
               playback="$(kodi-control play-jellyfin-episode "$series" "$season" "$episode")"
               ;;
+            Video)
+              playback="$(kodi-control play-jellyfin-video "$1" "$title")"
+              ;;
             *)
-              echo "Jellyfin playback supports movies and episodes; received $item_type" >&2
+              echo "Jellyfin playback supports movies, episodes, and videos; received $item_type" >&2
               exit 64
               ;;
           esac

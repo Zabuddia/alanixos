@@ -9,6 +9,7 @@ let
         --host ${lib.escapeShellArg cfg.host} \
         --url ${lib.escapeShellArg cfg.rpcUrl} \
         --connect-timeout ${toString cfg.connectTimeout} \
+        --live-tv-aliases ${lib.escapeShellArg (builtins.toJSON cfg.liveTvAliases)} \
         ${lib.optionalString (cfg.invidiousUrl != null) "--invidious-url ${lib.escapeShellArg cfg.invidiousUrl}"} \
         "$@"
     '';
@@ -38,6 +39,12 @@ in
         Required for title and channel resolution; it should match the instance
         configured for the target Kodi's Invidious add-on.
       '';
+    };
+
+    liveTvAliases = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      description = "Explicit network-name to live-TV channel-number aliases.";
     };
 
     connectTimeout = lib.mkOption {

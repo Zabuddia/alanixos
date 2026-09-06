@@ -20,6 +20,7 @@ Usage: audiobookshelf-control ACTION [ARGUMENTS]
 Actions:
   search-books QUERY
   books
+  book ITEM_ID
   in-progress
   progress ITEM_ID
   play ITEM_ID
@@ -62,8 +63,7 @@ EOF
           author: .media.metadata.authorName,
           narrator: .media.metadata.narratorName,
           series: .media.metadata.seriesName,
-          publishedYear: .media.metadata.publishedYear,
-          durationSeconds: .media.duration
+          publishedYear: .media.metadata.publishedYear
         }]'
       }
 
@@ -112,6 +112,20 @@ EOF
           [ "$#" -eq 0 ] || { usage; exit 2; }
           all_books | summarize_books |
             jq '{books: [.[] | {title, author, narrator, series, publishedYear}], total: length}'
+          ;;
+        book)
+          [ "$#" -eq 1 ] || { usage; exit 2; }
+          valid_id "$1"
+          get "/api/items/$1?expanded=1" |
+            jq '{
+              id,
+              title: .media.metadata.title,
+              author: .media.metadata.authorName,
+              narrator: .media.metadata.narratorName,
+              series: .media.metadata.seriesName,
+              publishedYear: .media.metadata.publishedYear,
+              durationSeconds: .media.duration
+            }'
           ;;
         in-progress)
           [ "$#" -eq 0 ] || { usage; exit 2; }
