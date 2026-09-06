@@ -225,7 +225,12 @@
             ignoreScreenResolutionChanges = true;
           };
           mediaSources.video = [
-            { name = "Videos"; path = "${config.alanix.syncthing.syncRoot}/media/videos"; }
+            {
+              name = "Videos";
+              # Open the Jellyfin home-video library directly, bypassing the
+              # add-on root and its home-video filter menu.
+              path = "plugin://plugin.video.jellyfin/?mode=browse&type=homevideos&id=09790ec4c9712e6dfb0961f34680b352&folder=09790ec4c9712e6dfb0961f34680b352";
+            }
           ];
           iptvSimple = {
             enable = true;
@@ -365,7 +370,6 @@
         "emulation-n64"
         "emulation-retroarch"
         "emulation-ryujinx"
-        "videos"
       ];
       linkFolderSets = [
         "emulation-azahar"
@@ -391,7 +395,6 @@
           "emulation-melonds"
           "emulation-n64"
           "emulation-retroarch"
-          "videos"
         ];
       };
     };

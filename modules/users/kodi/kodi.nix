@@ -103,7 +103,7 @@ let
     ++ lib.optionals hasInputstreamAdaptive [ "inputstream.adaptive" ];
 
   withTrailingSlash = path:
-    if lib.hasSuffix "/" path then path else "${path}/";
+    if lib.hasSuffix "/" path || lib.hasPrefix "plugin://" path then path else "${path}/";
 
   sourceXml = source: ''
     <source>
@@ -163,7 +163,7 @@ let
 
       path = lib.mkOption {
         type = types.str;
-        description = "Filesystem path Kodi should use for this media source.";
+        description = "Filesystem path or plugin URL Kodi should use for this media source.";
       };
     };
   };
