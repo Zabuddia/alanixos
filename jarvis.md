@@ -101,23 +101,14 @@ Keep both entities exposed. `switch.kodi` controls whether the Kodi application 
 
 ## 3.0 Kodi Application
 
-- [ ] `switch.kodi` appears under the `alan-tv` MQTT device and is available.
-- [ ] Turning `switch.kodi` on launches Kodi and the switch reports on.
-- [ ] Turning `switch.kodi` off closes Kodi and the switch reports off.
-- [ ] Closing Kodi locally makes `switch.kodi` report off.
-- [ ] Turning the switch off does not close another focused application when Kodi is not running.
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn Cody on."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn Cody off."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Is Cody on?"**
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Turn Kodi on/off."**
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Is Kodi on/off?"**
 
 ## 3.1 Kodi Playback State
 
 - [ ] **[LOCAL / Home Assistant]** Say exactly: **"What is playing?"**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Pause."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Resume."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Stop."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"How far into the current media am I?"**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"How much time is left?"**
+- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Pause/Stop."**
+- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Unpause/Resume."**
 
 Expected target for every command above when no target is named: **Kodi on `alan-tv`**.
 

@@ -277,6 +277,7 @@
       name = "Home";
       unitSystem = "us_customary";
       openFirewall = true;
+      assist.kodi.enable = true;
       openclawConversation.enable = true;
       extraComponents = [
         "adguard"
