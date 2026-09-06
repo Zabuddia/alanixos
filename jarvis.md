@@ -204,7 +204,8 @@ what they are currently playing, not only Kodi.
 
 # 6. Audiobookshelf
 
-Playback for now is primarily through the Audiobookshelf Kodi add-on.
+Playback uses the declaratively configured Audiobookshelf Kodi add-on and
+resumes the progress stored by Audiobookshelf.
 
 OpenClaw should also connect directly to Audiobookshelf for library and progress information.
 
@@ -223,6 +224,14 @@ OpenClaw should also connect directly to Audiobookshelf for library and progress
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Play the book Harry Potter and the Sorcerer's Stone from Audiobookshelf on Kodi."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Resume the book Harry Potter and the Sorcerer's Stone from Audiobookshelf on Kodi."**
+
+Expected behavior:
+
+1. If the TV needs to be on, turn it on and allow time for its state to update.
+2. If Kodi needs to be opened, open Kodi.
+3. Resolve the book directly in Audiobookshelf.
+4. Resume its saved Audiobookshelf progress through the Kodi add-on.
+5. Verify that audio playback actually begins.
 
 ---
 

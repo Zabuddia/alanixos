@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Focused Jellyfin, Navidrome, and Invidious playback for Kodi on alan-tv."""
+"""Focused media-service playback through Kodi on alan-tv."""
 
 import argparse
 import difflib
@@ -293,6 +293,9 @@ def parser() -> argparse.ArgumentParser:
     song.add_argument("artist")
     album = commands.add_parser("play-navidrome-album", help="Play a Navidrome album through its Kodi add-on")
     album.add_argument("title")
+    audiobook = commands.add_parser("play-audiobookshelf", help="Resume an Audiobookshelf book through its Kodi add-on")
+    audiobook.add_argument("item_id")
+    audiobook.add_argument("title")
     video = commands.add_parser("play-youtube-video", help="Play a YouTube video by title, ID, or URL")
     video.add_argument("query")
     latest = commands.add_parser("play-youtube-channel-latest", help="Play the latest video from a YouTube channel")
@@ -349,6 +352,19 @@ def main() -> int:
             emit(
                 {
                     "requested": {"title": args.title, "songs": len(tracks)},
+                    "playing": wait_for_audio(client),
+                }
+            )
+        elif args.command == "play-audiobookshelf":
+            if not re.fullmatch(r"[A-Za-z0-9_-]+", args.item_id):
+                raise KodiError("Invalid Audiobookshelf item ID")
+            plugin_url = "plugin://plugin.audio.audiobookshelf/?" + urlencode(
+                {"action": "play", "item_id": args.item_id, "auto_resume": "1"}
+            )
+            client.call("Player.Open", {"item": {"file": plugin_url}})
+            emit(
+                {
+                    "requested": {"id": args.item_id, "title": args.title},
                     "playing": wait_for_audio(client),
                 }
             )

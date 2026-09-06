@@ -67,9 +67,9 @@ the job definition.
 - Alan TV, Allen TV, and alan-tv identify the same Kodi target. Home
   Assistant handles normal Kodi application power and playback controls.
   OpenClaw uses `kodi-control` only as the verified playback handoff for
-  Jellyfin, Navidrome, and Invidious.
-- Before every Jellyfin, Navidrome, or Invidious playback request targeting
-  Kodi, perform this preflight in order:
+  Jellyfin, Navidrome, Audiobookshelf, and Invidious.
+- Before every Jellyfin, Navidrome, Audiobookshelf, or Invidious playback
+  request targeting Kodi, perform this preflight in order:
   1. Read Home Assistant's current switch context. Use the returned `TV` and
      `alan-tv Kodi` states rather than searching for the shorter name `Kodi`.
   2. If `TV` is off, call `HassTurnOn` with `name: "TV"` and
@@ -192,6 +192,18 @@ the job definition.
   `navidrome-control play-album ALBUM_ID`. Both play through Kodi's Navidrome
   add-on and verify that audio playback begins.
 - `navidrome-control` authenticates internally. Never inspect its process
+  environment or credential file.
+- Use `audiobookshelf-control search-books "QUERY"` to find a book and
+  `audiobookshelf-control books` to list the audiobook library. Use
+  `audiobookshelf-control in-progress` for books currently in progress.
+- After resolving a book ID, use `audiobookshelf-control progress ITEM_ID` for
+  its progress and remaining time. Durations and positions have explicit
+  seconds-based field names, and progress is returned as `progressFraction`.
+- To play or resume a resolved book, complete the ordered TV-then-Kodi checks
+  above, then run `audiobookshelf-control play ITEM_ID`. Playback resumes saved
+  Audiobookshelf progress through Kodi's Audiobookshelf add-on and verifies
+  that audio begins.
+- `audiobookshelf-control` authenticates internally. Never inspect its process
   environment or credential file.
 
 ## Forgejo

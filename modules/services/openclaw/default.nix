@@ -1,6 +1,7 @@
 {
   imports = [
     ./actual.nix
+    ./audiobookshelf.nix
     ./bitcoin.nix
     ./browser.nix
     ./desktop.nix

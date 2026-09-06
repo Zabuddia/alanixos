@@ -190,6 +190,10 @@
         syncIdFile = config.sops.secrets."actual-passwords/budget-sync-id".path;
         allowMutations = false;
       };
+      audiobookshelf = {
+        enable = true;
+        passwordFile = config.sops.secrets."audiobookshelf-passwords/buddia".path;
+      };
       bitcoin.enable = true;
       browser.enable = true;
       desktop = {
