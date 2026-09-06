@@ -106,39 +106,19 @@ Keep both entities exposed. `switch.kodi` controls whether the Kodi application 
 
 ## 3.1 Kodi Playback State
 
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"What is playing?"**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Pause/Stop."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Unpause/Resume."**
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"What is [currently] playing?"**
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Pause/Stop."**
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Unpause/Resume."**
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Skip."**
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Turn on/off subtitles."**
+
+## 3.2 Kodi Volume
+
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Mute/unmute."**
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Turn the volume up/down."**
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Set the volume to fifty percent."**
 
 Expected target for every command above when no target is named: **Kodi on `alan-tv`**.
-
-## 3.2 Kodi Subtitles
-
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn on subtitles."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn off subtitles."**
-
-Expected target when no target is named: **Kodi on `alan-tv`**.
-
-## 3.3 Kodi Mute and Volume
-
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Mute."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Unmute."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn the volume up."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn the volume down."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Set the volume to fifty percent."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"What is the volume?"**
-
-Expected target for every command above when no target is named: **Kodi on `alan-tv`**.
-
-## 3.4 Kodi Metadata
-
-When media is playing, Kodi should expose enough information for Jarvis to report useful metadata.
-
-- [ ] Correctly reports movie title when a movie is playing.
-- [ ] Correctly reports TV show, season, and episode when an episode is playing.
-- [ ] Correctly reports song title and artist when music is playing.
-- [ ] Correctly reports audiobook/book information when available through the add-on/player.
-- [ ] Correctly distinguishes playing, paused, and stopped.
 
 ---
 
@@ -146,62 +126,79 @@ When media is playing, Kodi should expose enough information for Jarvis to repor
 
 Primary playback for now is through the **Jellyfin Kodi add-on**. A Home Assistant Jellyfin integration is not required.
 
-OpenClaw should also be able to query Jellyfin directly so it can inspect the library and, if practical, see activity from Jellyfin clients other than Kodi.
+OpenClaw queries Jellyfin directly for its library and activity, then asks Kodi to play the matching item from its synchronized Jellyfin library.
+
+### Kodi setup required
+
+The Jellyfin for Kodi add-on keeps its authentication, playback mode, library selections, and synchronization state in Kodi rather than in Home Assistant:
+
+- Sign in to the Jellyfin server from the Jellyfin add-on.
+- Select **Add-on mode**.
+- Select and synchronize the Jellyfin movie and TV libraries that Kodi should expose.
+
+No Home Assistant Jellyfin integration, entity, automation, or custom Assist intent is needed for these OpenClaw requests.
 
 ## 4.1 Jellyfin Library Queries
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Do I have the movie The Incredibles in Jellyfin?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Do I have the TV show Severance in Jellyfin?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"List my Jellyfin movies named Harry Potter."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"List the episodes of season one of Severance in Jellyfin."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Do I have the movie The Incredibles in Jellyfin?"**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Do I have the TV show Psych in Jellyfin?"**
+- [x] **[LLM / OpenClaw]** Say exactly: **"List my Jellyfin movies named Harry Potter."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"List the episodes of season one of Psych in Jellyfin."**
 
 ## 4.2 Jellyfin Playback Through Kodi
 
 The request explicitly states the media type to reduce ambiguity.
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play the movie The Incredibles from Jellyfin on Kodi."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play the TV show Severance season one episode three from Jellyfin on Kodi."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play the movie The Incredibles from Jellyfin on Kodi."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play the TV show Psych season one episode three from Jellyfin on Kodi."**
 
 Expected behavior:
 
-1. If the media PC must be awake, wake it first.
-2. Use Kodi as the playback target.
-3. Use the Jellyfin Kodi add-on/library path as needed.
-4. Verify that playback actually begins.
+1. If the TV needs to be on, turn it on.
+2. If Kodi needs to be opened, open Kodi.
+3. Use Kodi as the playback target.
+4. Use the Jellyfin Kodi add-on/library path as needed.
+5. Verify that playback actually begins.
 
 ## 4.3 Jellyfin Activity Outside Kodi
 
-These are direct Jellyfin/OpenClaw capabilities and may be implemented later if the Jellyfin API exposes the needed state cleanly.
+This queries Jellyfin directly, so it includes active clients other than Kodi.
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Is anyone currently playing anything from Jellyfin?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"What is currently playing from Jellyfin?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Which Jellyfin client is currently playing media?"**
+- [x] **[LLM / OpenClaw]** Say exactly: **"What is currently playing on Jellyfin?"**
 
 ---
 
 # 5. Navidrome
 
-Playback for now is primarily through a Kodi/Navidrome add-on or Kodi-visible music source.
+Playback uses the declaratively configured Navidrome Kodi add-on.
 
 OpenClaw should also be able to inspect the Navidrome library independently from Kodi.
 
 ## 5.1 Navidrome Library Queries
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Do I have the song Believer by Imagine Dragons in Navidrome?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"List my songs by Imagine Dragons in Navidrome."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"List my albums by Imagine Dragons in Navidrome."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Do I have the song Believer by Imagine Dragons in Navidrome?"**
+- [x] **[LLM / OpenClaw]** Say exactly: **"List my songs by Imagine Dragons in Navidrome."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"List my albums by Imagine Dragons in Navidrome."**
 
 ## 5.2 Navidrome Playback Through Kodi
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play the song Believer by Imagine Dragons from Navidrome on Kodi."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play the album Evolve by Imagine Dragons from Navidrome on Kodi."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play the song Believer by Imagine Dragons from Navidrome on Kodi."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play the album Evolve by Imagine Dragons from Navidrome on Kodi."**
 
-## 5.3 Lyrics
+Expected behavior:
 
-OpenClaw may use lyrics metadata available through Navidrome or another configured source, but the request should be tied to a song in the user's library.
+1. If the TV needs to be on, turn it on and allow time for its state to update.
+2. If Kodi needs to be opened, open Kodi.
+3. Resolve the song or album directly in Navidrome.
+4. Play it through the Navidrome Kodi add-on.
+5. Verify that audio playback actually begins.
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Show me the lyrics for the song Believer by Imagine Dragons in my Navidrome library."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"What song is currently playing on Kodi, and do I have lyrics for it in Navidrome?"**
+## 5.3 Navidrome Activity Outside Kodi
+
+This queries Navidrome directly and includes compatible clients that report
+what they are currently playing, not only Kodi.
+
+- [x] **[LLM / OpenClaw]** Say exactly: **"What is currently playing on Navidrome?"**
 
 ---
 
@@ -229,41 +226,21 @@ OpenClaw should also connect directly to Audiobookshelf for library and progress
 
 ---
 
-# 7. Explicit Unified Media Commands
+# 7. Invidious
 
-To avoid ambiguity, **always specify the media type** in tests: movie, TV show, song, album, or book.
+OpenClaw resolves YouTube titles and channels through Invidious, then plays the result through the Invidious Kodi add-on. The add-on and its account settings are managed declaratively on `alan-tv`.
 
-Do not rely on Jarvis guessing whether "Harry Potter" means a movie, book, soundtrack, etc.
+## 7.1 Video by Title
 
-## 7.1 Movies
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Play the YouTube video history of the entire world, I guess on Kodi."**
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play the movie The Incredibles on Kodi."**
+Expected behavior: resolve an unambiguous video title through Invidious, open it in Kodi, and verify that playback begins.
 
-Expected default media source: Jellyfin.
+## 7.2 Latest Video From a Channel
 
-## 7.2 TV Shows
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Play the latest YouTube video from the Linus Tech Tips channel on Kodi."**
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play the TV show Severance season one episode three on Kodi."**
-
-Expected default media source: Jellyfin.
-
-## 7.3 Songs
-
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play the song Believer by Imagine Dragons on Kodi."**
-
-Expected default media source: Navidrome.
-
-## 7.4 Albums
-
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play the album Evolve by Imagine Dragons on Kodi."**
-
-Expected default media source: Navidrome.
-
-## 7.5 Books
-
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play the book Harry Potter and the Sorcerer's Stone on Kodi."**
-
-Expected default media source: Audiobookshelf.
+Expected behavior: resolve the channel through Invidious, select its newest listed video, open it in Kodi, and verify that playback begins.
 
 ---
 

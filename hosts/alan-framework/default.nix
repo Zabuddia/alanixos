@@ -218,19 +218,13 @@
         enable = true;
         invidiousUrl = "https://invidious.fifefin.com";
       };
-      media = {
-        jellyfin = {
-          enable = true;
-          passwordFile = config.sops.secrets."jellyfin-passwords/buddia".path;
-        };
-        navidrome = {
-          enable = true;
-          passwordFile = config.sops.secrets."navidrome-passwords/buddia".path;
-        };
-        audiobookshelf = {
-          enable = true;
-          passwordFile = config.sops.secrets."audiobookshelf-passwords/buddia".path;
-        };
+      jellyfin = {
+        enable = true;
+        passwordFile = config.sops.secrets."jellyfin-passwords/buddia".path;
+      };
+      navidrome = {
+        enable = true;
+        passwordFile = config.sops.secrets."navidrome-passwords/buddia".path;
       };
       radicale = {
         enable = true;

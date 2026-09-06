@@ -6,8 +6,9 @@
     ./desktop.nix
     ./files.nix
     ./forgejo.nix
+    ./jellyfin.nix
     ./kodi.nix
-    ./media.nix
+    ./navidrome.nix
     ./openclaw.nix
     ./radicale.nix
   ];

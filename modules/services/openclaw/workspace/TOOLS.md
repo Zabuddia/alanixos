@@ -46,12 +46,16 @@ the job definition.
   and current state. Use `home-assistant__GetLiveContext` before an action when
   the requested target does not exactly match a known entity or area.
 - Use exposed tools according to their names, descriptions, and results.
-- Home Assistant button entities are pressed with `HassTurnOn`, using the exact
-  entity name and `domain: "button"`. For Kodi, call `HassTurnOn` directly with
-  `name: "alan-tv Launch Kodi"` and `domain: ["button"]`; to exit the current
-  application, use `name: "alan-tv Close current app"`. These names are already
-  resolved, so do not call `GetLiveContext` first. In voice transcripts, Code,
-  Cody, Codey, and Kody mean Kodi.
+- The physical television is the exposed Home Assistant switch named `TV`
+  (`switch.tv`). Before every OpenClaw playback request targeting Kodi, check
+  this switch. If it is off, turn it on and confirm that Home Assistant reports
+  it on before continuing. The TV and its CEC state reporting take several
+  seconds to respond. Send one power-on command, wait, and poll its state; do
+  not repeatedly send power-on commands while it is still starting. If it is
+  already on, leave it on.
+- Kodi's application power is the exposed Home Assistant switch named
+  `alan-tv Kodi` (`switch.kodi`, alias `Cody`). Use the full name `alan-tv Kodi`
+  for Home Assistant tool calls. In voice transcripts, Cody means Kodi.
 - Use the authenticated Home Assistant tools. Never search files or environment
   variables for API tokens, and never replace an available tool with raw REST
   calls.
@@ -60,34 +64,33 @@ the job definition.
 
 ## Kodi on alan-tv
 
-- Alan TV, Allen TV, LTV, LNTV, and alan-tv all identify the same playback
-  target. Use Home Assistant only to launch or close the app. Use the structured
-  `kodi-control` command for Kodi library, PVR, playback, and seek operations;
-  it performs matching and verification and returns JSON.
-- For a movie, first ensure Kodi is open, then run
-  `kodi-control play-movie "TITLE"`. It resumes saved progress by default; add
-  `--start-over` only when explicitly requested.
-- For live TV, first ensure Kodi is open, then run
-  `kodi-control play-channel "NUMBER OR NAME"`. A partial callsign such as
-  `8.1 WFA` may match `8.1 WFAA` when unambiguous.
-- Use `kodi-control status` to inspect or verify normalized playback (`playing`,
-  `paused`, or `stopped`), and `kodi-control pause`, `resume`, or `stop` for
-  explicit playback control. Use
-  `kodi-control seek-percent PERCENT` to seek, and `kodi-control start-over` to
-  return an active video to its beginning. `find-movie` and `find-channel` are
-  read-only matching commands for resolving ambiguity without starting media.
-- For a specific YouTube video, run `kodi-control play-youtube-video ID_OR_URL`
-  (accepts a bare video ID or a youtube.com/youtu.be URL). For "play the
+- Alan TV, Allen TV, and alan-tv identify the same Kodi target. Home
+  Assistant handles normal Kodi application power and playback controls.
+  OpenClaw uses `kodi-control` only as the verified playback handoff for
+  Jellyfin, Navidrome, and Invidious.
+- Before every Jellyfin, Navidrome, or Invidious playback request targeting
+  Kodi, perform this preflight in order:
+  1. Read Home Assistant's current switch context. Use the returned `TV` and
+     `alan-tv Kodi` states rather than searching for the shorter name `Kodi`.
+  2. If `TV` is off, call `HassTurnOn` with `name: "TV"` and
+     `domain: ["switch"]`. An `action_done` response only confirms that Home
+     Assistant accepted the command. Do not send another power-on command
+     immediately: wait at least ten seconds, then re-read the state while
+     allowing up to 30 seconds for `TV` to report on. Retry the power-on command
+     only once, and only if the TV still reports off after that full wait.
+  3. If `alan-tv Kodi` is off, call `HassTurnOn` with
+     `name: "alan-tv Kodi"` and `domain: ["switch"]`, then re-read its state.
+     Stop and report the failure if Kodi does not open.
+  4. Only then invoke the requested playback command. Do not treat successful
+     Kodi playback while the TV is off as a successful overall request.
+- For a specific YouTube video, run `kodi-control play-youtube-video "TITLE"`.
+  It also accepts a bare video ID or youtube.com/youtu.be URL. For "play the
   latest video from CHANNEL", run
-  `kodi-control play-youtube-channel-latest "CHANNEL NAME"`. `find-youtube-channel`
-  is the read-only match-resolution command. These play through the Kodi
-  Invidious add-on and require it to be configured; if `kodi-control` reports
-  Invidious is not configured, say so rather than retrying.
-- `kodi-control raw METHOD [PARAMS_JSON]` is an expert/debug escape hatch. Do
-  not use it for an operation covered by a structured command.
-- Do not use `HassMediaSearchAndPlay`, construct raw Kodi JSON-RPC, inspect Kodi
-  configuration or logs, or substitute guessed API methods. If `kodi-control`
-  returns an error, report it concisely; never bypass the wrapper.
+  `kodi-control play-youtube-channel-latest "CHANNEL NAME"`. Titles and channels
+  are resolved through the configured Invidious instance. These commands play
+  through Kodi's Invidious add-on and verify that playback begins.
+- Do not call Kodi JSON-RPC directly, inspect Kodi configuration or logs, or
+  substitute guessed API methods. Report a wrapper error concisely.
 
 ## Desktop control
 
@@ -166,23 +169,30 @@ the job definition.
 
 ## Media services
 
-- Use `jellyfin-control` for Jellyfin libraries, catalog search, item details,
-  active controllable sessions, and session playback. For a resolved Jellyfin
-  movie, launch Kodi through Home Assistant and use
-  `jellyfin-control play-default ITEM_ID`; the default target is `alan-tv-kodi`.
-- Use `navidrome-control` for music search, albums, artists, playlists,
-  now-playing state, and favorites. Its `call` action exposes other Subsonic
-  endpoints using `KEY=VALUE` arguments when a first-class action is missing.
-  `navidrome-control play SONG_ID` asks the declaratively configured Navidrome
-  Kodi add-on to stream the song to the default Kodi target. Do not construct a
-  direct Navidrome stream URL or use Kodi's local music library instead.
-- Use `audiobookshelf-control` for libraries, audiobook/podcast search, item
-  details, and the authenticated API. These catalog commands do not by
-  themselves choose a speaker or player. `audiobookshelf-control play ITEM_ID`
-  queues the item's audio tracks on the default Kodi target.
-- The media wrappers authenticate internally. Never inspect their wrapper
-  source, process environment, or credential files. The `api` escape hatches
-  may modify server state; follow `POLICY.md` and use an exact documented path.
+- Use `jellyfin-control search-movies "QUERY"` for movies and
+  `jellyfin-control search-series "QUERY"` for TV series. To list a season,
+  resolve the series first and run `jellyfin-control episodes SERIES_ID SEASON`.
+- Use `jellyfin-control activity` for every Jellyfin currently-playing/client
+  question. It returns only sessions that have a current media item.
+- To play a resolved movie or episode, complete the ordered TV-then-Kodi checks
+  above, then run
+  `jellyfin-control play ITEM_ID`. This matches the Jellyfin item in Kodi's
+  synchronized Jellyfin library and verifies playback before reporting success.
+- `jellyfin-control` authenticates internally. Never inspect its process
+  environment or credential file.
+- Use `navidrome-control search-song "TITLE" "ARTIST"` for a specific song,
+  `navidrome-control songs-by-artist "ARTIST"` to list an artist's songs, and
+  `navidrome-control albums-by-artist "ARTIST"` to list their albums.
+  Navidrome results expose durations as `durationSeconds`; the unit is always
+  seconds.
+- Use `navidrome-control activity` for Navidrome currently-playing questions.
+  It reports any compatible client that has notified Navidrome, not only Kodi.
+- To play a resolved song or album, complete the ordered TV-then-Kodi checks
+  above, then run `navidrome-control play-song SONG_ID` or
+  `navidrome-control play-album ALBUM_ID`. Both play through Kodi's Navidrome
+  add-on and verify that audio playback begins.
+- `navidrome-control` authenticates internally. Never inspect its process
+  environment or credential file.
 
 ## Forgejo
 

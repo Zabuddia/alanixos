@@ -52,8 +52,9 @@ browser automation for these services.
 ## Media and television
 
 - `alan-tv`: primary Kodi playback target. Kodi provides movies and live TV;
-  Home Assistant launches or closes the application, while `kodi-control`
-  performs structured library, PVR, playback, and seek actions.
+  Home Assistant controls the application and ordinary playback, while the
+  focused `kodi-control` wrapper accepts Jellyfin, Navidrome, and Invidious
+  playback handoffs from OpenClaw.
 - Jellyfin supplies movies, shows, recordings, and videos. Navidrome supplies
   music through its Kodi add-on; `alan-tv` does not synchronize or index the
   music folder locally. Audiobookshelf supplies audiobooks, and Kavita supplies

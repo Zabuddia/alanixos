@@ -112,8 +112,20 @@ let
         case "$topic" in
           ${lib.escapeShellArg "${cfg.topicPrefix}/command/power"})
             case "$payload" in
-              ON) cec_send 'on 0' && publish_retained "${cfg.topicPrefix}/state/power" ON ;;
-              OFF) cec_send 'standby 0' && publish_retained "${cfg.topicPrefix}/state/power" OFF ;;
+              ON)
+                cec_send 'on 0'
+                for _ in {1..5}; do
+                  ${pkgs.coreutils}/bin/sleep 2
+                  poll_power_state
+                done
+                ;;
+              OFF)
+                cec_send 'standby 0'
+                for _ in {1..5}; do
+                  ${pkgs.coreutils}/bin/sleep 2
+                  poll_power_state
+                done
+                ;;
               *) publish "${cfg.topicPrefix}/state/error" "unsupported power payload: $payload" ;;
             esac
             ;;

@@ -65,6 +65,20 @@ let
       fi
     }
 
+    wait_for_state() {
+      desired="$1"
+      for _ in {1..10}; do
+        if { [ "$desired" = ON ] && kodi_is_running; } \
+          || { [ "$desired" = OFF ] && ! kodi_is_running; }; then
+          publish_state
+          return 0
+        fi
+        ${pkgs.coreutils}/bin/sleep 1
+      done
+      publish_state
+      return 1
+    }
+
     close_kodi() {
       kodi_is_running || return 0
 
@@ -128,14 +142,15 @@ let
             ${pkgs.sway}/bin/swaymsg exec -- \
               ${lib.escapeShellArg config.appLauncher.launchCommands.kodi} \
               >/dev/null
+            wait_for_state ON || true
             ;;
           OFF)
             close_kodi
+            wait_for_state OFF || true
             ;;
           *)
             ;;
         esac
-        publish_state || true
       done
   '';
 in
