@@ -178,6 +178,20 @@ in
       description = "Kodi package to install.";
     };
 
+    cec = {
+      enable = lib.mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether Kodi may use an attached HDMI-CEC adapter.";
+      };
+
+      adapterFile = lib.mkOption {
+        type = types.str;
+        default = "usb_2548_1002_CEC_Adapter.xml";
+        description = "Kodi peripheral-data filename for the HDMI-CEC adapter.";
+      };
+    };
+
     tvheadend = {
       servers = lib.mkOption {
         type = types.listOf (types.submodule {
@@ -515,6 +529,16 @@ in
       home.packages = [ kodiPackage ];
       home.file =
         lib.optionalAttrs hasTvheadend tvheadendFiles
+        // lib.optionalAttrs (!cfg.cec.enable) {
+          ".kodi/userdata/peripheral_data/${cfg.cec.adapterFile}" = {
+            force = true;
+            text = ''
+              <settings>
+                  <setting id="enabled" value="0"/>
+              </settings>
+            '';
+          };
+        }
         // lib.optionalAttrs (hasInvidious && !hasInvidiousAuth) {
           ".kodi/userdata/addon_data/plugin.video.invidious/settings.xml" = {
             text = invidiousSettingsXml;

@@ -190,6 +190,7 @@
         };
         kodi = {
           enable = true;
+          cec.enable = false;
           invidious = {
             enable = true;
             instanceUrl = "https://invidious.fifefin.com";
