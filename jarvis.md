@@ -93,7 +93,7 @@ These tests are about controlling Kodi itself, not directly controlling Jellyfin
 
 The following entity-registry settings are managed in the Home Assistant UI:
 
-- Assign the MQTT `switch.kodi` entity to **Living Room** and expose it to Assist.
+- Assign the MQTT `switch.kodi` entity to **Living Room**, add the alias **Cody**, and expose it to Assist.
 - Rename the Kodi integration's media-player entity to **Kodi** and set its entity ID to `media_player.living_room_kodi`.
 - Assign `media_player.living_room_kodi` to **Living Room** and expose it to Assist.
 
@@ -106,10 +106,9 @@ Keep both entities exposed. `switch.kodi` controls whether the Kodi application 
 - [ ] Turning `switch.kodi` off closes Kodi and the switch reports off.
 - [ ] Closing Kodi locally makes `switch.kodi` report off.
 - [ ] Turning the switch off does not close another focused application when Kodi is not running.
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Open Kodi."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Close Kodi."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn on Kodi."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn off Kodi."**
+- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn Cody on."**
+- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn Cody off."**
+- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Is Cody on?"**
 
 ## 3.1 Kodi Playback State
 

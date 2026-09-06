@@ -313,60 +313,7 @@
         "wyoming"
         "zha"
       ];
-      config = {
-        homeassistant = {
-          internal_url = "http://192.168.10.212:8123";
-        };
-
-        automation = [
-          {
-            id = "alanix_open_kodi";
-            alias = "Open Kodi";
-            triggers = [
-              {
-                trigger = "conversation";
-                command = [
-                  "open kodi"
-                  "launch kodi"
-                  "start kodi"
-                  "open cody"
-                  "launch cody"
-                  "start cody"
-                ];
-              }
-            ];
-            actions = [
-              {
-                action = "switch.turn_on";
-                target.entity_id = "switch.kodi";
-              }
-            ];
-          }
-          {
-            id = "alanix_close_kodi";
-            alias = "Close Kodi";
-            triggers = [
-              {
-                trigger = "conversation";
-                command = [
-                  "close kodi"
-                  "quit kodi"
-                  "exit kodi"
-                  "close cody"
-                  "quit cody"
-                  "exit cody"
-                ];
-              }
-            ];
-            actions = [
-              {
-                action = "switch.turn_off";
-                target.entity_id = "switch.kodi";
-              }
-            ];
-          }
-        ];
-      };
+      config.homeassistant.internal_url = "http://192.168.10.212:8123";
     };
 
     alanix.wolBridge = {
