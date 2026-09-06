@@ -208,8 +208,8 @@ the job definition.
   seconds-based field names, and progress is returned as `progressFraction`.
 - To play or resume a resolved book, complete the ordered TV-then-Kodi checks
   above, then run `audiobookshelf-control play ITEM_ID`. Playback resumes saved
-  Audiobookshelf progress through Kodi's Audiobookshelf add-on and verifies
-  that audio begins.
+  Audiobookshelf progress through Kodi's built-in `play_at_position` add-on
+  route and verifies the resulting Kodi position before reporting success.
 - `audiobookshelf-control` authenticates internally. Never inspect its process
   environment or credential file.
 

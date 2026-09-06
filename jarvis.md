@@ -213,18 +213,18 @@ OpenClaw should also connect directly to Audiobookshelf for library and progress
 ## 6.1 Audiobookshelf Library
 
 - [x] **[LLM / OpenClaw]** Say exactly: **"Do I have the book Harry Potter and the Sorcerer's Stone in Audiobookshelf?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"List my books in Audiobookshelf."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"What Audiobookshelf books am I currently in progress on?"**
+- [x] **[LLM / OpenClaw]** Say exactly: **"List my books in Audiobookshelf."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"What Audiobookshelf books am I currently in progress on?"**
 
 ## 6.2 Audiobook Details and Progress
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"How long is The Hobbit in Audiobookshelf?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"What is my progress in the book Harry Potter and the Sorcerer's Stone in Audiobookshelf?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"How much time is left in the book Harry Potter and the Sorcerer's Stone in Audiobookshelf?"**
+- [x] **[LLM / OpenClaw]** Say exactly: **"How long is The Hobbit in Audiobookshelf?"**
+- [x] **[LLM / OpenClaw]** Say exactly: **"What is my progress in the book Harry Potter and the Sorcerer's Stone in Audiobookshelf?"**
+- [x] **[LLM / OpenClaw]** Say exactly: **"How much time is left in the book Harry Potter and the Sorcerer's Stone in Audiobookshelf?"**
 
 ## 6.3 Audiobookshelf Playback Through Kodi
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play the book Harry Potter and the Sorcerer's Stone from Audiobookshelf on Kodi."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play the book Harry Potter and the Sorcerer's Stone from Audiobookshelf on Kodi."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Resume the book Harry Potter and the Sorcerer's Stone from Audiobookshelf on Kodi."**
 
 Expected behavior:
@@ -233,7 +233,7 @@ Expected behavior:
 2. If Kodi needs to be opened, open Kodi.
 3. Resolve the book directly in Audiobookshelf.
 4. Resume its saved Audiobookshelf progress through the Kodi add-on.
-5. Verify that audio playback actually begins.
+5. Verify that audio playback begins at the saved position.
 
 ---
 

@@ -150,7 +150,49 @@ EOF
           item="$(get "/api/items/$1?expanded=1")"
           [ "$(jq -r '.mediaType' <<<"$item")" = book ] || { echo "Audiobookshelf playback currently supports books" >&2; exit 64; }
           title="$(jq -er '.media.metadata.title' <<<"$item")"
-          playback="$(kodi-control play-audiobookshelf "$1" "$title")"
+          progress="$(progress_for "$1" "$item")"
+          current_time="$(jq -er '.currentTimeSeconds | floor' <<<"$progress")"
+          duration="$(jq -er '.durationSeconds' <<<"$progress")"
+          is_finished="$(jq -r '.isFinished' <<<"$progress")"
+          if [ "$is_finished" = true ]; then
+            current_time=0
+          fi
+          target="$(jq -cer --argjson position "$current_time" '
+            [.media.audioFiles[]?] | sort_by(.index // 0) |
+            reduce .[] as $file (
+              {offset: 0, target: null};
+              if .target == null and $position < (.offset + ($file.duration // 0)) then
+                .target = {
+                  fileIno: $file.ino,
+                  seekTimeSeconds: (($position - .offset) | floor)
+                }
+              else
+                .offset += ($file.duration // 0)
+              end
+            ) |
+            (.target // error("Audiobook has no audio file for its saved position"))
+          ' <<<"$item")"
+          file_ino="$(jq -er '.fileIno | tostring' <<<"$target")"
+          seek_time="$(jq -er '.seekTimeSeconds' <<<"$target")"
+          if ! playback="$(kodi-control play-audiobookshelf \
+            "$1" "$title" "$file_ino" "$seek_time" "$current_time")"; then
+            restore_body="$(jq -cn \
+              --argjson currentTime "$current_time" \
+              --argjson duration "$duration" \
+              --argjson isFinished "$is_finished" \
+              '{
+                currentTime: $currentTime,
+                duration: $duration,
+                isFinished: $isFinished,
+                progress: (if $duration > 0 then $currentTime / $duration else 0 end)
+              }')"
+            printf '%s' "$restore_body" | curl -fsS --request PATCH \
+              --header "Authorization: Bearer $token" \
+              --header 'Content-Type: application/json' \
+              --data-binary @- "$url/api/me/progress/$1" >/dev/null || true
+            printf '%s\n' "$playback"
+            exit 1
+          fi
           jq -cn --arg id "$1" --arg title "$title" --argjson playback "$playback" \
             '{item: {id: $id, title: $title}, playback: $playback}'
           ;;

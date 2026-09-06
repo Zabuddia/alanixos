@@ -291,6 +291,71 @@ def wait_for_audio(client: KodiClient, timeout: float = 20.0) -> dict[str, Any]:
     raise KodiError("Kodi did not start an active audio player")
 
 
+def time_value(seconds: int) -> dict[str, int]:
+    return {
+        "hours": seconds // 3600,
+        "minutes": (seconds % 3600) // 60,
+        "seconds": seconds % 60,
+        "milliseconds": 0,
+    }
+
+
+def audio_player_id(client: KodiClient) -> int:
+    players = client.call("Player.GetActivePlayers") or []
+    for player in players:
+        if player.get("type") == "audio":
+            return int(player["playerid"])
+    raise KodiError("Kodi has no active audio player")
+
+
+def audio_position(client: KodiClient, player_id: int) -> float:
+    properties = client.call(
+        "Player.GetProperties", {"playerid": player_id, "properties": ["time"]}
+    )
+    value = properties.get("time", {}) if isinstance(properties, dict) else {}
+    return (
+        int(value.get("hours", 0)) * 3600
+        + int(value.get("minutes", 0)) * 60
+        + int(value.get("seconds", 0))
+        + int(value.get("milliseconds", 0)) / 1000
+    )
+
+
+def seek_audio(client: KodiClient, expected_seconds: int) -> float:
+    player_id = audio_player_id(client)
+    if expected_seconds <= 10:
+        return audio_position(client, player_id)
+
+    # Some streams report as active before they are seekable. Use a small,
+    # bounded retry and verify the position rather than trusting Player.Seek.
+    try:
+        time.sleep(2)
+        for _ in range(3):
+            client.call(
+                "Player.Seek",
+                {"playerid": player_id, "value": time_value(expected_seconds)},
+            )
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline:
+                position = audio_position(client, player_id)
+                if position >= expected_seconds - 3:
+                    return position
+                time.sleep(0.25)
+            time.sleep(1)
+        raise KodiError(f"Kodi did not resume at {expected_seconds} seconds")
+    except (KodiError, subprocess.TimeoutExpired):
+        try:
+            client.call("Player.Stop", {"playerid": player_id})
+        except (KodiError, subprocess.TimeoutExpired):
+            pass
+        # Let the add-on finish its stop callback before the caller restores
+        # the original Audiobookshelf progress.
+        time.sleep(3)
+        raise KodiError(
+            f"Kodi did not resume at {expected_seconds} seconds; playback was stopped"
+        )
+
+
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("--host", required=True, help=argparse.SUPPRESS)
@@ -327,6 +392,9 @@ def parser() -> argparse.ArgumentParser:
     audiobook = commands.add_parser("play-audiobookshelf", help="Resume an Audiobookshelf book through its Kodi add-on")
     audiobook.add_argument("item_id")
     audiobook.add_argument("title")
+    audiobook.add_argument("file_ino")
+    audiobook.add_argument("seek_time_seconds", type=int)
+    audiobook.add_argument("overall_time_seconds", type=int)
     video = commands.add_parser("play-youtube-video", help="Play a YouTube video by title, ID, or URL")
     video.add_argument("query")
     latest = commands.add_parser("play-youtube-channel-latest", help="Play the latest video from a YouTube channel")
@@ -439,13 +507,26 @@ def main() -> int:
             if not re.fullmatch(r"[A-Za-z0-9_-]+", args.item_id):
                 raise KodiError("Invalid Audiobookshelf item ID")
             plugin_url = "plugin://plugin.audio.audiobookshelf/?" + urlencode(
-                {"action": "play", "item_id": args.item_id, "auto_resume": "1"}
+                {
+                    "action": "play_at_position",
+                    "item_id": args.item_id,
+                    "file_ino": args.file_ino,
+                    "seek_time": args.seek_time_seconds,
+                    "overall_time": args.overall_time_seconds,
+                }
             )
             client.call("Player.Open", {"item": {"file": plugin_url}})
+            playing = wait_for_audio(client)
+            verified_position = seek_audio(client, args.seek_time_seconds)
             emit(
                 {
-                    "requested": {"id": args.item_id, "title": args.title},
-                    "playing": wait_for_audio(client),
+                    "requested": {
+                        "id": args.item_id,
+                        "title": args.title,
+                        "overallTimeSeconds": args.overall_time_seconds,
+                    },
+                    "playing": playing,
+                    "verifiedFilePositionSeconds": verified_position,
                 }
             )
         elif args.command == "play-youtube-video":
