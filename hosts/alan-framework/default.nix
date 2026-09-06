@@ -223,9 +223,13 @@
         invidiousUrl = "https://invidious.fifefin.com";
         liveTvAliases = {
           ABC = "8.1";
+          WFAA = "8.1";
           NBC = "5.1";
+          KXAS = "5.1";
           CBS = "11.1";
+          KTVT = "11.1";
           FOX = "4.1";
+          KDFW = "4.1";
         };
       };
       jellyfin = {

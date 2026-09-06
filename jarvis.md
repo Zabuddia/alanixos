@@ -225,7 +225,7 @@ OpenClaw should also connect directly to Audiobookshelf for library and progress
 ## 6.3 Audiobookshelf Playback Through Kodi
 
 - [x] **[LLM / OpenClaw]** Say exactly: **"Play the book Harry Potter and the Sorcerer's Stone from Audiobookshelf on Kodi."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Resume the book Harry Potter and the Sorcerer's Stone from Audiobookshelf on Kodi."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Resume the book Harry Potter and the Sorcerer's Stone from Audiobookshelf on Kodi."**
 
 Expected behavior:
 
@@ -243,13 +243,13 @@ OpenClaw resolves YouTube titles and channels through Invidious, then plays the 
 
 ## 7.1 Video by Title
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play the YouTube video history of the entire world, I guess on Kodi."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play the YouTube video Google Pixel 11/Pro Review: Poker Face on Kodi."**
 
 Expected behavior: resolve an unambiguous video title through Invidious, open it in Kodi, and verify that playback begins.
 
 ## 7.2 Latest Video From a Channel
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play the latest YouTube video from the Linus Tech Tips channel on Kodi."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play the latest YouTube video from the GothamChess channel on Kodi."**
 
 Expected behavior: resolve the channel through Invidious, select its newest listed video, open it in Kodi, and verify that playback begins.
 
@@ -258,19 +258,23 @@ Expected behavior: resolve the channel through Invidious, select its newest list
 # 8. Live TV Through Kodi
 
 OpenClaw tunes live TV through Kodi's configured PVR channels. Channel numbers
-are authoritative. Only the four network aliases below are supported; use a
-channel number for every other station.
+are authoritative. Only the four major-network stations below support name
+aliases; use a channel number for every other station.
 
 ## 8.1 Channel Number
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play channel 8.1 on Kodi."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play channel 8.1 on Kodi."**
 
 ## 8.2 Network Aliases
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play ABC on Kodi."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play NBC on Kodi."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play CBS on Kodi."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play FOX on Kodi."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play ABC on Kodi."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play NBC on Kodi."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play CBS on Kodi."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play FOX on Kodi."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play WFAA on Kodi."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play KXAS on Kodi."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play KTVT on Kodi."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play KDFW on Kodi."**
 
 Expected behavior:
 

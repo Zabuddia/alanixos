@@ -15,6 +15,7 @@ from urllib.request import Request, urlopen
 
 YOUTUBE_VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 YOUTUBE_CHANNEL_ID_RE = re.compile(r"^UC[A-Za-z0-9_-]{22}$")
+CHANNEL_NUMBER_RE = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)\b")
 
 
 class KodiError(RuntimeError):
@@ -182,11 +183,22 @@ def live_tv_channels(client: KodiClient) -> list[dict[str, Any]]:
     return list(channels.values())
 
 
-def current_item(client: KodiClient) -> dict[str, Any] | None:
+def live_tv_channel_number(channel: dict[str, Any]) -> str | None:
+    match = CHANNEL_NUMBER_RE.match(str(channel.get("channel", "")))
+    return match.group(1) if match else None
+
+
+def current_item(
+    client: KodiClient, player_type: str | None = None
+) -> dict[str, Any] | None:
     players = client.call("Player.GetActivePlayers") or []
-    if not players:
+    player = next(
+        (item for item in players if player_type is None or item.get("type") == player_type),
+        None,
+    )
+    if player is None:
         return None
-    player_id = int(players[0]["playerid"])
+    player_id = int(player["playerid"])
     result = client.call(
         "Player.GetItem",
         {"playerid": player_id, "properties": ["title", "showtitle", "season", "episode", "file"]},
@@ -207,6 +219,21 @@ def wait_for_playback(client: KodiClient, expected_label: str, timeout: float = 
     raise KodiError(f"Kodi did not verify playback of {expected_label!r}")
 
 
+def wait_for_video(
+    client: KodiClient, expected_title: str, timeout: float = 30.0
+) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout
+    expected = normalized(expected_title)
+    while time.monotonic() < deadline:
+        item = current_item(client, "video")
+        if item:
+            actual = normalized(str(item.get("label") or item.get("title") or ""))
+            if expected and actual == expected:
+                return item
+        time.sleep(0.5)
+    raise KodiError(f"Kodi did not verify video playback of {expected_title!r}")
+
+
 def parse_youtube_video_id(value: str) -> str | None:
     value = value.strip()
     if YOUTUBE_VIDEO_ID_RE.fullmatch(value):
@@ -225,11 +252,22 @@ def parse_youtube_video_id(value: str) -> str | None:
 def find_youtube_video(invidious: InvidiousClient, query: str) -> dict[str, Any]:
     video_id = parse_youtube_video_id(query)
     if video_id:
-        return {"videoId": video_id, "title": query}
+        details = invidious.get(f"videos/{video_id}")
+        if not isinstance(details, dict) or not details.get("title"):
+            raise KodiError("Invidious returned no details for this YouTube video")
+        return {
+            "videoId": video_id,
+            "title": details["title"],
+            "author": details.get("author"),
+        }
     results = invidious.get("search", q=query, type="video")
     videos = [
         {"videoId": item.get("videoId"), "title": item.get("title"), "author": item.get("author")}
-        for item in results if item.get("type") == "video" and item.get("videoId")
+        for item in results
+        if item.get("type") == "video"
+        and YOUTUBE_VIDEO_ID_RE.fullmatch(str(item.get("videoId", "")))
+        and not item.get("isUpcoming", False)
+        and int(item.get("lengthSeconds", 0)) > 0
     ] if isinstance(results, list) else []
     return choose(videos, query, "title")
 
@@ -246,6 +284,8 @@ def find_youtube_channel(invidious: InvidiousClient, query: str) -> dict[str, An
 
 
 def play_invidious_video(client: KodiClient, video: dict[str, Any]) -> None:
+    if not YOUTUBE_VIDEO_ID_RE.fullmatch(str(video.get("videoId", ""))):
+        raise KodiError("Invidious returned an invalid YouTube video ID")
     plugin_url = "plugin://plugin.video.invidious/?" + urlencode(
         {"action": "play_video", "video_id": video["videoId"]}
     )
@@ -291,15 +331,6 @@ def wait_for_audio(client: KodiClient, timeout: float = 20.0) -> dict[str, Any]:
     raise KodiError("Kodi did not start an active audio player")
 
 
-def time_value(seconds: int) -> dict[str, int]:
-    return {
-        "hours": seconds // 3600,
-        "minutes": (seconds % 3600) // 60,
-        "seconds": seconds % 60,
-        "milliseconds": 0,
-    }
-
-
 def audio_player_id(client: KodiClient) -> int:
     players = client.call("Player.GetActivePlayers") or []
     for player in players:
@@ -321,28 +352,26 @@ def audio_position(client: KodiClient, player_id: int) -> float:
     )
 
 
-def seek_audio(client: KodiClient, expected_seconds: int) -> float:
+def verify_audio_position(
+    client: KodiClient, expected_seconds: int, timeout: float = 15.0
+) -> float:
     player_id = audio_player_id(client)
     if expected_seconds <= 10:
         return audio_position(client, player_id)
 
-    # Some streams report as active before they are seekable. Use a small,
-    # bounded retry and verify the position rather than trusting Player.Seek.
+    # The Audiobookshelf add-on deliberately starts the stream before seeking
+    # to the saved position. Let its built-in seek finish without competing
+    # Player.Seek calls, then verify the result.
     try:
-        time.sleep(2)
-        for _ in range(3):
-            client.call(
-                "Player.Seek",
-                {"playerid": player_id, "value": time_value(expected_seconds)},
-            )
-            deadline = time.monotonic() + 3
-            while time.monotonic() < deadline:
-                position = audio_position(client, player_id)
-                if position >= expected_seconds - 3:
-                    return position
-                time.sleep(0.25)
-            time.sleep(1)
-        raise KodiError(f"Kodi did not resume at {expected_seconds} seconds")
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            position = audio_position(client, player_id)
+            if position >= expected_seconds - 3:
+                return position
+            time.sleep(0.5)
+        raise KodiError(
+            f"Kodi did not reach the saved position after {timeout:.0f} seconds"
+        )
     except (KodiError, subprocess.TimeoutExpired):
         try:
             client.call("Player.Stop", {"playerid": player_id})
@@ -465,7 +494,7 @@ def main() -> int:
                 )
             matches = [
                 item for item in live_tv_channels(client)
-                if str(item.get("channel", "")) == channel_number
+                if live_tv_channel_number(item) == channel_number
             ]
             if len(matches) != 1:
                 raise KodiError(
@@ -517,7 +546,7 @@ def main() -> int:
             )
             client.call("Player.Open", {"item": {"file": plugin_url}})
             playing = wait_for_audio(client)
-            verified_position = seek_audio(client, args.seek_time_seconds)
+            verified_position = verify_audio_position(client, args.seek_time_seconds)
             emit(
                 {
                     "requested": {
@@ -532,17 +561,28 @@ def main() -> int:
         elif args.command == "play-youtube-video":
             video = find_youtube_video(require_invidious(args), args.query)
             play_invidious_video(client, video)
-            emit({"requested": video, "playing": wait_for_playback(client, "")})
+            emit({"requested": video, "playing": wait_for_video(client, str(video["title"]))})
         elif args.command == "play-youtube-channel-latest":
             invidious = require_invidious(args)
             channel = find_youtube_channel(invidious, args.channel)
             response = invidious.get(f"channels/{channel['id']}/videos")
             videos = response.get("videos") if isinstance(response, dict) else response
-            if not isinstance(videos, list) or not videos or not videos[0].get("videoId"):
+            playable = [
+                video for video in videos
+                if YOUTUBE_VIDEO_ID_RE.fullmatch(str(video.get("videoId", "")))
+                and not video.get("isUpcoming", False)
+                and int(video.get("lengthSeconds", 0)) > 0
+            ] if isinstance(videos, list) else []
+            if not playable:
                 raise KodiError("This YouTube channel has no playable videos")
-            video = videos[0]
+            video = max(playable, key=lambda item: int(item.get("published", 0)))
             play_invidious_video(client, video)
-            emit({"requested": {"channel": channel, "video": video}, "playing": wait_for_playback(client, "")})
+            emit(
+                {
+                    "requested": {"channel": channel, "video": video},
+                    "playing": wait_for_video(client, str(video["title"])),
+                }
+            )
         return 0
     except (KodiError, subprocess.TimeoutExpired) as error:
         emit({"error": str(error)})

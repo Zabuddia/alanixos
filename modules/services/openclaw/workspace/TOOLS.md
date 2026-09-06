@@ -89,9 +89,10 @@ the job definition.
   are resolved through the configured Invidious instance. These commands play
   through Kodi's Invidious add-on and verify that playback begins.
 - For live TV, run `kodi-control play-channel "CHANNEL"`. It accepts numeric
-  channels such as `8.1` and the configured aliases `ABC`, `NBC`, `CBS`, and
-  `FOX`. Do not resolve or guess any other station name; ask for its channel
-  number. The command tunes Kodi's PVR channel and verifies playback.
+  channels such as `8.1` and the configured aliases `ABC`/`WFAA`, `NBC`/`KXAS`,
+  `CBS`/`KTVT`, and `FOX`/`KDFW`. Do not resolve or guess any other station
+  name; ask for its channel number. The command matches the numeric prefix in
+  Kodi's PVR label, tunes that channel, and verifies playback.
 - Do not call Kodi JSON-RPC directly, inspect Kodi configuration or logs, or
   substitute guessed API methods. Report a wrapper error concisely.
 
@@ -209,7 +210,9 @@ the job definition.
 - To play or resume a resolved book, complete the ordered TV-then-Kodi checks
   above, then run `audiobookshelf-control play ITEM_ID`. Playback resumes saved
   Audiobookshelf progress through Kodi's built-in `play_at_position` add-on
-  route and verifies the resulting Kodi position before reporting success.
+  route and verifies the resulting Kodi position before reporting success. The
+  command already performs bounded verification; if it fails, report the
+  failure without automatically retrying.
 - `audiobookshelf-control` authenticates internally. Never inspect its process
   environment or credential file.
 
