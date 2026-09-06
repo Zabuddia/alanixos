@@ -153,7 +153,7 @@
       enable = true;
       loginServer = "https://headscale.fifefin.com";
       address = "alan-framework";
-      acceptRoutes = true;
+      acceptRoutes = false;
       operator = "buddia";
     };
 
