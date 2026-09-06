@@ -74,11 +74,16 @@ let
     }
 
     poll_pid=""
+    subscriber_pid=""
 
     cleanup() {
       if [ -n "$poll_pid" ]; then
         kill "$poll_pid" 2>/dev/null || true
         wait "$poll_pid" 2>/dev/null || true
+      fi
+      if [ -n "$subscriber_pid" ]; then
+        kill "$subscriber_pid" 2>/dev/null || true
+        wait "$subscriber_pid" 2>/dev/null || true
       fi
       publish_retained "${cfg.topicPrefix}/status" offline || true
     }
@@ -86,7 +91,6 @@ let
 
     publish_retained ${lib.escapeShellArg "${cfg.discoveryPrefix}/switch/${cfg.deviceId}/cec_power/config"} ${lib.escapeShellArg powerDiscoveryPayload}
     publish_retained ${lib.escapeShellArg "${cfg.discoveryPrefix}/button/${cfg.deviceId}/cec_switch_input/config"} ${lib.escapeShellArg switchInputDiscoveryPayload}
-    publish_retained "${cfg.topicPrefix}/status" online
 
     poll_power_state
     while ${pkgs.coreutils}/bin/sleep ${toString cfg.pollIntervalSeconds}; do
@@ -95,6 +99,7 @@ let
     poll_pid=$!
 
     ${pkgs.mosquitto}/bin/mosquitto_sub "''${mqtt_args[@]}" \
+      -i ${lib.escapeShellArg "alanix-cec-control-${cfg.deviceId}"} \
       -q 1 \
       -t ${lib.escapeShellArg "${cfg.topicPrefix}/command/power"} \
       -t ${lib.escapeShellArg "${cfg.topicPrefix}/command/switch_input"} \
@@ -116,7 +121,16 @@ let
             cec_send 'as'
             ;;
         esac
-      done
+      done &
+    subscriber_pid=$!
+
+    # Publish online only after the long-lived subscriber has replaced any old
+    # connection with the same client ID.  Otherwise an old connection's Last
+    # Will can race with startup and leave a retained offline status behind.
+    ${pkgs.coreutils}/bin/sleep 1
+    publish_retained "${cfg.topicPrefix}/status" online
+
+    wait "$subscriber_pid"
   '';
 in
 {
