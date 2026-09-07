@@ -198,6 +198,8 @@
       browser.enable = true;
       desktop = {
         enable = true;
+        screenshotMaxWidth = 960;
+        screenshotMaxHeight = 540;
         hosts = [
           "alan-big-nixos"
           "alan-framework"

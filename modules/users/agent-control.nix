@@ -131,9 +131,10 @@ EOF
               | jq -r --arg target "$1" '
                   .. | objects
                   | select((.pid? // 0) > 0)
+                  | (.app_id? // .window_properties?.class? // empty) as $app
                   | select(
-                      (.app_id? == $target)
-                      or (.window_properties?.class? == $target)
+                      ($app | type) == "string"
+                      and ($app | ascii_downcase) == ($target | ascii_downcase)
                     )
                   | .id
                 '
