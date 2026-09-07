@@ -351,40 +351,42 @@ exact contact before reading or changing it and refuses ambiguous mutations.
 
 For computer-control commands, the preferred behavior is:
 
-- If the user **explicitly names a computer**, operate on that computer.
-- If no computer is specified, use the configured default computer.
-- Current default computer: `alan-tv`.
+- Require the user to explicitly name the computer for status, application,
+  clipboard, filesystem, and other computer-specific operations.
+- Screen interaction and requests to describe the current screen are the only
+  exception. If no computer is named for those requests, use `alan-tv`.
+- An explicitly named computer always overrides the screen default.
 
 ## 11.1 Online / Status
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Is alan-framework-laptop online?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Which of my computers are currently online?"**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Is alan-tv online?"**
 
 ## 11.2 List Apps / Windows
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"List the open applications on alan-framework-laptop."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"List the open applications on the default computer."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"List the open applications on alan-tv."**
 
 ## 11.3 Open Applications
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Open Firefox on alan-framework-laptop."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Open Kodi on the default computer."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Open Kodi on alan-tv."**
 
 ## 11.4 Close Applications
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Close Firefox on alan-framework-laptop."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Close Kodi on the default computer."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Close Kodi on alan-tv."**
 
 ## 11.5 Screen Inspection
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Take a screenshot of alan-framework-laptop and describe what is on the screen."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Take a screenshot of the default computer and describe what is on the screen."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Take a screenshot and describe what is on the screen."** → defaults to `alan-tv`
 
 ## 11.6 Clipboard
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Read the clipboard on alan-framework-laptop."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Set the clipboard on alan-framework-laptop to Jarvis clipboard test."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Read the clipboard on the default computer."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Read the clipboard on alan-tv."**
 
 ---
 
@@ -418,21 +420,23 @@ It should also have especially convenient access to the Filebrowser/Syncthing fo
 
 ## 13.1 General Filesystem
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"List the files in slash tmp on the default computer."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Create a file named slash tmp slash jarvis-test.txt on the default computer containing the text Jarvis file test."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Read slash tmp slash jarvis-test.txt on the default computer."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Change slash tmp slash jarvis-test.txt on the default computer so it contains the text Jarvis file test updated."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Delete slash tmp slash jarvis-test.txt on the default computer."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"List the files in slash tmp on alan-framework-laptop."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Create a file named slash tmp slash jarvis-test.txt on alan-framework-laptop containing the text Jarvis file test."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Read slash tmp slash jarvis-test.txt on alan-framework-laptop."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Change slash tmp slash jarvis-test.txt on alan-framework-laptop so it contains the text Jarvis file test updated."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Delete slash tmp slash jarvis-test.txt on alan-framework-laptop."**
 
 ## 13.2 Filebrowser / Syncthing Folder
 
-Replace `<FILEBROWSER_FOLDER>` with the actual configured path once finalized.
+These commands use OpenClaw's dedicated personal-files tool. Do not name a
+computer; OpenClaw operates on its local replica and Syncthing propagates the
+changes to the other replicas.
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"List the files in my Filebrowser folder."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Tell me what is in the file named Jarvis Test.txt in my Filebrowser folder."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Create a file named Jarvis Test.txt in my Filebrowser folder containing the text Filebrowser integration works."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Append the text OpenClaw edited this file to Jarvis Test.txt in my Filebrowser folder."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Delete Jarvis Test.txt from my Filebrowser folder."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"List the files in my Filebrowser folder."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Create a file named Jarvis Test.txt in my Filebrowser folder containing the text Filebrowser integration works."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Tell me what is in the file named Jarvis Test.txt in my Filebrowser folder."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Append the text OpenClaw edited this file to Jarvis Test.txt in my Filebrowser folder."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Delete Jarvis Test.txt from my Filebrowser folder."**
 
 ---
 

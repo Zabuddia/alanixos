@@ -9,6 +9,7 @@ let
       pkgs.coreutils
       pkgs.findutils
       pkgs.ripgrep
+      pkgs.util-linux
     ];
     text = ''
       umask 0002
@@ -25,7 +26,9 @@ Actions:
   find QUERY [PATH]            Find matching file and directory names
   search QUERY [PATH]          Search file contents with ripgrep
   read PATH                    Write one file to stdout
+  tail PATH [LINES]            Read the last LINES lines (defaults to 12)
   write PATH                   Atomically replace a file with stdin
+  append PATH                  Append stdin to a file without rewriting it
   mkdir PATH                   Create a directory and its parents
   move SOURCE DESTINATION      Move a file or directory within the root
   trash PATH                   Move a file into the root's recoverable trash
@@ -109,6 +112,18 @@ EOF
           [ -f "$target" ] || { echo "Not a regular file: $1" >&2; exit 66; }
           cat -- "$target"
           ;;
+        tail)
+          [ "$#" -ge 1 ] && [ "$#" -le 2 ] || { usage; exit 2; }
+          require_root
+          target="$(resolve_path "$1")"
+          lines="''${2:-12}"
+          case "$lines" in
+            ""|*[!0-9]*) echo "LINES must be a positive integer" >&2; exit 64 ;;
+          esac
+          [ "$lines" -gt 0 ] || { echo "LINES must be a positive integer" >&2; exit 64; }
+          [ -f "$target" ] || { echo "Not a regular file: $1" >&2; exit 66; }
+          tail -n "$lines" -- "$target"
+          ;;
         write)
           [ "$#" -eq 1 ] || { usage; exit 2; }
           require_root
@@ -121,6 +136,16 @@ EOF
           chmod 0664 "$temporary"
           mv -f -- "$temporary" "$target"
           trap - EXIT
+          ;;
+        append)
+          [ "$#" -eq 1 ] || { usage; exit 2; }
+          require_root
+          target="$(resolve_path "$1")"
+          [ ! -d "$target" ] || { echo "Cannot append to a directory: $1" >&2; exit 65; }
+          mkdir -p -- "$(dirname -- "$target")"
+          exec 9>>"$target"
+          flock 9
+          cat >&9
           ;;
         mkdir)
           [ "$#" -eq 1 ] || { usage; exit 2; }
