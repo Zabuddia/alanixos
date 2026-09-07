@@ -23,6 +23,7 @@ let
   passwordFile = if cfg.passwordFile != null then cfg.passwordFile else "";
   radicalePython = pkgs.python3.withPackages (pythonPackages: [
     pythonPackages.icalendar
+    pythonPackages.recurring-ical-events
     pythonPackages.vobject
   ]);
 
@@ -33,7 +34,9 @@ let
     [pair radicale_calendars]
     a = "radicale_calendars_remote"
     b = "radicale_calendars_local"
-    collections = ["from a", "from b"]
+    # Radicale owns collection creation. Only discover remote collections so a
+    # misspelled local directory can never become a new remote calendar.
+    collections = ["from a"]
     metadata = ["displayname", "color"]
 
     [storage radicale_calendars_remote]
@@ -50,7 +53,8 @@ let
     [pair radicale_contacts]
     a = "radicale_contacts_remote"
     b = "radicale_contacts_local"
-    collections = ["from a", "from b"]
+    # Radicale owns address-book creation for the same reason as calendars.
+    collections = ["from a"]
 
     [storage radicale_contacts_remote]
     type = "carddav"
@@ -121,11 +125,11 @@ let
         # collection in the local filesystem storage.  Feed affirmative
         # answers so the first unattended sync can bootstrap its local vdirs.
         set +o pipefail
-        ${pkgs.coreutils}/bin/yes | ${lib.getExe pkgs.vdirsyncer} -c ${lib.escapeShellArg vdirsyncerConfig} discover
+        ${pkgs.coreutils}/bin/yes | ${lib.getExe pkgs.vdirsyncer} --verbosity ERROR -c ${lib.escapeShellArg vdirsyncerConfig} discover
         discover_status="''${PIPESTATUS[1]}"
         set -o pipefail
         [ "$discover_status" -eq 0 ]
-        ${lib.getExe pkgs.vdirsyncer} -c ${lib.escapeShellArg vdirsyncerConfig} sync
+        ${lib.getExe pkgs.vdirsyncer} --verbosity ERROR -c ${lib.escapeShellArg vdirsyncerConfig} sync
       '
   '';
 
@@ -144,6 +148,7 @@ let
       ${radicalePython}/bin/python ${./radicale-control/radicale_control.py} \
         --calendar-root ${lib.escapeShellArg "${dataDir}/calendars"} \
         --contact-root ${lib.escapeShellArg "${dataDir}/contacts"} \
+        --timezone ${lib.escapeShellArg config.time.timeZone} \
         calendar "$@"
       status=$?
       set -e

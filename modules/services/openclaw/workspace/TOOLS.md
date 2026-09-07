@@ -146,13 +146,42 @@ the job definition.
 ## Calendar and contacts
 
 - Radicale is the only calendar and contact source. Do not use Nextcloud.
-- Use `radicale-calendar collections|list|search [QUERY]|get ID` for reads.
-  Use `create COLLECTION`, `update ID`, and `delete ID`; create/update accept a
-  JSON object on stdin and return normalized JSON. Event fields are `title`,
-  `start`, `end`, `description`, and `location`.
-- Use `radicale-contacts addressbooks|list|search [QUERY]|get ID` for reads.
-  Use `create ADDRESSBOOK`, `update ID`, and `delete ID`; contact fields are
-  `name`, `emails`, `phones`, `organization`, and `note`.
+- Use `radicale-calendar events START END` for events in a bounded local-time
+  range, including recurring occurrences, and `next [START]` for the next
+  event. Add `--query QUERY` when a title or other text must match. Use
+  `radicale-calendar at TIME` to determine whether the operator is free at an
+  instant, and `free START END MINUTES` to find free windows of a requested
+  length. Pass ISO-8601 dates or date-times; date-times without an offset are
+  interpreted in the operator's configured local timezone.
+- Use `radicale-calendar collections|list|search [QUERY]|get ID` for collection
+  discovery, unbounded search, and fetching an exact event. Use
+  `create [COLLECTION_ID]`, `update ID`, and `delete ID`; omit the collection ID
+  when exactly one calendar exists, otherwise use only an existing ID returned
+  by `collections`. Never pass a display name as a collection ID. Creation is
+  restricted to existing calendars and cannot create a new collection.
+  Create/update accept a JSON object on stdin and return normalized JSON. Event
+  fields are `title`, `start`, `end`, `description`, and `location`.
+- For relative calendar requests, resolve today/tomorrow/week boundaries in the
+  configured local timezone and use the bounded commands. For a move, resolve
+  exactly one existing event, keep its ID, update that event, and verify it at
+  the new time; never implement a move by creating a second event. Before a
+  deletion, resolve exactly one event and obtain the operator's required
+  confirmation immediately before calling `delete`; then verify it is absent.
+- Use `radicale-contacts find "NAME"` for name-based contact requests. It
+  prefers a normalized exact name and reports ambiguity rather than selecting
+  among multiple contacts. Use `addressbooks|list|search [QUERY]|get ID` for
+  broader discovery and exact-ID reads. Use `create [ADDRESSBOOK_ID]`, omitting
+  the ID when exactly one address book exists; otherwise use only an existing
+  ID returned by `addressbooks`. Creation cannot create a new address book. Use
+  `update ID` and `delete ID`; contact fields are `name`, `emails`, `phones`,
+  `organization`, and `note`.
+- Resolve exactly one contact before reading a requested phone number or email
+  address. For updates, keep that contact's ID, change only the requested
+  fields, fetch the same ID afterward, and do not create a replacement. Contact
+  creation rejects an existing exact name to prevent accidental duplicates.
+  Before deletion, resolve exactly one contact and obtain the operator's
+  required confirmation immediately before calling `delete`; then run `find`
+  again and verify that no exact match remains.
 - These stable commands synchronize before every operation and after successful
   writes. The `radicale-calendar-raw` and `radicale-contacts-raw` commands are
   expert/debug escape hatches for backend-specific operations.
