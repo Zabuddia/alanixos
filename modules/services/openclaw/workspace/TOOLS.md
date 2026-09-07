@@ -48,9 +48,10 @@ the job definition.
   seconds to respond. Send one power-on command, wait, and poll its state; do
   not repeatedly send power-on commands while it is still starting. If it is
   already on, leave it on.
-- Kodi's application power is the exposed Home Assistant switch named
-  `alan-tv Kodi` (`switch.kodi`, alias `Cody`). Use the full name `alan-tv Kodi`
-  for Home Assistant tool calls. In voice transcripts, Cody means Kodi.
+- For normal media requests, Kodi's application power is the Home Assistant
+  switch `alan-tv Kodi` (`switch.kodi`, alias `Cody`). Use its full name in HA
+  calls. An app-control request that explicitly names a computer follows the
+  Desktop control rules instead. In voice transcripts, Cody means Kodi.
 - Use the authenticated Home Assistant tools. Never search files or environment
   variables for API tokens, and never replace an available tool with raw REST
   calls.
@@ -59,8 +60,9 @@ the job definition.
 
 ## Kodi on alan-tv
 
-- Alan TV, Allen TV, and alan-tv identify the same Kodi target. Home
-  Assistant handles normal Kodi application power and playback controls.
+- Alan TV, Allen TV, and alan-tv identify the same Kodi target. Home Assistant
+  handles media-oriented Kodi power and playback requests that do not explicitly
+  name a computer for app control.
   OpenClaw uses `kodi-control` only as the verified playback handoff for
   Jellyfin, Navidrome, Audiobookshelf, Invidious, and live TV.
 - Before every playback request targeting Kodi, perform this preflight in order:
@@ -93,18 +95,22 @@ the job definition.
 
 ## Desktop control
 
-- Require an inventory `HOST` for status, app, and clipboard requests. For
-  screen capture or description only, omitted `HOST` means `alan-tv`.
-- `desktop-inspect HOST status` reports `online` separately from
+- Require an inventory `HOST` for status, app, and clipboard requests. For every
+  screen capture or description with no host in the current request, use
+  `alan-tv`, regardless of hosts mentioned earlier in the conversation.
+- For inventory-computer status, always use `desktop-inspect HOST status`, never
+  raw SSH or Home Assistant. It reports `online` separately from
   `desktopAvailable` (an active, controllable Sway session).
 - Use `desktop-inspect HOST installed-apps` to discover launchable desktop IDs
   and `desktop-inspect HOST open-apps` to list current applications. Launch or
   close an exact ID with `desktop-control HOST launch|close-app APP_ID`, then
   check `open-apps` and report only the observed result. An app request naming
-  a computer is desktop control, including Kodi; ordinary media power is HA.
+  a computer always uses this path, including Kodi; ordinary media power is HA.
+  Use only the documented action names; do not guess variants after an error.
 - For structured screen context, use `desktop-inspect HOST focused|outputs`. For
   an image, run `desktop-inspect HOST screenshot > FILE.png`, keep it in the
-  workspace, then immediately call `image` on it. Do not `read` or precheck it.
+  workspace, then immediately call `image` on it with a concise description
+  prompt relevant to the request. Do not `read`, list, or precheck the file.
 - Read text with `desktop-inspect HOST clipboard`; pipe writes into
   `desktop-control HOST clipboard-write`. Clipboard contents are private: do
   not persist or repeat them beyond the task.

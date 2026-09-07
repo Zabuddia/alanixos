@@ -193,7 +193,14 @@ EOF
             echo "No active Wayland display was found" >&2
             exit 69
           fi
-          exec wl-copy --type text/plain
+          clipboard_file="$(mktemp "$runtime_dir/alanix-clipboard.XXXXXX")"
+          trap 'rm -f "$clipboard_file"' EXIT
+          chmod 600 "$clipboard_file"
+          cat > "$clipboard_file"
+          # wl-copy keeps a background process alive to own the clipboard.
+          # Detach all of its standard descriptors from the SSH session so the
+          # caller can return as soon as the clipboard contents are installed.
+          wl-copy --type text/plain < "$clipboard_file" >/dev/null 2>&1
           ;;
         *)
           usage

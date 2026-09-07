@@ -411,6 +411,7 @@
               "web_fetch"
             ];
             loopDetection.enabled = true;
+            media.image.timeoutSeconds = 180;
             elevated.enabled = false;
             exec = {
               mode = "full";
