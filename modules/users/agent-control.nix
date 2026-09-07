@@ -19,9 +19,10 @@ let
 Usage: alanix-desktop-control ACTION [ARGUMENT]
 
 Actions:
-  apps                 List installed desktop application IDs
+  installed-apps       List installed desktop application IDs
+  open-apps            List application IDs with open windows
   launch APP_ID        Launch an installed desktop application
-  close-app            Close the focused application
+  close-app APP_ID     Close every open window for an application ID
   focused              Return focused-window metadata as JSON
   outputs              Return active Sway outputs as JSON
   screenshot           Write a PNG of the current desktop to stdout
@@ -36,6 +37,15 @@ EOF
       if [ "$#" -gt 0 ]; then
         shift
       fi
+
+      validate_app_id() {
+        case "$1" in
+          ""|*[!A-Za-z0-9_.+-]*)
+            echo "Invalid desktop application ID: $1" >&2
+            return 64
+            ;;
+        esac
+      }
 
       # Power actions need no graphical session, so dispatch them before the
       # Sway session detection below.
@@ -78,7 +88,7 @@ EOF
       fi
 
       case "$action" in
-        apps)
+        installed-apps)
           [ "$#" -eq 0 ] || { usage; exit 2; }
           data_dirs="''${XDG_DATA_HOME:-$HOME/.local/share}:''${XDG_DATA_DIRS:-/etc/profiles/per-user/$USER/share:/run/current-system/sw/share:/usr/local/share:/usr/share}"
           old_ifs="$IFS"
@@ -92,21 +102,51 @@ EOF
           IFS="$old_ifs"
           sort -fu
           ;;
+        open-apps)
+          [ "$#" -eq 0 ] || { usage; exit 2; }
+          swaymsg -r -t get_tree \
+            | jq -r '
+                [
+                  .. | objects
+                  | select((.pid? // 0) > 0)
+                  | (.app_id? // .window_properties?.class? // empty)
+                  | select(type == "string" and length > 0)
+                ]
+                | unique[]
+              '
+          ;;
         launch)
           [ "$#" -eq 1 ] || { usage; exit 2; }
-          case "$1" in
-            ""|*[!A-Za-z0-9_.+-]*)
-              echo "Invalid desktop application ID: $1" >&2
-              exit 64
-              ;;
-          esac
+          validate_app_id "$1"
           printf -v launch_command '%q %q' \
             ${lib.escapeShellArg config.appLauncher.desktopCommand} "$1"
           exec swaymsg exec -- "$launch_command"
           ;;
         close-app)
-          [ "$#" -eq 0 ] || { usage; exit 2; }
-          exec ${lib.escapeShellArg config.appLauncher.closeFocusedCommand}
+          [ "$#" -eq 1 ] || { usage; exit 2; }
+          validate_app_id "$1"
+          tree="$(swaymsg -r -t get_tree)"
+          mapfile -t container_ids < <(
+            printf '%s\n' "$tree" \
+              | jq -r --arg target "$1" '
+                  .. | objects
+                  | select((.pid? // 0) > 0)
+                  | select(
+                      (.app_id? == $target)
+                      or (.window_properties?.class? == $target)
+                    )
+                  | .id
+                '
+          )
+          if [ "''${#container_ids[@]}" -eq 0 ]; then
+            echo "Application has no open windows: $1" >&2
+            exit 66
+          fi
+          failed=0
+          for container_id in "''${container_ids[@]}"; do
+            swaymsg "[con_id=$container_id]" kill >/dev/null || failed=1
+          done
+          exit "$failed"
           ;;
         focused)
           [ "$#" -eq 0 ] || { usage; exit 2; }

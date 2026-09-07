@@ -18,7 +18,7 @@ let
         cat >&2 <<'EOF'
 Usage: desktop-inspect HOST ACTION
 
-Actions: status, apps, focused, outputs, screenshot, clipboard
+Actions: status, installed-apps, open-apps, focused, outputs, screenshot, clipboard
 
 All actions return JSON except screenshot, which writes PNG bytes to stdout.
 EOF
@@ -42,7 +42,7 @@ ${allowedHostCases}
       esac
 
       case "$action" in
-        status|apps|focused|outputs|screenshot|clipboard)
+        status|installed-apps|open-apps|focused|outputs|screenshot|clipboard)
           [ "$#" -eq 0 ] || { usage; exit 2; }
           ;;
         *)
@@ -68,12 +68,41 @@ ${allowedHostCases}
         fi
       }
 
+      if [ "$action" = status ]; then
+        set +e
+        if [ "$host" = "$(hostname)" ]; then
+          reachability_output=""
+          reachability_status=0
+        else
+          reachability_output="$(ssh -o BatchMode=yes -o ConnectTimeout=${toString cfg.connectTimeout} \
+            -- "$host" true 2>&1)"
+          reachability_status=$?
+        fi
+        set -e
+        if [ "$reachability_status" -ne 0 ]; then
+          jq -cn --arg host "$host" --arg message "$reachability_output" \
+            '{online:false,desktopAvailable:false,available:false,host:$host,error:{code:"unreachable",message:$message}}'
+          exit
+        fi
+
+        remote_action=focused
+        set +e
+        output="$(run_remote 2>&1)"
+        status=$?
+        set -e
+        if [ "$status" -ne 0 ]; then
+          jq -cn --arg host "$host" --arg message "$output" \
+            '{online:true,desktopAvailable:false,available:false,host:$host,error:{code:"desktop-unavailable",message:$message}}'
+          exit
+        fi
+        jq -cn --arg host "$host" \
+          '{online:true,desktopAvailable:true,available:true,host:$host}'
+        exit
+      fi
+
       if [ "$action" = screenshot ]; then
         run_remote | resize_screenshot
         exit
-      fi
-      if [ "$action" = status ]; then
-        remote_action=focused
       fi
       set +e
       output="$(run_remote 2>&1)"
@@ -85,8 +114,8 @@ ${allowedHostCases}
         exit 69
       fi
       case "$action" in
-        status) jq -cn --arg host "$host" '{available:true,host:$host}' ;;
-        apps) printf '%s\n' "$output" | jq -Rsc --arg host "$host" '{available:true,host:$host,apps:(split("\n")|map(select(length>0)))}' ;;
+        installed-apps) printf '%s\n' "$output" | jq -Rsc --arg host "$host" '{available:true,host:$host,installedApps:(split("\n")|map(select(length>0)))}' ;;
+        open-apps) printf '%s\n' "$output" | jq -Rsc --arg host "$host" '{available:true,host:$host,openApps:(split("\n")|map(select(length>0)))}' ;;
         focused) jq -cn --arg host "$host" --argjson value "$output" '{available:true,host:$host,focused:$value}' ;;
         outputs) jq -cn --arg host "$host" --argjson value "$output" '{available:true,host:$host,outputs:$value}' ;;
         clipboard) jq -cn --arg host "$host" --arg value "$output" '{available:true,host:$host,text:$value}' ;;
@@ -99,7 +128,7 @@ ${allowedHostCases}
     runtimeInputs = [ pkgs.jq pkgs.openssh ];
     text = ''
       usage() {
-        echo "Usage: desktop-control HOST {launch APP_ID|close-app|clipboard-write|reboot|shutdown}" >&2
+        echo "Usage: desktop-control HOST {launch APP_ID|close-app APP_ID|clipboard-write|reboot|shutdown}" >&2
       }
       host="''${1:-}"; action="''${2:-}"
       [ "$#" -ge 2 ] || { usage; exit 2; }
@@ -109,11 +138,11 @@ ${allowedHostCases}
         *) echo "Desktop host is not allowlisted: $host" >&2; exit 64 ;;
       esac
       case "$action" in
-        launch)
+        launch|close-app)
           [ "$#" -eq 1 ] || { usage; exit 2; }
           case "$1" in ""|*[!A-Za-z0-9_.+-]*) echo "Invalid desktop application ID: $1" >&2; exit 64 ;; esac
           ;;
-        close-app|clipboard-write|reboot|shutdown) [ "$#" -eq 0 ] || { usage; exit 2; } ;;
+        clipboard-write|reboot|shutdown) [ "$#" -eq 0 ] || { usage; exit 2; } ;;
         *) usage; exit 2 ;;
       esac
       set +e

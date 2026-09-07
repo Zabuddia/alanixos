@@ -65,9 +65,10 @@ browser automation for these services.
 ## Bitcoin
 
 - `alan-node`: bitcoind, Fulcrum, and the mempool frontend. OpenClaw's
-  `bitcoin-read` command exposes only blockchain, network, transaction, mempool,
-  wallet-list, and wallet-balance reads. It has no signing, sending, wallet
-  creation, address generation, or raw RPC passthrough operation.
+  `bitcoin-read` command exposes only blockchain, network, Fulcrum status,
+  transaction, mempool, wallet-list, wallet-balance, and wallet-history reads.
+  It has no signing, sending, wallet creation, address generation, or raw RPC
+  passthrough operation.
 
 ## Capability boundaries
 

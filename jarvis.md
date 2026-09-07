@@ -362,10 +362,15 @@ For computer-control commands, the preferred behavior is:
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Is alan-framework-laptop online?"**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Is alan-tv online?"**
 
+The answer should distinguish an offline host from an online host whose desktop
+session is not currently available.
+
 ## 11.2 List Apps / Windows
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"List the open applications on alan-framework-laptop."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"List the open applications on alan-tv."**
+
+These should list applications with open windows, not every installed app.
 
 ## 11.3 Open Applications
 
@@ -384,9 +389,12 @@ For computer-control commands, the preferred behavior is:
 
 ## 11.6 Clipboard
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Read the clipboard on alan-framework-laptop."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Set the clipboard on alan-framework-laptop to Jarvis clipboard test."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Read the clipboard on alan-framework-laptop."**
+- [ ] Verify that it returns exactly **"Jarvis clipboard test."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Set the clipboard on alan-tv to Jarvis TV clipboard test."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Read the clipboard on alan-tv."**
+- [ ] Verify that it returns exactly **"Jarvis TV clipboard test."**
 
 ---
 
@@ -394,21 +402,25 @@ For computer-control commands, the preferred behavior is:
 
 ## 12.1 Open / Read Pages
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Open example.com in the browser and tell me the page title."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Open the NixOS website in the browser and summarize the home page."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Open example.com in the browser and tell me the page title."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Open the NixOS website in the browser and summarize the home page."**
 
 ## 12.2 Search
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Use the browser to search the web for the NixOS Home Manager manual and tell me the title of the official result."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Use the managed browser and searxng.fifefin.com to search for the NixOS Home Manager manual and tell me the title of the official result."**
+
+Expected result: **"Preface - Home Manager Manual - Nix community projects."**
 
 ## 12.3 Page Interaction
 
 Use a harmless page specifically chosen for testing before adding site-specific workflows.
 
-- [ ] **[LLM / OpenClaw]** Open a test page, click a specified link/button, and report the resulting page.
-- [ ] **[LLM / OpenClaw]** Fill a non-sensitive test form and verify the submitted values.
+- [x] **[LLM / OpenClaw]** Say exactly: **"Open example.com in the managed browser, click the Learn more link, and tell me the title and URL of the resulting page."**
+- [x] Verify that OpenClaw used a browser snapshot to identify and click the link, then inspected the resulting page.
+- [x] **[LLM / OpenClaw]** Say exactly: **"Open https://httpbin.org/forms/post in the managed browser, enter Jarvis Test as the customer name, enter Browser form test as the delivery instructions, submit the form, and tell me the submitted values."**
+- [x] Verify that the returned page reports `Jarvis Test` for `custname` and `Browser form test` for `comments`.
 
-**Exact test phrase:** _TODO: choose a stable test page before implementation._
+These tests use public pages that do not require authentication or retain the submitted test data as an account change.
 
 ---
 
@@ -521,10 +533,16 @@ Keep Bitcoin functionality read-only unless explicitly expanded later.
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"What is the current Bitcoin block height on my node?"**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Is Bitcoin Core on my node fully synchronized?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Is Fulcrum on my node fully synchronized?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Is my Electrum server running?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Is my Lightning node running?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"What is the Bitcoin balance reported by my read-only Bitcoin tools?"**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Is Fulcrum, my Electrum server, running and fully synchronized?"**
+
+Balance and transaction history require a loaded read-only Bitcoin Core wallet
+on `alan-node`. Import only watch-only descriptors or public keys; never expose
+wallet private keys to OpenClaw.
+
+- [ ] A watch-only wallet is loaded on `alan-node` and appears in `bitcoin-read wallets`.
+- [ ] **[LLM / OpenClaw]** Say exactly: **"What is my Bitcoin balance?"**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"What are my five latest Bitcoin transactions?"**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"What is my Bitcoin balance and what are my five latest transactions?"**
 
 ---
 
@@ -738,6 +756,7 @@ Keep possible future capabilities here without mixing them into the active accep
 - [ ] Chess.com / Lichess integration
 - [ ] TV source switching
 - [ ] Physical TV volume through CEC
+- [ ] Lightning node status and read-only Lightning balances/transactions after a Lightning node is deployed
 - [ ] Additional smart-home devices
 
 ---

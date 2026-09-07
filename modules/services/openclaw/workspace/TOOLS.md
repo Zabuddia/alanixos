@@ -93,34 +93,27 @@ the job definition.
 
 ## Desktop control
 
-- Use `desktop-inspect HOST focused|outputs` for structured screen context. For
-  an image, run `desktop-inspect HOST screenshot > FILE.png`, keeping it in the
-  workspace unless another destination is named, then immediately call `image`
-  with that file and the requested inspection. Do not use `read` or run a
-  separate file check for screenshots.
-- Use `desktop-inspect HOST status` to distinguish an available session from an
-  offline, asleep, or sessionless host. Use `desktop-inspect HOST apps` before launching an application whose desktop
-  ID is not already known, then `desktop-control HOST launch APP_ID`. Use
-  `desktop-control HOST close-app` only when the requested target is the
-  currently focused window.
-- Use `desktop-inspect HOST clipboard` for text clipboard reads and pipe
-  text into `desktop-control HOST clipboard-write` for writes. Clipboard
-  contents are private data: do not persist or repeat them beyond the task.
-- The command accepts only inventory hosts and fixed desktop operations. Never
-  replace a denial with raw Sway IPC, process killing, or an SSH shell command.
+- Require an inventory `HOST` for status, app, and clipboard requests. For
+  screen capture or description only, omitted `HOST` means `alan-tv`.
+- `desktop-inspect HOST status` reports `online` separately from
+  `desktopAvailable` (an active, controllable Sway session).
+- Use `desktop-inspect HOST installed-apps` to discover launchable desktop IDs
+  and `desktop-inspect HOST open-apps` to list current applications. Launch or
+  close an exact ID with `desktop-control HOST launch|close-app APP_ID`, then
+  check `open-apps` and report only the observed result. An app request naming
+  a computer is desktop control, including Kodi; ordinary media power is HA.
+- For structured screen context, use `desktop-inspect HOST focused|outputs`. For
+  an image, run `desktop-inspect HOST screenshot > FILE.png`, keep it in the
+  workspace, then immediately call `image` on it. Do not `read` or precheck it.
+- Read text with `desktop-inspect HOST clipboard`; pipe writes into
+  `desktop-control HOST clipboard-write`. Clipboard contents are private: do
+  not persist or repeat them beyond the task.
+- Never replace a wrapper denial with raw Sway IPC, process killing, or SSH.
 - Use `desktop-control HOST reboot` or `desktop-control HOST shutdown` to
-  actually power-cycle or power off a physical inventory host. This is Tier 2
-  (see POLICY.md): only run it when the operator names the exact host and
-  action. Do not simulate a reboot by toggling a `media_player` or other
-  Home Assistant entity off and on — that only changes software playback
-  state, never reflects the machine's real power state, and will loop
-  forever waiting for a state change that isn't coming. If `desktop-control`
-  reports the host unavailable, say so; do not retry indefinitely.
-- To power on a host that is fully off, press its Wake on LAN button in Home
-  Assistant (`button.wake_on_lan_*` / `button.wol_*`). This only works for
-  hosts on the same LAN as the button's bridge (currently alan-home's LAN) and
-  only if the target's NIC/firmware supports waking from off; it will not
-  wake `randy-big-nixos` or `fife-tv`, which are on other networks.
+  control physical power. This is Tier 2 (POLICY.md): require the exact host
+  and action. Never substitute an HA media entity or retry indefinitely.
+- To power on an off host, use its HA Wake on LAN button. WOL requires supported
+  hardware on alan-home's LAN and cannot wake `randy-big-nixos` or `fife-tv`.
 
 ## Managed browser
 
@@ -131,6 +124,15 @@ the job definition.
   everyday browser. That capability is intentionally deferred.
 - Authentication must be completed deliberately in the managed profile. Never
   copy cookies or credentials from another browser profile.
+- When the operator explicitly asks to search in the managed browser, navigate
+  directly to `https://searxng.fifefin.com/search?q=QUERY` and inspect its text
+  snapshot. Do not cycle through public search engines, which may block the
+  headless browser or present CAPTCHAs. Use the text snapshot for ordinary
+  results; do not invoke image analysis unless visual appearance matters.
+- For ordinary research that does not specifically require browser interaction,
+  use `web_search`, which is already backed by the configured SearXNG instance.
+- For browser actions, click with `kind: "click"`; fill form controls with one
+  `kind: "fill"` call whose `fields` array contains the refs and values.
 
 ## Calendar and contacts
 
@@ -256,13 +258,16 @@ the job definition.
 
 ## Bitcoin
 
-- Use `bitcoin-read status`, `bitcoin-read network`,
+- Use `bitcoin-read status`, `bitcoin-read network`, `bitcoin-read fulcrum`,
   `bitcoin-read transaction TXID`, and `bitcoin-read mempool TXID` for the
-  operator's Bitcoin node on `alan-node`.
-- Use `bitcoin-read wallets` and `bitcoin-read balance WALLET` only for requested
-  wallet-balance reads. The wrapper intentionally has no signing, spending,
-  address-generation, wallet-creation, or arbitrary RPC operation. Never bypass
-  that boundary through SSH, sudo, direct cookie access, or raw RPC.
+  operator's Bitcoin node on `alan-node`. Fulcrum is the Electrum server.
+- For balance or history without a named wallet, run `bitcoin-read wallets`.
+  Use its sole loaded wallet, report that none is configured, or ask which one
+  when multiple wallets are loaded. Run `bitcoin-read balance WALLET` and
+  `bitcoin-read transactions WALLET [COUNT]`; transaction results are newest
+  first. The wrapper has no signing, spending, address generation, wallet
+  creation, or raw RPC. Never bypass it through SSH, sudo, direct cookie access,
+  or raw RPC.
 - Use current web research for exchange prices; the local node does not provide
   a fiat price oracle.
 
