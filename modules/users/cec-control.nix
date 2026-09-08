@@ -27,18 +27,6 @@ let
     inherit device;
   };
 
-  switchInputDiscoveryPayload = builtins.toJSON {
-    name = "Switch Input";
-    unique_id = "${cfg.deviceId}_cec_switch_input";
-    command_topic = "${cfg.topicPrefix}/command/switch_input";
-    payload_press = "PRESS";
-    availability_topic = "${cfg.topicPrefix}/status";
-    payload_available = "online";
-    payload_not_available = "offline";
-    icon = "mdi:hdmi-port";
-    inherit device;
-  };
-
   bridge = pkgs.writeShellScript "alanix-cec-control" ''
     set -euo pipefail
 
@@ -55,6 +43,10 @@ let
 
     publish_retained() {
       ${pkgs.mosquitto}/bin/mosquitto_pub "''${mqtt_args[@]}" -q 1 -r -t "$1" -m "$2"
+    }
+
+    clear_retained() {
+      ${pkgs.mosquitto}/bin/mosquitto_pub "''${mqtt_args[@]}" -q 1 -r -t "$1" -n
     }
 
     cec_send() {
@@ -89,8 +81,8 @@ let
     }
     trap cleanup EXIT
 
+    clear_retained ${lib.escapeShellArg "${cfg.discoveryPrefix}/button/${cfg.deviceId}/cec_switch_input/config"}
     publish_retained ${lib.escapeShellArg "${cfg.discoveryPrefix}/switch/${cfg.deviceId}/cec_power/config"} ${lib.escapeShellArg powerDiscoveryPayload}
-    publish_retained ${lib.escapeShellArg "${cfg.discoveryPrefix}/button/${cfg.deviceId}/cec_switch_input/config"} ${lib.escapeShellArg switchInputDiscoveryPayload}
 
     poll_power_state
     while ${pkgs.coreutils}/bin/sleep ${toString cfg.pollIntervalSeconds}; do
@@ -106,7 +98,6 @@ let
       -i ${lib.escapeShellArg "alanix-cec-control-${cfg.deviceId}"} \
       -q 1 \
       -t ${lib.escapeShellArg "${cfg.topicPrefix}/command/power"} \
-      -t ${lib.escapeShellArg "${cfg.topicPrefix}/command/switch_input"} \
       -F $'%t\t%p' \
       --will-topic ${lib.escapeShellArg "${cfg.topicPrefix}/status"} \
       --will-payload offline \
@@ -133,9 +124,6 @@ let
               *) publish "${cfg.topicPrefix}/state/error" "unsupported power payload: $payload" ;;
             esac
             ;;
-          ${lib.escapeShellArg "${cfg.topicPrefix}/command/switch_input"})
-            cec_send 'as'
-            ;;
         esac
       done &
     subscriber_pid=$!
@@ -151,7 +139,7 @@ let
 in
 {
   options.cecControl = {
-    enable = lib.mkEnableOption "an HDMI-CEC power and input bridge published to Home Assistant via MQTT";
+    enable = lib.mkEnableOption "an HDMI-CEC power bridge published to Home Assistant via MQTT";
 
     broker = lib.mkOption {
       type = lib.types.str;
