@@ -116,6 +116,7 @@ in
     icon = "mdi:controller-classic";
     command = lib.getExe cfg.package;
     processNames = [ "retroarch" ];
+    windowIds = [ "com.libretro.RetroArch" "retroarch" ];
   };
 
   config.home.modules = lib.optionals cfg.enable [

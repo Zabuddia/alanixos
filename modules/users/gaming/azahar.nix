@@ -11,6 +11,7 @@ in
     icon = "mdi:nintendo-3ds";
     command = lib.getExe pkgs-unstable.azahar;
     processNames = [ "azahar" ];
+    windowIds = [ "org.azahar_emu.Azahar" ];
   };
 
   config.home.modules = lib.optionals cfg.enable [

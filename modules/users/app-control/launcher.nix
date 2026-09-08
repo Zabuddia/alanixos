@@ -28,6 +28,12 @@ let
         description = "Process names that prevent launching another instance.";
       };
 
+      windowIds = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "Wayland app IDs or X11 classes used for graceful, targeted window closing.";
+      };
+
       closeCommand = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
@@ -97,6 +103,32 @@ let
       ''
         set -u
         ${processRunningShell app.processNames}
+        window_ids_json=${lib.escapeShellArg (builtins.toJSON app.windowIds)}
+
+        tree="$(${pkgs.sway}/bin/swaymsg -r -t get_tree 2>/dev/null || true)"
+        if [ -n "$tree" ]; then
+          mapfile -t container_ids < <(
+            printf '%s\n' "$tree" | ${pkgs.jq}/bin/jq -r --argjson targets "$window_ids_json" '
+              .. | objects
+              | select((.pid? // 0) > 0)
+              | (.app_id? // .window_properties?.class? // empty) as $app
+              | select(
+                  ($app | type) == "string"
+                  and any($targets[]; ascii_downcase == ($app | ascii_downcase))
+                )
+              | .id
+            '
+          )
+          for container_id in "''${container_ids[@]}"; do
+            ${pkgs.sway}/bin/swaymsg "[con_id=$container_id]" kill >/dev/null || true
+          done
+        fi
+
+        for _ in {1..5}; do
+          process_is_running || exit 0
+          ${pkgs.coreutils}/bin/sleep 1
+        done
+
         mapfile -t process_ids < <(matching_process_ids)
         if [ "''${#process_ids[@]}" -gt 0 ]; then
           kill -TERM -- "''${process_ids[@]}" 2>/dev/null || true

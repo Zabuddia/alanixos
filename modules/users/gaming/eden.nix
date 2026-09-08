@@ -121,6 +121,7 @@ in
     icon = "mdi:nintendo-switch";
     command = lib.getExe package;
     processNames = [ "eden" "eden-emu" "Eden" ];
+    windowIds = [ "dev.eden_emu.eden" "eden" "eden-emu" ];
   };
 
   config.home.modules = lib.optionals cfg.enable [

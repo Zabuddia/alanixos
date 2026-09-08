@@ -11,6 +11,7 @@ in
     icon = "mdi:nintendo-ds";
     command = lib.getExe pkgs-unstable.melonds;
     processNames = [ "melonDS" ];
+    windowIds = [ "net.kuribo64.melonDS" "melonDS" ];
   };
 
   config.home.modules = lib.optionals cfg.enable [

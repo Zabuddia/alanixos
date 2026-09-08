@@ -20,6 +20,7 @@ in
         icon = "mdi:gamepad-variant";
         command = "heroic --console --fullscreen";
         processNames = [ "heroic" ];
+        windowIds = [ "com.heroicgameslauncher.hgl" "heroic" ];
       };
     })
   ];

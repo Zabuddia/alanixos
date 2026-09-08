@@ -201,6 +201,7 @@ in
     icon = "mdi:nintendo-switch";
     command = lib.getExe ryubingLauncher;
     processNames = [ "Ryujinx" "ryubing" ];
+    windowIds = [ "Ryujinx" ];
   };
 
   config.home.modules = lib.optionals cfg.enable [

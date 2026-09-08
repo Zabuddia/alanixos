@@ -106,6 +106,7 @@ in
     icon = "mdi:dolphin";
     command = lib.getExe pkgs-unstable.dolphin-emu;
     processNames = [ "dolphin-emu" ];
+    windowIds = [ "dolphin-emu" ];
   };
 
   config.home.modules = lib.optionals cfg.enable [
