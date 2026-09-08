@@ -31,9 +31,9 @@ let
 
   appCases = lib.concatStringsSep "\n" (lib.mapAttrsToList (appId: app: ''
     ${lib.escapeShellArg appId})
-      process_names=${lib.escapeShellArg (lib.concatStringsSep "\n" app.processNames)}
       launch_command=${lib.escapeShellArg config.appLauncher.launchCommands.${appId}}
       close_command=${lib.escapeShellArg config.appLauncher.closeCommands.${appId}}
+      running_command=${lib.escapeShellArg config.appLauncher.runningCommands.${appId}}
       ;;
   '') selectedApps);
 
@@ -68,13 +68,7 @@ ${appCases}
 
     app_is_running() {
       load_app "$1"
-      while IFS= read -r process_name; do
-        [ -n "$process_name" ] || continue
-        if ${pkgs.procps}/bin/pgrep -x -- "$process_name" >/dev/null 2>&1; then
-          return 0
-        fi
-      done <<< "$process_names"
-      return 1
+      "$running_command"
     }
 
     publish_state() {

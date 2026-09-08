@@ -39,14 +39,26 @@ let
   processRunningShell = processNames: ''
     process_names=${lib.escapeShellArg (lib.concatStringsSep "\n" processNames)}
 
+    matching_process_ids() {
+      for process_dir in /proc/[0-9]*; do
+        [ -r "$process_dir/comm" ] && [ -r "$process_dir/cmdline" ] || continue
+        process_id="''${process_dir##*/}"
+        process_comm="$(<"$process_dir/comm")"
+        process_argv0=""
+        IFS= read -r -d "" process_argv0 < "$process_dir/cmdline" 2>/dev/null || true
+        process_executable="''${process_argv0##*/}"
+        while IFS= read -r process_name; do
+          [ -n "$process_name" ] || continue
+          if [ "$process_comm" = "$process_name" ] || [ "$process_executable" = "$process_name" ]; then
+            printf '%s\n' "$process_id"
+            break
+          fi
+        done <<< "$process_names"
+      done
+    }
+
     process_is_running() {
-      while IFS= read -r process_name; do
-        [ -n "$process_name" ] || continue
-        if ${pkgs.procps}/bin/pgrep -x -- "$process_name" >/dev/null 2>&1; then
-          return 0
-        fi
-      done <<< "$process_names"
-      return 1
+      [ -n "$(matching_process_ids)" ]
     }
   '';
 
@@ -72,6 +84,12 @@ let
 
   launchCommands = lib.mapAttrs (appId: app: toString (launchOnce appId app)) cfg.apps;
 
+  runningCommands = lib.mapAttrs (appId: app: toString (pkgs.writeShellScript "alanix-is-running-${appId}" ''
+    set -u
+    ${processRunningShell app.processNames}
+    process_is_running
+  '')) cfg.apps;
+
   closeCommands = lib.mapAttrs (appId: app: toString (pkgs.writeShellScript "alanix-close-${appId}" (
     if app.closeCommand != null then
       ''exec ${app.closeCommand}''
@@ -79,10 +97,10 @@ let
       ''
         set -u
         ${processRunningShell app.processNames}
-        while IFS= read -r process_name; do
-          [ -n "$process_name" ] || continue
-          ${pkgs.procps}/bin/pkill -TERM -x -- "$process_name" 2>/dev/null || true
-        done <<< "$process_names"
+        mapfile -t process_ids < <(matching_process_ids)
+        if [ "''${#process_ids[@]}" -gt 0 ]; then
+          kill -TERM -- "''${process_ids[@]}" 2>/dev/null || true
+        fi
 
         for _ in {1..10}; do
           process_is_running || exit 0
@@ -166,6 +184,13 @@ in
       description = "Generated targeted commands for closing registered applications.";
     };
 
+    runningCommands = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      readOnly = true;
+      internal = true;
+      description = "Generated commands that detect registered applications by process name or executable.";
+    };
+
     desktopCommand = lib.mkOption {
       type = lib.types.str;
       readOnly = true;
@@ -185,6 +210,7 @@ in
     appLauncher = {
       inherit launchCommands;
       inherit closeCommands;
+      inherit runningCommands;
       desktopCommand = toString desktopCommand;
       closeFocusedCommand = toString closeFocusedCommand;
     };
