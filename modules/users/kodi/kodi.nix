@@ -36,6 +36,26 @@ let
     ++ lib.optionals hasAudiobookshelf [ (p.callPackage ./kodi-audiobookshelf-addon.nix { }) ]
     ++ lib.optionals hasInputstreamAdaptive [ p.inputstream-adaptive ]);
 
+  kodiCloseCommand = pkgs.writeShellScript "alanix-close-kodi" ''
+    set -u
+    rpc_url=${lib.escapeShellArg "http://127.0.0.1:${toString cfg.remoteControl.port}/jsonrpc"}
+    curl_args=(
+      --fail --silent --show-error --max-time 5
+      --header 'Content-Type: application/json'
+      --request POST
+      --data '{"jsonrpc":"2.0","id":1,"method":"Application.Quit"}'
+    )
+    ${lib.optionalString hasRemoteControlAuth ''
+      password="$(${pkgs.coreutils}/bin/tr -d '\r\n' < ${lib.escapeShellArg (if cfg.remoteControl.passwordFile != null then cfg.remoteControl.passwordFile else "")})"
+      curl_args+=(--user ${lib.escapeShellArg (if cfg.remoteControl.username != null then cfg.remoteControl.username else "")}:"$password")
+    ''}
+    if ${lib.boolToString hasRemoteControl} \
+      && ${pkgs.curl}/bin/curl "''${curl_args[@]}" "$rpc_url" >/dev/null; then
+      exit 0
+    fi
+    exec ${pkgs.sway}/bin/swaymsg '[app_id="Kodi"] kill'
+  '';
+
   tvheadendSettingsXml = server: ''
     <settings version="2">
         <setting id="kodi_addon_instance_name">${server.name}</setting>
@@ -522,6 +542,7 @@ in
     icon = "mdi:kodi";
     command = lib.getExe kodiPackage;
     processNames = [ "kodi" "kodi.bin" ];
+    closeCommand = toString kodiCloseCommand;
   };
 
   config.home.modules = lib.optionals cfg.enable [

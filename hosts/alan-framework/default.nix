@@ -198,8 +198,8 @@
       browser.enable = true;
       desktop = {
         enable = true;
-        screenshotMaxWidth = 960;
-        screenshotMaxHeight = 540;
+        screenshotMaxWidth = 1280;
+        screenshotMaxHeight = 720;
         hosts = [
           "alan-big-nixos"
           "alan-framework"
@@ -220,6 +220,7 @@
         enable = true;
         passwordFile = config.sops.secrets."forgejo-passwords/buddia".path;
       };
+      games.enable = true;
       kodi = {
         enable = true;
         invidiousUrl = "https://invidious.fifefin.com";
@@ -290,10 +291,11 @@
                 id = "qwen3.8-27b";
                 name = "Qwen3.8 27B";
                 api = "openai-completions";
-                reasoning = true;
+                reasoning = false;
                 input = [ "text" "image" ];
                 contextWindow = 131072;
-                maxTokens = 32768;
+                # This model is dedicated to bounded image descriptions.
+                maxTokens = 1024;
               }
               {
                 id = "ornith-1.5-35b-a3b";
@@ -683,7 +685,7 @@
             "--spec-draft-n-max"
             "4"
             "--reasoning"
-            "on"
+            "off"
             "--temp"
             "1.0"
             "--top-p"

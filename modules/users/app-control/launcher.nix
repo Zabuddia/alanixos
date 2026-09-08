@@ -27,6 +27,12 @@ let
         default = [ ];
         description = "Process names that prevent launching another instance.";
       };
+
+      closeCommand = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Optional fixed command used to close the application cleanly.";
+      };
     };
   });
 
@@ -65,6 +71,26 @@ let
   '';
 
   launchCommands = lib.mapAttrs (appId: app: toString (launchOnce appId app)) cfg.apps;
+
+  closeCommands = lib.mapAttrs (appId: app: toString (pkgs.writeShellScript "alanix-close-${appId}" (
+    if app.closeCommand != null then
+      ''exec ${app.closeCommand}''
+    else
+      ''
+        set -u
+        ${processRunningShell app.processNames}
+        while IFS= read -r process_name; do
+          [ -n "$process_name" ] || continue
+          ${pkgs.procps}/bin/pkill -TERM -x -- "$process_name" 2>/dev/null || true
+        done <<< "$process_names"
+
+        for _ in {1..10}; do
+          process_is_running || exit 0
+          ${pkgs.coreutils}/bin/sleep 1
+        done
+        exit 1
+      ''
+  ))) cfg.apps;
 
   desktopCommand = pkgs.writeShellScript "alanix-open-desktop-app" ''
     set -eu
@@ -133,6 +159,13 @@ in
       description = "Generated safe commands for registered applications.";
     };
 
+    closeCommands = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      readOnly = true;
+      internal = true;
+      description = "Generated targeted commands for closing registered applications.";
+    };
+
     desktopCommand = lib.mkOption {
       type = lib.types.str;
       readOnly = true;
@@ -151,6 +184,7 @@ in
   config = {
     appLauncher = {
       inherit launchCommands;
+      inherit closeCommands;
       desktopCommand = toString desktopCommand;
       closeFocusedCommand = toString closeFocusedCommand;
     };

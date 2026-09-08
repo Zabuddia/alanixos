@@ -11,6 +11,7 @@ in
         icon = "mdi:steam";
         command = "steam -gamepadui";
         processNames = [ "steam" "steamwebhelper" ];
+        closeCommand = "steam -shutdown";
       };
     })
     (lib.mkIf (gaming.enable && gaming.heroic.enable) {

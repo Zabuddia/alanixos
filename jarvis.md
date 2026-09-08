@@ -286,9 +286,58 @@ Expected behavior:
 
 ---
 
-# 9. Calendar / Radicale
+# 9. Video Games on alan-tv
 
-## 9.1 Read Calendar
+Game requests use `alan-tv`. Emulator and launcher power is available locally
+through Home Assistant. Individual installed games are found, opened, and
+closed through OpenClaw.
+
+### Home Assistant setup required
+
+In Home Assistant, assign the Azahar, Dolphin, Eden, Heroic, melonDS,
+RetroArch, Ryubing, and Steam switches to **Living Room** and expose them to
+Assist. Add voice aliases there only when speech recognition needs one.
+
+## 9.1 Emulator and Launcher Power
+
+- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn Dolphin on/off."**
+- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Is Dolphin on/off?"**
+- [ ] **[LOCAL / Home Assistant]** Repeat both tests for **RetroArch**,
+  **Eden**, **Ryubing**, **Azahar**, **melonDS**, **Steam**, and **Heroic**.
+
+Expected behavior: each switch reports the real application state. Turning an
+emulator or launcher off also closes a game currently running through it.
+
+## 9.2 Find and Launch Games
+
+- [ ] **[LLM / OpenClaw]** Say exactly: **"What games do I have on alan-tv?"**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Play Super Mario 64 on alan-tv."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Close Super Mario 64 on alan-tv."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Play Mario Kart Wii on alan-tv."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Play Super Mario Odyssey on alan-tv."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Play Hogwarts Legacy on alan-tv."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Close Hogwarts Legacy on alan-tv."**
+
+Expected behavior:
+
+1. Turn on the physical TV if needed and allow time for its state to update.
+2. Resolve the spoken title against the installed games on `alan-tv`.
+3. Refuse an ambiguous match instead of choosing arbitrarily.
+4. Launch or close the resolved game.
+5. Verify that the expected game or emulator process/window appears.
+
+## 9.3 Missing and Ambiguous Games
+
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Play Mario on alan-tv."**
+- [ ] Verify that Jarvis asks which matching Mario game to use.
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Play Jarvis Definitely Missing Game 987654 on alan-tv."**
+- [ ] Verify that Jarvis reports no match and launches nothing.
+
+---
+
+# 10. Calendar / Radicale
+
+## 10.1 Read Calendar
 
 OpenClaw reads the synchronized Radicale calendar using bounded local-time
 ranges. Recurring events are expanded for the requested range.
@@ -298,7 +347,7 @@ ranges. Recurring events are expanded for the requested range.
 - [x] **[LLM / OpenClaw]** Say exactly: **"What events are on my calendar this week?"**
 - [x] **[LLM / OpenClaw]** Say exactly: **"What is my next calendar event?"**
 
-## 9.2 Check Availability
+## 10.2 Check Availability
 
 Availability is calculated from events that overlap the requested instant or
 time window, including all-day and recurring events.
@@ -306,48 +355,48 @@ time window, including all-day and recurring events.
 - [x] **[LLM / OpenClaw]** Say exactly: **"Am I free this Friday at three PM?"**
 - [x] **[LLM / OpenClaw]** Say exactly: **"Find a one-hour free period on my calendar tomorrow afternoon."**
 
-## 9.3 Create Calendar Events
+## 10.3 Create Calendar Events
 
 Use a disposable test event when testing CRUD.
 
 - [x] **[LLM / OpenClaw]** Say exactly: **"Create a calendar event named Jarvis Test Event tomorrow at three PM for one hour."**
 
-## 9.4 Update Calendar Events
+## 10.4 Update Calendar Events
 
 - [x] **[LLM / OpenClaw]** Say exactly: **"Move the calendar event Jarvis Test Event tomorrow from three PM to four PM."**
 
-## 9.5 Delete Calendar Events
+## 10.5 Delete Calendar Events
 
 - [x] **[LLM / OpenClaw]** Say exactly: **"Delete the calendar event Jarvis Test Event tomorrow at four PM."**
 
 ---
 
-# 10. Contacts / Radicale
+# 11. Contacts / Radicale
 
 Use a disposable contact and run these sections in order. OpenClaw resolves an
 exact contact before reading or changing it and refuses ambiguous mutations.
 
-## 10.1 Create Contact
+## 11.1 Create Contact
 
 - [x] **[LLM / OpenClaw]** Say exactly: **"Create a contact named Jarvis Test Contact with phone number 214-555-0100 and email address jarvis-test@example.com."**
 
-## 10.2 Read Contacts
+## 11.2 Read Contacts
 
 - [x] **[LLM / OpenClaw]** Say exactly: **"Find the contact named Jarvis Test Contact."**
 - [x] **[LLM / OpenClaw]** Say exactly: **"What is the phone number for Jarvis Test Contact?"**
 - [x] **[LLM / OpenClaw]** Say exactly: **"What is the email address for Jarvis Test Contact?"**
 
-## 10.3 Update Contact
+## 11.3 Update Contact
 
 - [x] **[LLM / OpenClaw]** Say exactly: **"Change the phone number for Jarvis Test Contact to 214-555-0101."**
 
-## 10.4 Delete Contact
+## 11.4 Delete Contact
 
 - [x] **[LLM / OpenClaw]** Say exactly: **"Delete the contact named Jarvis Test Contact."**
 
 ---
 
-# 11. Computer Control
+# 12. Computer Control
 
 For computer-control commands, the preferred behavior is:
 
@@ -357,61 +406,56 @@ For computer-control commands, the preferred behavior is:
   exception. If no computer is named for those requests, use `alan-tv`.
 - An explicitly named computer always overrides the screen default.
 
-## 11.1 Online / Status
+## 12.1 Online / Status
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Is alan-framework-laptop online?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Is alan-tv online?"**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Is alan-framework-laptop online?"**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Is alan-tv online?"**
 
 The answer should distinguish an offline host from an online host whose desktop
 session is not currently available.
 
-## 11.2 List Apps / Windows
+## 12.2 List Apps / Windows
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"List the open applications on alan-framework-laptop."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"List the open applications on alan-tv."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"List the open applications on alan-framework-laptop."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"List the open applications on alan-tv."**
 
 These should list applications with open windows, not every installed app.
 
-## 11.3 Open Applications
+## 12.3 Open Applications
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Open Firefox on alan-framework-laptop."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Open Kodi on alan-tv."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Open Firefox on alan-framework-laptop."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Open Kodi on alan-tv."**
 
-## 11.4 Close Applications
+## 12.4 Close Applications
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Close Firefox on alan-framework-laptop."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Close Kodi on alan-tv."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Close Firefox on alan-framework-laptop."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Close Kodi on alan-tv."**
 
-## 11.5 Screen Inspection
+## 12.5 Screen Inspection
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Take a screenshot of alan-framework-laptop and describe what is on the screen."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Take a screenshot and describe what is on the screen."** → defaults to `alan-tv`
 
-## 11.6 Clipboard
+## 12.6 Clipboard
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Set the clipboard on alan-framework-laptop to Jarvis clipboard test."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Read the clipboard on alan-framework-laptop."**
-- [ ] Verify that it returns exactly **"Jarvis clipboard test."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Set the clipboard on alan-tv to Jarvis TV clipboard test."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Read the clipboard on alan-tv."**
-- [ ] Verify that it returns exactly **"Jarvis TV clipboard test."**
-
+- [x] **[LLM / OpenClaw]** Say exactly: **"Set the clipboard on alan-framework-laptop to Jarvis clipboard test."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Read the clipboard on alan-framework-laptop."**
 ---
 
-# 12. Browser Control
+# 13. Browser Control
 
-## 12.1 Open / Read Pages
+## 13.1 Open / Read Pages
 
 - [x] **[LLM / OpenClaw]** Say exactly: **"Open example.com in the browser and tell me the page title."**
 - [x] **[LLM / OpenClaw]** Say exactly: **"Open the NixOS website in the browser and summarize the home page."**
 
-## 12.2 Search
+## 13.2 Search
 
 - [x] **[LLM / OpenClaw]** Say exactly: **"Use the managed browser and searxng.fifefin.com to search for the NixOS Home Manager manual and tell me the title of the official result."**
 
 Expected result: **"Preface - Home Manager Manual - Nix community projects."**
 
-## 12.3 Page Interaction
+## 13.3 Page Interaction
 
 Use a harmless page specifically chosen for testing before adding site-specific workflows.
 
@@ -424,13 +468,13 @@ These tests use public pages that do not require authentication or retain the su
 
 ---
 
-# 13. File Access
+# 14. File Access
 
 OpenClaw should have **unrestricted filesystem access** on machines where its tool is intentionally installed/configured.
 
 It should also have especially convenient access to the Filebrowser/Syncthing folder because that is a common working area.
 
-## 13.1 General Filesystem
+## 14.1 General Filesystem
 
 - [x] **[LLM / OpenClaw]** Say exactly: **"List the files in slash tmp on alan-framework-laptop."**
 - [x] **[LLM / OpenClaw]** Say exactly: **"Create a file named slash tmp slash jarvis-test.txt on alan-framework-laptop containing the text Jarvis file test."**
@@ -438,7 +482,7 @@ It should also have especially convenient access to the Filebrowser/Syncthing fo
 - [x] **[LLM / OpenClaw]** Say exactly: **"Change slash tmp slash jarvis-test.txt on alan-framework-laptop so it contains the text Jarvis file test updated."**
 - [x] **[LLM / OpenClaw]** Say exactly: **"Delete slash tmp slash jarvis-test.txt on alan-framework-laptop."**
 
-## 13.2 Filebrowser / Syncthing Folder
+## 14.2 Filebrowser / Syncthing Folder
 
 These commands use OpenClaw's dedicated personal-files tool. Do not name a
 computer; OpenClaw operates on its local replica and Syncthing propagates the
@@ -452,58 +496,58 @@ changes to the other replicas.
 
 ---
 
-# 14. Self-Hosted Email — fifefin.com
+# 15. Self-Hosted Email — fifefin.com
 
 All email tests should use the self-hosted `fifefin.com` mail system unless this document is changed later.
 
 Use a test mailbox/contact you control for send/reply tests.
 
-## 14.1 Read / Search Email
+## 15.1 Read / Search Email
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"List my five newest emails in my fifefin.com mailbox."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"List my unread emails in my fifefin.com mailbox."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Find emails in my fifefin.com mailbox with Jarvis Test in the subject."**
 
-## 14.2 Draft Email
+## 15.2 Draft Email
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Draft an email from my fifefin.com account to TEST_EMAIL with subject Jarvis Test and body This is a Jarvis email test. Do not send it."**
 - [ ] Confirm a draft exists and has the exact intended recipient, subject, and body.
 
-## 14.3 Send Email
+## 15.3 Send Email
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Send an email from my fifefin.com account to TEST_EMAIL with subject Jarvis Send Test and body This is a Jarvis send test."**
 - [ ] Confirm receipt at the test mailbox.
 
-## 14.4 Reply
+## 15.4 Reply
 
 - [ ] Send a test message to the fifefin.com account with subject `Jarvis Reply Test`.
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Reply to the newest email with subject Jarvis Reply Test and say This is the Jarvis reply."**
 - [ ] Confirm the reply remains in the original email thread.
 
-## 14.5 Mail Management
+## 15.5 Mail Management
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Mark the newest email with subject Jarvis Test as read."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Archive the newest email with subject Jarvis Test."**
 
 ---
 
-# 15. XMPP / Prosody
+# 16. XMPP / Prosody
 
-## 15.1 Send Message
+## 16.1 Send Message
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Send the XMPP account TEST_XMPP the message This is a Jarvis XMPP test."**
 - [ ] Confirm the message arrives.
 
-## 15.2 Read Messages
+## 16.2 Read Messages
 
 - [ ] Send a test message to the user's XMPP account.
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Read my newest XMPP message."**
 
-## 15.3 Reply
+## 16.3 Reply
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Reply to my newest XMPP message and say This is the Jarvis XMPP reply."**
 
-## 15.4 Talk to Jarvis Through XMPP
+## 16.4 Talk to Jarvis Through XMPP
 
 - [ ] Send Jarvis an XMPP message containing exactly: **"Is the TV on?"**
 - [ ] Jarvis receives and processes the message.
@@ -512,7 +556,7 @@ Use a test mailbox/contact you control for send/reply tests.
 
 ---
 
-# 16. Maps / Places / Location Awareness
+# 17. Maps / Places / Location Awareness
 
 OpenClaw should know the user's configured home address/location without requiring the address to be repeated on every request.
 
@@ -527,26 +571,24 @@ Store the home address in an appropriate private configuration/secret source rat
 
 ---
 
-# 17. Bitcoin / Node Status
+# 18. Bitcoin / Node Status
 
 Keep Bitcoin functionality read-only unless explicitly expanded later.
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"What is the current Bitcoin block height on my node?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Is Bitcoin Core on my node fully synchronized?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Is Fulcrum, my Electrum server, running and fully synchronized?"**
+- [x] **[LLM / OpenClaw]** Say exactly: **"What is the current Bitcoin block height on my node?"**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Is Bitcoin Core on my node fully synchronized?"**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Is Fulcrum, my Electrum server, running and fully synchronized?"**
 
 Balance and transaction history require a loaded read-only Bitcoin Core wallet
 on `alan-node`. Import only watch-only descriptors or public keys; never expose
 wallet private keys to OpenClaw.
 
-- [ ] A watch-only wallet is loaded on `alan-node` and appears in `bitcoin-read wallets`.
-- [ ] **[LLM / OpenClaw]** Say exactly: **"What is my Bitcoin balance?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"What are my five latest Bitcoin transactions?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"What is my Bitcoin balance and what are my five latest transactions?"**
-
+- [x] A watch-only wallet is loaded on `alan-node` and appears in `bitcoin-read wallets`.
+- [x] **[LLM / OpenClaw]** Say exactly: **"What is my Bitcoin balance?"**
+- [x] **[LLM / OpenClaw]** Say exactly: **"What are my five latest Bitcoin transactions?"**
 ---
 
-# 18. System / Service Status
+# 19. System / Service Status
 
 OpenClaw should be able to inspect known hosts and services.
 
@@ -557,7 +599,7 @@ OpenClaw should be able to inspect known hosts and services.
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Is my Prosody XMPP server running?"**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Which of my configured computers are offline?"**
 
-## 18.1 Service Logs / Diagnosis
+## 19.1 Service Logs / Diagnosis
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Show me the recent errors from the Jellyfin service."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Tell me why the Navidrome service is not running."**
@@ -566,7 +608,7 @@ Run failure-path tests against a disposable/test service where possible instead 
 
 ---
 
-# 19. AdGuard Home
+# 20. AdGuard Home
 
 Use Home Assistant directly for capabilities that its AdGuard integration already exposes cleanly. Use OpenClaw only for queries/actions that require deeper inspection outside HA.
 
@@ -581,7 +623,7 @@ If detailed statistics are not available as HA intents, route them through OpenC
 
 ---
 
-# 20. Wake-on-LAN / Automatic Computer Wake
+# 21. Wake-on-LAN / Automatic Computer Wake
 
 Jarvis should be able to wake any explicitly named configured computer.
 
@@ -590,7 +632,7 @@ Jarvis should be able to wake any explicitly named configured computer.
 
 If Home Assistant does not expose a given computer's WOL switch cleanly, that specific host may instead use OpenClaw; prefer Home Assistant when possible.
 
-## 20.1 Automatic Wake as Part of Another Task
+## 21.1 Automatic Wake as Part of Another Task
 
 When a requested task requires a computer that is currently off, Jarvis should wake it first and then continue the original task.
 
@@ -603,7 +645,7 @@ When a requested task requires a computer that is currently off, Jarvis should w
 
 ---
 
-# 21. Weather / Time
+# 22. Weather / Time
 
 Prefer Home Assistant/local integrations for simple deterministic weather/time queries when those intents are available.
 
@@ -614,11 +656,11 @@ Prefer Home Assistant/local integrations for simple deterministic weather/time q
 
 ---
 
-# 22. Cross-Tool Workflows
+# 23. Cross-Tool Workflows
 
 Do these only after the underlying individual tools pass.
 
-## 22.1 Contact → Email
+## 23.1 Contact → Email
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Find TEST_CONTACT in my contacts and send that contact an email from my fifefin.com account with subject Jarvis Cross Tool Test and body This is a cross-tool test."**
 
@@ -626,7 +668,7 @@ Expected chain:
 
 Contacts → resolve email address → fifefin.com mail → send → report actual send result.
 
-## 22.2 Email → Calendar
+## 23.2 Email → Calendar
 
 Create a test email containing an explicit date/time first.
 
@@ -636,11 +678,11 @@ Expected chain:
 
 Email → extract event → calendar → create event → verify.
 
-## 22.3 Media + Automatic Wake
+## 23.3 Media + Automatic Wake
 
 With the media PC powered off:
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play the movie The Incredibles from Jellyfin on Kodi."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play the movie The Incredibles from Jellyfin on Kodi."**
 
 Expected chain:
 
@@ -648,28 +690,28 @@ Detect media PC offline → wake media PC → wait for Kodi/tool availability �
 
 ---
 
-# 23. Failure / Truthfulness Tests
+# 24. Failure / Truthfulness Tests
 
 These tests ensure Jarvis does not claim success merely because it attempted an action.
 
-## 23.1 Offline Computer
+## 24.1 Offline Computer
 
 - [ ] Choose a computer that is intentionally offline and cannot currently be woken.
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Open Firefox on OFFLINE_TEST_COMPUTER."**
 - [ ] Jarvis reports that the computer is unavailable instead of claiming Firefox opened.
 
-## 23.2 Missing Media
+## 24.2 Missing Media
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Play the movie Jarvis Definitely Missing Movie 987654 from Jellyfin on Kodi."**
 - [ ] Jarvis reports that the movie could not be found.
 - [ ] Jarvis does not claim playback started.
 
-## 23.3 Missing Contact
+## 24.3 Missing Contact
 
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Find the phone number for Jarvis Definitely Missing Contact 987654."**
 - [ ] Jarvis reports no matching contact.
 
-## 23.4 Failed Device Action
+## 24.4 Failed Device Action
 
 Test using a safe method of making a test entity temporarily unavailable.
 
@@ -678,11 +720,11 @@ Test using a safe method of making a test entity temporarily unavailable.
 
 ---
 
-# 24. Routing Acceptance Tests
+# 25. Routing Acceptance Tests
 
 These tests are specifically about selecting the correct architecture path.
 
-## 24.1 Commands That Should Stay Local
+## 25.1 Commands That Should Stay Local
 
 The following should use Home Assistant/local intent handling when supported:
 
@@ -702,7 +744,7 @@ For every test above:
 
 - [ ] Verify the request did **not** unnecessarily invoke OpenClaw/LLM reasoning.
 
-## 24.2 Commands That Should Route to OpenClaw
+## 25.2 Commands That Should Route to OpenClaw
 
 The following should intentionally use OpenClaw:
 
@@ -713,6 +755,7 @@ The following should intentionally use OpenClaw:
 - [ ] **"What is the email address for Jarvis Test Contact?"** → LLM
 - [ ] **"Open Firefox on alan-framework-laptop."** → LLM
 - [ ] **"Take a screenshot of alan-framework-laptop and describe what is on the screen."** → LLM
+- [ ] **"Play Super Mario 64 on alan-tv."** → LLM
 - [ ] **"List the files in my Filebrowser folder."** → LLM
 - [ ] **"List my five newest emails in my fifefin.com mailbox."** → LLM
 - [ ] **"Find the nearest Walmart to my home address."** → LLM
@@ -724,7 +767,7 @@ For every test above:
 
 ---
 
-# 25. Regression Test Set
+# 26. Regression Test Set
 
 Once individual sections work, keep this small set as the **fast regression suite** after significant changes.
 
@@ -738,6 +781,7 @@ Once individual sections work, keep this small set as the **fast regression suit
 - [ ] **[LLM]** "What events are on my calendar tomorrow?"
 - [ ] **[LLM]** "What is the email address for TEST_CONTACT?"
 - [ ] **[LLM]** "List the open applications on alan-framework-laptop."
+- [ ] **[LLM]** "Play Super Mario 64 on alan-tv."
 - [ ] **[LLM]** "List the files in my Filebrowser folder."
 - [ ] **[LLM]** "List my five newest emails in my fifefin.com mailbox."
 - [ ] **[LLM]** "Find the nearest Walmart to my home address."
@@ -745,7 +789,7 @@ Once individual sections work, keep this small set as the **fast regression suit
 
 ---
 
-# 26. Backlog / Ideas to Add Later
+# 27. Backlog / Ideas to Add Later
 
 Keep possible future capabilities here without mixing them into the active acceptance suite.
 

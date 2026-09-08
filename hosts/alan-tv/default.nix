@@ -117,6 +117,18 @@
 
         sh.enable = true;
         agentControl.enable = true;
+        gameControl = {
+          enable = true;
+          romRoot = "${config.alanix.syncthing.syncRoot}/games/roms";
+          titleOverrides = {
+            "3ds/0004000000030800_v01.trim.3ds" = "Mario Kart 7";
+            "3ds/0004000000054000_v01.trim.3ds" = "Super Mario 3D Land";
+            "3ds/0004000000055E00_v00.trim.3ds" = "Pokémon Y";
+            "3ds/000400000007AE00_v00.trim.3ds" = "New Super Mario Bros. 2";
+            "3ds/00040000000EDF00_v02.trim.3ds" = "Super Smash Bros. for Nintendo 3DS";
+            "nds/NEW_MARIO_A2DE01_00.nds" = "New Super Mario Bros.";
+          };
+        };
 
         desktop = {
           enable = true;
@@ -242,14 +254,27 @@
             requireAuthentication = false;
           };
         };
-        mqttKodi = {
+        mqttApps = {
           enable = true;
           broker = "alan-home";
-          kodiJsonRpcUrl = "http://127.0.0.1:8080/jsonrpc";
-          topicPrefix = "alan-tv/kodi";
-          legacyTopicPrefix = "alan-tv";
+          topicPrefix = "alan-tv/apps";
           deviceId = "alan_tv";
           deviceName = "alan-tv";
+          retainedTopicsToClear = [
+            "alan-tv/kodi/state"
+            "alan-tv/kodi/status"
+          ];
+          apps = [
+            "azahar"
+            "dolphin"
+            "eden"
+            "heroic"
+            "kodi"
+            "melonds"
+            "retroarch"
+            "ryubing"
+            "steam"
+          ];
         };
         cecControl = {
           enable = true;

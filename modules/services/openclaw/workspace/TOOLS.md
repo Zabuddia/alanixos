@@ -110,7 +110,8 @@ the job definition.
 - For structured screen context, use `desktop-inspect HOST focused|outputs`. For
   an image, run `desktop-inspect HOST screenshot > FILE.png`, keep it in the
   workspace, then immediately call `image` on it with a concise description
-  prompt relevant to the request. Do not `read`, list, or precheck the file.
+  prompt relevant to the request. Do not `read`, list, or precheck the file. If
+  image analysis times out, report that failure without retrying the same image.
 - Read text with `desktop-inspect HOST clipboard`; pipe writes into
   `desktop-control HOST clipboard-write`. Clipboard contents are private: do
   not persist or repeat them beyond the task.
@@ -120,6 +121,23 @@ the job definition.
   and action. Never substitute an HA media entity or retry indefinitely.
 - To power on an off host, use its HA Wake on LAN button. WOL requires supported
   hardware on alan-home's LAN and cannot wake `randy-big-nixos` or `fife-tv`.
+
+## Video games on alan-tv
+
+- `alan-tv` is the fixed game computer. Before opening a game through OpenClaw,
+  perform the same physical-TV power check used for Kodi playback. The Kodi
+  application does not need to be open.
+- Use `game-control list` to list installed games or `game-control search
+  "TITLE"` to resolve a title. These return stable game IDs without exposing
+  filesystem paths. If search returns multiple matches, ask which game the
+  operator means; if it returns none, report that and launch nothing.
+- Open exactly one resolved result with `game-control launch GAME_ID`. Close a
+  resolved title with `game-control close GAME_ID`. Use only an ID returned by
+  the current inventory; never pass a path, executable, desktop ID, or invented
+  ID. Both commands verify their observed result.
+- Use `game-control running` for game activity. Emulator and launcher power is
+  also available through the named Home Assistant switches for fast local
+  voice control. Do not substitute generic desktop control for game titles.
 
 ## Managed browser
 

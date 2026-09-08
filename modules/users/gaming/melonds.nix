@@ -6,6 +6,13 @@ in
 {
   options.melonds.enable = lib.mkEnableOption "melonDS for this user";
 
+  config.appLauncher.apps.melonds = lib.mkIf cfg.enable {
+    label = "melonDS";
+    icon = "mdi:nintendo-ds";
+    command = lib.getExe pkgs-unstable.melonds;
+    processNames = [ "melonDS" ];
+  };
+
   config.home.modules = lib.optionals cfg.enable [
     ({ config, lib, ... }:
       let

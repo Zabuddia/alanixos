@@ -7,25 +7,16 @@ let
 
   featureModules = [
     ./users/agent-control.nix
-    ./users/app-launcher.nix
-    ./users/antimicrox.nix
-    ./users/azahar.nix
+    ./users/app-control
     ./users/cec-control.nix
     ./users/chromium.nix
     ./users/desktop.nix
-    ./users/dolphin.nix
-    ./users/eden.nix
-    ./users/evdevhook2.nix
-    ./users/gaming-apps.nix
+    ./users/gaming
     ./users/git.nix
     ./users/kodi/kodi.nix
     ./users/librewolf.nix
     ./users/makemkv.nix
-    ./users/melonds.nix
-    ./users/mqtt-kodi.nix
     ./users/nextcloud-client.nix
-    ./users/retroarch.nix
-    ./users/ryubing.nix
     ./users/sh.nix
     ./users/ssh.nix
     ./users/syncthing-tray.nix
