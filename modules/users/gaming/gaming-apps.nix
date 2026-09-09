@@ -18,8 +18,8 @@ in
       heroic = {
         label = "Heroic";
         icon = "mdi:gamepad-variant";
-        command = "heroic --console --fullscreen";
-        processNames = [ "heroic" ];
+        command = "heroic --force-device-scale-factor=1 --console --fullscreen";
+        commandLineContains = [ "/opt/heroic/resources/app.asar" ];
         windowIds = [ "com.heroicgameslauncher.hgl" "heroic" ];
       };
     })

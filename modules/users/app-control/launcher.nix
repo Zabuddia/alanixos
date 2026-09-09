@@ -28,6 +28,12 @@ let
         description = "Process names that prevent launching another instance.";
       };
 
+      commandLineContains = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "Fixed command-line strings that identify wrapped applications whose process name is not unique.";
+      };
+
       windowIds = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
@@ -42,8 +48,9 @@ let
     };
   });
 
-  processRunningShell = processNames: ''
+  processRunningShell = processNames: commandLineContains: ''
     process_names=${lib.escapeShellArg (lib.concatStringsSep "\n" processNames)}
+    command_line_needles=${lib.escapeShellArg (lib.concatStringsSep "\n" commandLineContains)}
 
     matching_process_ids() {
       for process_dir in /proc/[0-9]*; do
@@ -53,13 +60,27 @@ let
         process_argv0=""
         IFS= read -r -d "" process_argv0 < "$process_dir/cmdline" 2>/dev/null || true
         process_executable="''${process_argv0##*/}"
+        process_matches=""
         while IFS= read -r process_name; do
           [ -n "$process_name" ] || continue
           if [ "$process_comm" = "$process_name" ] || [ "$process_executable" = "$process_name" ]; then
-            printf '%s\n' "$process_id"
+            process_matches=1
             break
           fi
         done <<< "$process_names"
+
+        if [ -z "$process_matches" ] && [ -n "$command_line_needles" ]; then
+          process_command_line="$(${pkgs.coreutils}/bin/tr '\0' ' ' < "$process_dir/cmdline")"
+          while IFS= read -r command_line_needle; do
+            [ -n "$command_line_needle" ] || continue
+            if [[ "$process_command_line" == *"$command_line_needle"* ]]; then
+              process_matches=1
+              break
+            fi
+          done <<< "$command_line_needles"
+        fi
+
+        [ -z "$process_matches" ] || printf '%s\n' "$process_id"
       done
     }
 
@@ -71,7 +92,7 @@ let
   launchOnce = appId: app: pkgs.writeShellScript "alanix-open-${appId}" ''
     set -u
 
-    ${processRunningShell app.processNames}
+    ${processRunningShell app.processNames app.commandLineContains}
 
     launch_lock_dir="''${XDG_RUNTIME_DIR:-/tmp}/alanix-app-launcher-locks"
     ${pkgs.coreutils}/bin/mkdir -p "$launch_lock_dir"
@@ -92,7 +113,7 @@ let
 
   runningCommands = lib.mapAttrs (appId: app: toString (pkgs.writeShellScript "alanix-is-running-${appId}" ''
     set -u
-    ${processRunningShell app.processNames}
+    ${processRunningShell app.processNames app.commandLineContains}
     process_is_running
   '')) cfg.apps;
 
@@ -102,7 +123,7 @@ let
     else
       ''
         set -u
-        ${processRunningShell app.processNames}
+        ${processRunningShell app.processNames app.commandLineContains}
         window_ids_json=${lib.escapeShellArg (builtins.toJSON app.windowIds)}
 
         tree="$(${pkgs.sway}/bin/swaymsg -r -t get_tree 2>/dev/null || true)"
@@ -220,7 +241,7 @@ in
       type = lib.types.attrsOf lib.types.str;
       readOnly = true;
       internal = true;
-      description = "Generated commands that detect registered applications by process name or executable.";
+      description = "Generated commands that detect registered applications by process identity.";
     };
 
     desktopCommand = lib.mkOption {

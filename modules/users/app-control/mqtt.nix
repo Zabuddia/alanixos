@@ -170,8 +170,11 @@ in
         message = "alanix.users.accounts.${name}.mqttApps contains an unregistered appLauncher ID.";
       }
       {
-        assertion = lib.all (appId: (config.appLauncher.apps.${appId}.processNames or [ ]) != [ ]) cfg.apps;
-        message = "Every mqttApps application must declare processNames.";
+        assertion = lib.all (appId:
+          (config.appLauncher.apps.${appId}.processNames or [ ]) != [ ]
+          || (config.appLauncher.apps.${appId}.commandLineContains or [ ]) != [ ]
+        ) cfg.apps;
+        message = "Every mqttApps application must declare processNames or commandLineContains.";
       }
     ];
 
