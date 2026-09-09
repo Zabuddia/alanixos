@@ -36,9 +36,12 @@ EOF
         *) usage; exit 2 ;;
       esac
 
+      printf -v remote_command '%q ' \
+        ${lib.escapeShellArg remoteControl} "$action" "$@"
+
       set +e
       output="$(ssh -o BatchMode=yes -o ConnectTimeout=${toString cfg.connectTimeout} \
-        -- ${lib.escapeShellArg cfg.host} ${lib.escapeShellArg remoteControl} "$action" "$@" 2>&1)"
+        -- ${lib.escapeShellArg cfg.host} "$remote_command" 2>&1)"
       status=$?
       set -e
       if [ "$status" -ne 0 ]; then

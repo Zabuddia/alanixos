@@ -311,7 +311,7 @@ emulator or launcher off also closes a game currently running through it.
 
 ## 9.2 Find and Launch Games
 
-- [ ] **[LLM / OpenClaw]** Say exactly: **"What games do I have on alan-tv?"**
+- [x] **[LLM / OpenClaw]** Say exactly: **"What games do I have on alan-tv?"**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Play Super Mario 64 on alan-tv."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Close Super Mario 64 on alan-tv."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Play Mario Kart Wii on alan-tv."**
