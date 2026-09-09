@@ -24,7 +24,7 @@ PLATFORMS = {
 
 APP_IDS = {
     "Dolphin": ["dolphin-emu"],
-    "RetroArch": ["retroarch"],
+    "RetroArch": ["com.libretro.RetroArch", "retroarch"],
     "melonDS": ["net.kuribo64.melonDS", "melonDS"],
     "Azahar": ["org.azahar_emu.Azahar", "azahar"],
     "Ryubing": ["Ryujinx"],
@@ -327,21 +327,47 @@ def heroic_state_is_running(game, state=None, windows=None):
 
 
 def process_running(names):
-    for name in names:
-        if subprocess.run(["pgrep", "-x", "--", name], stdout=subprocess.DEVNULL).returncode == 0:
+    expected = set(names)
+    for process_dir in Path("/proc").glob("[0-9]*"):
+        try:
+            process_name = (process_dir / "comm").read_text().strip()
+            argv = (process_dir / "cmdline").read_bytes().split(b"\0")
+        except OSError:
+            continue
+        executable = os.path.basename(os.fsdecode(argv[0])) if argv and argv[0] else ""
+        if process_name in expected or executable in expected:
             return True
     return False
+
+
+def command_line_contains(value):
+    needle = os.fsencode(value)
+    for process_dir in Path("/proc").glob("[0-9]*"):
+        try:
+            arguments = (process_dir / "cmdline").read_bytes().split(b"\0")
+        except OSError:
+            continue
+        if needle in arguments:
+            return True
+    return False
+
+
+def launcher_is_running(game, ids=None):
+    if game["platform"] in {"steam", "heroic"}:
+        return is_running(game, ids)
+    ids = open_app_ids() if ids is None else ids
+    if any(value.casefold() in ids for value in expected_ids(game)):
+        return True
+    return process_running(PROCESS_NAMES[game["launcher"]])
 
 
 def is_running(game, ids=None):
     if game["platform"] == "heroic":
         return heroic_state_is_running(game)
-    ids = open_app_ids() if ids is None else ids
-    if any(value.casefold() in ids for value in expected_ids(game)):
-        return True
     if game["platform"] != "steam":
-        return process_running(PROCESS_NAMES[game["launcher"]])
-    return False
+        return command_line_contains(game["_path"]) and launcher_is_running(game, ids)
+    ids = open_app_ids() if ids is None else ids
+    return any(value.casefold() in ids for value in expected_ids(game))
 
 
 def command_for(game, args):
@@ -376,9 +402,12 @@ def command_for(game, args):
 def launch(game, args):
     state = load_state()
     if is_running(game):
-        if game["platform"] == "steam" or state.get(game["launcher"]) == game["id"]:
-            print(json.dumps({"ok": True, "alreadyRunning": True, "game": public(game)}, separators=(",", ":")))
-            return
+        if game["platform"] not in {"steam", "heroic"}:
+            state[game["launcher"]] = game["id"]
+            save_state(state)
+        print(json.dumps({"ok": True, "alreadyRunning": True, "game": public(game)}, separators=(",", ":")))
+        return
+    if game["platform"] not in {"steam", "heroic"} and launcher_is_running(game):
         fail(f"{game['launcher']} is already running without the selected game; close it before launching this title", 69)
     if game["platform"] == "heroic":
         active_heroic = state.get("Heroic")
@@ -445,8 +474,8 @@ def close_game(game):
                 return
         fail("The close command was sent, but the Heroic game is still running", 69)
 
-    if game["platform"] != "steam" and state.get(game["launcher"]) != game["id"]:
-        fail("That game was not launched by game-control; use the emulator's Home Assistant switch to close an unknown or manually opened session", 66)
+    if game["platform"] != "steam" and not is_running(game):
+        fail("The selected game is not running", 66)
     if game["platform"] == "steam":
         subprocess.run(["steam", f"steam://stop/{game['appid']}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     targets = {value.casefold() for value in expected_ids(game)}
@@ -499,7 +528,6 @@ def main():
                 game["platform"] == "heroic" and heroic_state_is_running(game, state=state)
             ) or (
                 game["platform"] not in {"steam", "heroic"}
-                and state.get(game["launcher"]) == game["id"]
                 and is_running(game, ids)
             )
         ]
