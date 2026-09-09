@@ -146,7 +146,10 @@
             fullscreenClassPatterns = [ "^steam_app_[0-9]+$" ];
           };
         };
-        azahar.enable = true;
+        azahar = {
+          enable = true;
+          confirmExit = false;
+        };
         antimicrox = {
           enable = true;
           modeShift = {

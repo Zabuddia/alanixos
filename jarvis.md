@@ -312,14 +312,13 @@ emulator or launcher off also closes a game currently running through it.
 ## 9.2 Find and Launch Games
 
 - [x] **[LLM / OpenClaw]** Say exactly: **"What games do I have on alan-tv?"**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play Super Mario 64 on alan-tv."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Close Super Mario 64 on alan-tv."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play Mario Kart Wii on alan-tv."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play Super Mario Odyssey on alan-tv."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play Hogwarts Legacy on alan-tv."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Close Hogwarts Legacy on alan-tv."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play Rocket League on alan-tv."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Close Rocket League on alan-tv."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play/close Super Mario 64 on alan-tv."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Play/close Mario Kart Wii on alan-tv."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play/close New Super Mario Bros. on alan-tv."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Play/close Mario Kart 7 on alan-tv."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Play/close Super Mario Odyssey on alan-tv."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Play/close Hogwarts Legacy on alan-tv."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Play/close Rocket League on alan-tv."**
 
 Expected behavior:
 
