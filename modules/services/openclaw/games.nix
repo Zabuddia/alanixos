@@ -28,7 +28,7 @@ EOF
         search) [ "$#" -eq 1 ] || { usage; exit 2; } ;;
         launch|close)
           [ "$#" -eq 1 ] || { usage; exit 2; }
-          if [[ ! "$1" =~ ^(steam:[0-9]+|rom:[a-z0-9]+:[a-f0-9]{16})$ ]]; then
+          if [[ ! "$1" =~ ^(steam:[0-9]+|rom:[a-z0-9]+:[a-f0-9]{16}|heroic:(legendary|gog|nile):[a-f0-9]{16})$ ]]; then
             echo "Invalid game ID; use an ID returned by list or search" >&2
             exit 64
           fi

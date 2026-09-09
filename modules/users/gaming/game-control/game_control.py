@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlencode
 
 
 PLATFORMS = {
@@ -18,7 +19,7 @@ PLATFORMS = {
     "n64": {"extensions": {".z64", ".n64", ".v64"}, "launcher": "RetroArch"},
     "nds": {"extensions": {".nds"}, "launcher": "melonDS"},
     "3ds": {"extensions": {".3ds", ".cci", ".cxi"}, "launcher": "Azahar"},
-    "switch": {"extensions": {".xci", ".nsp"}, "launcher": "Eden"},
+    "switch": {"extensions": {".xci", ".nsp"}, "launcher": "Ryubing"},
 }
 
 APP_IDS = {
@@ -26,7 +27,7 @@ APP_IDS = {
     "RetroArch": ["retroarch"],
     "melonDS": ["net.kuribo64.melonDS", "melonDS"],
     "Azahar": ["org.azahar_emu.Azahar", "azahar"],
-    "Eden": ["dev.eden_emu.eden", "eden", "eden-emu"],
+    "Ryubing": ["Ryujinx"],
 }
 
 PROCESS_NAMES = {
@@ -34,7 +35,7 @@ PROCESS_NAMES = {
     "RetroArch": ["retroarch"],
     "melonDS": ["melonDS"],
     "Azahar": ["azahar"],
-    "Eden": ["eden", "eden-emu", "Eden"],
+    "Ryubing": ["Ryujinx", "ryubing"],
 }
 
 
@@ -99,6 +100,72 @@ def parse_steam_manifest(path):
     }
 
 
+def nested_string(value, *paths):
+    for path in paths:
+        current = value
+        for key in path:
+            if not isinstance(current, dict):
+                current = None
+                break
+            current = current.get(key)
+        if isinstance(current, str) and current.strip():
+            return current.strip()
+    return None
+
+
+def heroic_installed_games():
+    games = []
+    cache_root = Path.home() / ".config/heroic/store_cache"
+    sources = {
+        "legendary": cache_root / "legendary_install_info.json",
+        "gog": cache_root / "gog_install_info.json",
+        "nile": cache_root / "nile_install_info.json",
+    }
+    for runner, path in sources.items():
+        try:
+            contents = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(contents, dict):
+            records = [
+                (key, value) for key, value in contents.items()
+                if not key.startswith("__") and isinstance(value, dict)
+            ]
+        elif isinstance(contents, list):
+            records = [(str(index), value) for index, value in enumerate(contents) if isinstance(value, dict)]
+        else:
+            continue
+        for key, record in records:
+            app_name = nested_string(
+                record,
+                ("game", "app_name"),
+                ("game", "appName"),
+                ("app_name",),
+                ("appName",),
+                ("id",),
+            ) or key
+            title = nested_string(
+                record,
+                ("game", "title"),
+                ("game", "app_title"),
+                ("title",),
+                ("app_title",),
+                ("name",),
+            )
+            if not title or not app_name:
+                continue
+            token = hashlib.sha256(f"{runner}:{app_name}".encode()).hexdigest()[:16]
+            games.append({
+                "id": f"heroic:{runner}:{token}",
+                "title": title,
+                "platform": "heroic",
+                "launcher": "Heroic",
+                "_heroic_app_name": app_name,
+                "_heroic_runner": runner,
+            })
+    return games
+
+
 def inventory(args):
     games = []
     title_overrides = json.loads(args.title_overrides_json)
@@ -153,10 +220,16 @@ def inventory(args):
             if game:
                 games.append(game)
 
+    games.extend(heroic_installed_games())
+
     # Prefer compressed Dolphin images when the same title exists twice.
     deduped = {}
     for game in games:
-        key = (game["platform"], normalized(game["title"]))
+        key = (
+            game["platform"],
+            game.get("_heroic_runner", ""),
+            normalized(game["title"]),
+        )
         previous = deduped.get(key)
         if previous and previous.get("_path", "").endswith(".rvz"):
             continue
@@ -222,10 +295,35 @@ def open_app_ids():
     return values
 
 
+def open_windows():
+    return [
+        {
+            "id": node.get("id"),
+            "app_id": node.get("app_id") or (node.get("window_properties") or {}).get("class"),
+        }
+        for node in walk(sway_tree())
+        if node.get("id") and (
+            node.get("app_id") or (node.get("window_properties") or {}).get("class")
+        )
+    ]
+
+
 def expected_ids(game):
     if game["platform"] == "steam":
         return [f"steam_app_{game['appid']}"]
     return APP_IDS[game["launcher"]]
+
+
+def heroic_state_is_running(game, state=None, windows=None):
+    state = load_state() if state is None else state
+    entry = state.get("Heroic")
+    if not isinstance(entry, dict) or entry.get("game") != game["id"]:
+        return False
+    expected = {value.casefold() for value in entry.get("windowIds", [])}
+    if not expected:
+        return False
+    windows = open_windows() if windows is None else windows
+    return any(window["app_id"].casefold() in expected for window in windows)
 
 
 def process_running(names):
@@ -236,6 +334,8 @@ def process_running(names):
 
 
 def is_running(game, ids=None):
+    if game["platform"] == "heroic":
+        return heroic_state_is_running(game)
     ids = open_app_ids() if ids is None else ids
     if any(value.casefold() in ids for value in expected_ids(game)):
         return True
@@ -247,6 +347,17 @@ def is_running(game, ids=None):
 def command_for(game, args):
     if game["platform"] == "steam":
         return ["steam", f"steam://rungameid/{game['appid']}"]
+    if game["platform"] == "heroic":
+        query = urlencode({
+            "appName": game["_heroic_app_name"],
+            "runner": game["_heroic_runner"],
+        })
+        return [
+            "heroic",
+            "--no-gui",
+            "--force-device-scale-factor=1",
+            f"heroic://launch?{query}",
+        ]
     path = game["_path"]
     platform = game["platform"]
     if platform in {"gamecube", "wii"}:
@@ -258,7 +369,7 @@ def command_for(game, args):
     if platform == "3ds":
         return ["azahar", "-f", path]
     if platform == "switch":
-        return ["eden", path]
+        return ["ryujinx", path]
     fail("Unsupported game platform", 64)
 
 
@@ -269,16 +380,38 @@ def launch(game, args):
             print(json.dumps({"ok": True, "alreadyRunning": True, "game": public(game)}, separators=(",", ":")))
             return
         fail(f"{game['launcher']} is already running without the selected game; close it before launching this title", 69)
+    if game["platform"] == "heroic":
+        active_heroic = state.get("Heroic")
+        if isinstance(active_heroic, dict):
+            active_game = find_id(inventory(args), active_heroic.get("game"))
+            if active_game and heroic_state_is_running(active_game, state=state):
+                fail("Another Heroic game is already running; close it before launching this title", 69)
+
     command = command_for(game, args)
     missing = shutil.which(command[0]) is None
     if missing:
         fail(f"Configured launcher is unavailable: {command[0]}", 69)
     import shlex
+    existing_windows = {window["id"] for window in open_windows()}
     result = subprocess.run(["swaymsg", "exec", "--", shlex.join(command)], capture_output=True, text=True)
     if result.returncode != 0:
         fail(result.stderr.strip() or "Sway rejected the game launch", 69)
-    for _ in range(30):
+    for _ in range(60 if game["platform"] == "heroic" else 30):
         time.sleep(1)
+        if game["platform"] == "heroic":
+            new_windows = [
+                window for window in open_windows()
+                if window["id"] not in existing_windows
+                and window["app_id"].casefold() not in {"heroic", "com.heroicgameslauncher.hgl"}
+            ]
+            if new_windows:
+                state["Heroic"] = {
+                    "game": game["id"],
+                    "windowIds": sorted({window["app_id"] for window in new_windows}),
+                }
+                save_state(state)
+                print(json.dumps({"ok": True, "verified": True, "game": public(game)}, separators=(",", ":")))
+                return
         if is_running(game):
             if game["platform"] != "steam":
                 state[game["launcher"]] = game["id"]
@@ -290,6 +423,28 @@ def launch(game, args):
 
 def close_game(game):
     state = load_state()
+    if game["platform"] == "heroic":
+        entry = state.get("Heroic")
+        if not isinstance(entry, dict) or entry.get("game") != game["id"]:
+            fail("That Heroic game was not launched by game-control", 66)
+        targets = {value.casefold() for value in entry.get("windowIds", [])}
+        closed = False
+        for node in walk(sway_tree()):
+            app_id = node.get("app_id") or (node.get("window_properties") or {}).get("class")
+            if app_id and app_id.casefold() in targets and node.get("id"):
+                subprocess.run(["swaymsg", f"[con_id={node['id']}]", "kill"], stdout=subprocess.DEVNULL)
+                closed = True
+        if not closed:
+            fail("The selected Heroic game is not running", 66)
+        for _ in range(15):
+            time.sleep(1)
+            if not heroic_state_is_running(game, state=state):
+                state.pop("Heroic", None)
+                save_state(state)
+                print(json.dumps({"ok": True, "verified": True, "game": public(game)}, separators=(",", ":")))
+                return
+        fail("The close command was sent, but the Heroic game is still running", 69)
+
     if game["platform"] != "steam" and state.get(game["launcher"]) != game["id"]:
         fail("That game was not launched by game-control; use the emulator's Home Assistant switch to close an unknown or manually opened session", 66)
     if game["platform"] == "steam":
@@ -341,7 +496,9 @@ def main():
             if (
                 game["platform"] == "steam" and is_running(game, ids)
             ) or (
-                game["platform"] != "steam"
+                game["platform"] == "heroic" and heroic_state_is_running(game, state=state)
+            ) or (
+                game["platform"] not in {"steam", "heroic"}
                 and state.get(game["launcher"]) == game["id"]
                 and is_running(game, ids)
             )

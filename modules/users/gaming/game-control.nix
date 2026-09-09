@@ -6,6 +6,26 @@ let
     name = "alanix-game-control";
     runtimeInputs = [ pkgs.coreutils pkgs.jq pkgs.procps pkgs.python3 pkgs.sway ];
     text = ''
+      runtime_dir="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+      export XDG_RUNTIME_DIR="$runtime_dir"
+
+      if [ -z "''${SWAYSOCK:-}" ] || [ ! -S "''${SWAYSOCK:-}" ]; then
+        SWAYSOCK=""
+        for candidate in "$runtime_dir"/sway-ipc.*.sock; do
+          [ -S "$candidate" ] || continue
+          if swaymsg -s "$candidate" -r -t get_version >/dev/null 2>&1; then
+            SWAYSOCK="$candidate"
+            break
+          fi
+        done
+        export SWAYSOCK
+      fi
+
+      if [ -z "''${SWAYSOCK:-}" ] || [ ! -S "$SWAYSOCK" ]; then
+        echo '{"ok":false,"error":"No controllable Sway session is available"}'
+        exit 69
+      fi
+
       exec python3 ${./game-control/game_control.py} \
         --rom-root ${lib.escapeShellArg cfg.romRoot} \
         --retroarch-core ${lib.escapeShellArg "${config.retroarch.package}/lib/retroarch/cores/mupen64plus_next_libretro.so"} \

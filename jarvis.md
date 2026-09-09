@@ -290,7 +290,8 @@ Expected behavior:
 
 Game requests use `alan-tv`. Emulator and launcher power is available locally
 through Home Assistant. Individual installed games are found, opened, and
-closed through OpenClaw.
+closed through OpenClaw. Switch games use Ryubing rather than Eden. Heroic
+inventory includes locally installed Epic, GOG, and Amazon games.
 
 ### Home Assistant setup required
 
@@ -300,9 +301,9 @@ Assist. Add voice aliases there only when speech recognition needs one.
 
 ## 9.1 Emulator and Launcher Power
 
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Turn Dolphin on/off."**
-- [ ] **[LOCAL / Home Assistant]** Say exactly: **"Is Dolphin on/off?"**
-- [ ] **[LOCAL / Home Assistant]** Repeat both tests for **RetroArch**,
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Turn Dolphin on/off."**
+- [x] **[LOCAL / Home Assistant]** Say exactly: **"Is Dolphin on/off?"**
+- [x] **[LOCAL / Home Assistant]** Repeat both tests for **RetroArch**,
   **Eden**, **Ryubing**, **Azahar**, **melonDS**, **Steam**, and **Heroic**.
 
 Expected behavior: each switch reports the real application state. Turning an
@@ -317,6 +318,8 @@ emulator or launcher off also closes a game currently running through it.
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Play Super Mario Odyssey on alan-tv."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Play Hogwarts Legacy on alan-tv."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Close Hogwarts Legacy on alan-tv."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Play Rocket League on alan-tv."**
+- [ ] **[LLM / OpenClaw]** Say exactly: **"Close Rocket League on alan-tv."**
 
 Expected behavior:
 
