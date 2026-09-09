@@ -6,27 +6,6 @@ let
   cfg = config.antimicrox;
   swayActive = config.desktop.enable && config.desktop.profile == "sway/default";
   systemctl = "/run/current-system/sw/bin/systemctl";
-  waitForStatusNotifierHost = pkgs.writeShellScript "alanix-wait-for-status-notifier-host" ''
-    set -eu
-
-    attempts=0
-    while [ "$attempts" -lt 120 ]; do
-      if ${pkgs.systemd}/bin/busctl --user get-property \
-        org.kde.StatusNotifierWatcher \
-        /StatusNotifierWatcher \
-        org.kde.StatusNotifierWatcher \
-        IsStatusNotifierHostRegistered 2>/dev/null \
-        | ${pkgs.gnugrep}/bin/grep -qx 'b true'; then
-        exit 0
-      fi
-
-      attempts=$((attempts + 1))
-      ${pkgs.coreutils}/bin/sleep 0.5
-    done
-
-    echo "Timed out waiting for a StatusNotifier tray host" >&2
-    exit 1
-  '';
 
   key = {
     escape = "0x1000000";
@@ -1350,8 +1329,7 @@ in
             ];
           };
           Service = {
-            ExecStartPre = "${waitForStatusNotifierHost}";
-            ExecStart = "${lib.getExe cfg.package} --tray --hidden --eventgen uinput --log-level warn --profile ${lib.escapeShellArg profilePath}";
+            ExecStart = "${lib.getExe cfg.package} --no-tray --hidden --eventgen uinput --log-level warn --profile ${lib.escapeShellArg profilePath}";
             Restart = "always";
             RestartSec = 2;
           };
@@ -1368,7 +1346,7 @@ in
             ];
           };
           Service = {
-            ExecStart = "${lib.getExe cfg.package} --tray --hidden --eventgen uinput --log-level warn --profile ${lib.escapeShellArg gameProfilePath}";
+            ExecStart = "${lib.getExe cfg.package} --no-tray --hidden --eventgen uinput --log-level warn --profile ${lib.escapeShellArg gameProfilePath}";
             Restart = "always";
             RestartSec = 2;
           };

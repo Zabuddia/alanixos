@@ -139,6 +139,11 @@ in
           ${pkgs.crudini}/bin/crudini --set "$configFile" "$1" "$2" "$3"
         }
 
+        # Eden works natively on Wayland in this session. Do not interrupt
+        # launcher-driven startup with its informational backend dialog.
+        setSetting UI ${f "gui_hide_backend_warning\\default"} false
+        setSetting UI gui_hide_backend_warning true
+
         ${lib.optionalString (cfg.gameDirs != null) ''
           while IFS= read -r key; do
             if [[ "$key" == Paths\\gamedirs\\* ]]; then

@@ -344,6 +344,11 @@ in
           };
         };
 
+        xdg.mimeApps = {
+          enable = true;
+          defaultApplications."inode/directory" = [ "thunar.desktop" ];
+        };
+
         xsession.preferStatusNotifierItems = true;
 
         xfconf.settings = {
