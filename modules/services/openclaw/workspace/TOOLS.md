@@ -131,13 +131,17 @@ the job definition.
   "TITLE"` to resolve a title. These return stable game IDs without exposing
   filesystem paths. If search returns multiple matches, ask which game the
   operator means; if it returns none, report that and launch nothing.
-- Open exactly one resolved result with `game-control launch GAME_ID`. Close a
+- Open exactly one resolved result with `game-control launch GAME_ID`. This
+  command starts the required emulator or launcher with the selected game; an
+  off Home Assistant app switch is normal and is not a prerequisite. Never turn
+  on an emulator or launcher switch before launching a named game. Close a
   resolved title with `game-control close GAME_ID`. Use only an ID returned by
   the current inventory; never pass a path, executable, desktop ID, or invented
   ID. Both commands verify their observed result.
-- Use `game-control running` for game activity. Emulator and launcher power is
-  also available through the named Home Assistant switches for fast local
-  voice control. Do not substitute generic desktop control for game titles.
+- Use `game-control running` for game activity. The named Home Assistant app
+  switches are only for requests that explicitly open, close, or query an
+  emulator or launcher without selecting a game. Do not substitute them or
+  generic desktop control for a named-game command.
 
 ## Managed browser
 

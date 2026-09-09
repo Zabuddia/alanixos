@@ -288,10 +288,11 @@ Expected behavior:
 
 # 9. Video Games on alan-tv
 
-Game requests use `alan-tv`. Emulator and launcher power is available locally
-through Home Assistant. Individual installed games are found, opened, and
-closed through OpenClaw. Switch games use Ryubing rather than Eden. Heroic
-inventory includes locally installed Epic, GOG, and Amazon games.
+Game requests use `alan-tv`. Home Assistant opens or closes an emulator or
+launcher by itself. Named-game requests use OpenClaw, which starts the required
+emulator or launcher with the selected game without pre-opening its Home
+Assistant switch. Switch games use Ryubing rather than Eden. Heroic inventory
+includes locally installed Epic, GOG, and Amazon games.
 
 ### Home Assistant setup required
 
@@ -313,9 +314,9 @@ emulator or launcher off also closes a game currently running through it.
 
 - [x] **[LLM / OpenClaw]** Say exactly: **"What games do I have on alan-tv?"**
 - [x] **[LLM / OpenClaw]** Say exactly: **"Play/close Super Mario 64 on alan-tv."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play/close Mario Kart Wii on alan-tv."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play/close Mario Kart Wii on alan-tv."**
 - [x] **[LLM / OpenClaw]** Say exactly: **"Play/close New Super Mario Bros. on alan-tv."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play/close Mario Kart 7 on alan-tv."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play/close Mario Kart 7 on alan-tv."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Play/close Super Mario Odyssey on alan-tv."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Play/close Hogwarts Legacy on alan-tv."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Play/close Rocket League on alan-tv."**
@@ -325,7 +326,8 @@ Expected behavior:
 1. Turn on the physical TV if needed and allow time for its state to update.
 2. Resolve the spoken title against the installed games on `alan-tv`.
 3. Refuse an ambiguous match instead of choosing arbitrarily.
-4. Launch or close the resolved game.
+4. Launch or close the resolved game directly without first powering its
+   emulator or launcher through Home Assistant.
 5. Verify that the expected game or emulator process/window appears.
 
 ## 9.3 Missing and Ambiguous Games

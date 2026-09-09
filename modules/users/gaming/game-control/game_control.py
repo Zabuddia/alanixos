@@ -479,22 +479,30 @@ def close_game(game):
     if game["platform"] == "steam":
         subprocess.run(["steam", f"steam://stop/{game['appid']}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     targets = {value.casefold() for value in expected_ids(game)}
-    closed = False
-    for node in walk(sway_tree()):
-        app_id = node.get("app_id") or (node.get("window_properties") or {}).get("class")
-        if app_id and app_id.casefold() in targets and node.get("id"):
-            subprocess.run(["swaymsg", f"[con_id={node['id']}]", "kill"], stdout=subprocess.DEVNULL)
-            closed = True
-    if not closed and game["platform"] != "steam":
-        fail("The selected game is not running", 66)
-    for _ in range(15):
-        time.sleep(1)
-        if not is_running(game):
-            if game["platform"] != "steam":
-                state.pop(game["launcher"], None)
-                save_state(state)
-            print(json.dumps({"ok": True, "verified": True, "game": public(game)}, separators=(",", ":")))
-            return
+
+    # Emulator game surfaces commonly close back to their main window instead
+    # of exiting the application. Close at most two generations of matching
+    # windows so one game-control request closes both, while still allowing each
+    # generation time to shut down and save cleanly.
+    close_rounds = 1 if game["platform"] == "steam" else 2
+    for _ in range(close_rounds):
+        closed = game["platform"] == "steam"
+        if game["platform"] != "steam":
+            for node in walk(sway_tree()):
+                app_id = node.get("app_id") or (node.get("window_properties") or {}).get("class")
+                if app_id and app_id.casefold() in targets and node.get("id"):
+                    subprocess.run(["swaymsg", f"[con_id={node['id']}]", "kill"], stdout=subprocess.DEVNULL)
+                    closed = True
+        if not closed:
+            fail("The selected game is not running", 66)
+        for _ in range(15):
+            time.sleep(1)
+            if not is_running(game):
+                if game["platform"] != "steam":
+                    state.pop(game["launcher"], None)
+                    save_state(state)
+                print(json.dumps({"ok": True, "verified": True, "game": public(game)}, separators=(",", ":")))
+                return
     fail("The close command was sent, but the game is still running", 69)
 
 
