@@ -393,19 +393,12 @@
       folderSets = [
         "emulation-azahar"
         "emulation-dolphin"
-        "emulation-eden"
         "emulation-melonds"
         "emulation-n64"
         "emulation-retroarch"
         "emulation-ryujinx"
       ];
-      linkFolderSets = [
-        "emulation-azahar"
-        "emulation-dolphin"
-        "emulation-eden"
-        "emulation-melonds"
-        "emulation-ryujinx"
-      ];
+      linkFolderSets = [ "emulation-dolphin" ];
       deviceId = "OQE4RP7-C457Q5O-GYEPFIN-YNNEGWH-A7KFH3E-LYTMYOL-GJ6VLU4-EKTRLAP";
       peers = [
         "alan-big-nixos"

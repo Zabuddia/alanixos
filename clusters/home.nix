@@ -289,7 +289,7 @@ in
       externalDevices.pixel-fold = {
         id = "BT23SPJ-ICTEBQ7-GJTDRQT-LCUQ773-U63QFZR-472O3YA-2KRJ4KY-AMPZ7AF";
         addresses = [ "tcp://pixel-fold:22000" ];
-        folderSets = [ "videos" "ebooks" "filebrowser-buddia-files" ];
+        folderSets = [ "filebrowser-buddia-files" ];
       };
     };
 

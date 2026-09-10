@@ -58,34 +58,11 @@ let
     versioning = romVersioning;
   };
 
-  azaharSystemId = "00000000000000000000000000000000";
-  azaharSdCardId = "00000000000000000000000000000000";
-  azaharSdmcRelativeBase = "games/azahar-emu/sdmc/Nintendo 3DS/${azaharSystemId}/${azaharSdCardId}";
-  azaharNandRelativeBase = "games/azahar-emu/nand/data/${azaharSystemId}";
-  azaharLocalSdmcBase =
-    ".local/share/azahar-emu/sdmc/Nintendo 3DS/${azaharSystemId}/${azaharSdCardId}";
-  azaharLocalNandBase = ".local/share/azahar-emu/nand/data/${azaharSystemId}";
-
   azaharFolders = {
     "games-roms-3ds" = {
       label = "games/roms/3ds";
       relativePath = "games/roms/3ds";
     } // romFolderProtection;
-    "games-azahar-emu-sdmc-title" = {
-      label = "${azaharSdmcRelativeBase}/title";
-      relativePath = "${azaharSdmcRelativeBase}/title";
-      versioning = staggeredVersioning 90;
-    };
-    "games-azahar-emu-sdmc-extdata" = {
-      label = "${azaharSdmcRelativeBase}/extdata";
-      relativePath = "${azaharSdmcRelativeBase}/extdata";
-      versioning = staggeredVersioning 90;
-    };
-    "games-azahar-emu-nand-extdata" = {
-      label = "${azaharNandRelativeBase}/extdata";
-      relativePath = "${azaharNandRelativeBase}/extdata";
-      versioning = staggeredVersioning 90;
-    };
   };
 
   dolphinFolders = {
@@ -97,16 +74,6 @@ let
       label = "games/roms/wii";
       relativePath = "games/roms/wii";
     } // romFolderProtection;
-    "games-dolphin-emu-gc" = {
-      label = "games/dolphin-emu/GC";
-      relativePath = "games/dolphin-emu/GC";
-      versioning = staggeredVersioning 90;
-    };
-    "games-dolphin-emu-wii-title" = {
-      label = "games/dolphin-emu/Wii/title";
-      relativePath = "games/dolphin-emu/Wii/title";
-      versioning = staggeredVersioning 90;
-    };
     "games-dolphin-emu-load-riivolution" = {
       label = "games/dolphin-emu/Load/Riivolution";
       relativePath = "games/dolphin-emu/Load/Riivolution";
@@ -118,11 +85,6 @@ let
       label = "games/roms/nds";
       relativePath = "games/roms/nds";
     } // romFolderProtection;
-    "games-melonds-saves" = {
-      label = "games/melonDS/saves";
-      relativePath = "games/melonDS/saves";
-      versioning = staggeredVersioning 90;
-    };
   };
 
   n64Folders = {
@@ -157,24 +119,6 @@ let
       label = "games/roms/genesis";
       relativePath = "games/roms/genesis";
     } // romFolderProtection;
-    "games-retroarch" = {
-      label = "games/retroarch";
-      relativePath = "games/retroarch";
-      versioning = staggeredVersioning 90;
-    };
-  };
-
-  edenFolders = {
-    "games-eden" = {
-      label = "games/Eden";
-      relativePath = "games/Eden";
-      versioning = staggeredVersioning 90;
-    };
-    "games-eden-profile" = {
-      label = "games/Eden-profile";
-      relativePath = "games/Eden-profile";
-      versioning = staggeredVersioning 90;
-    };
   };
 
   ryujinxFolders = {
@@ -182,21 +126,6 @@ let
       label = "games/roms/switch";
       relativePath = "games/roms/switch";
     } // romFolderProtection;
-    "games-ryujinx" = {
-      label = "games/Ryujinx";
-      relativePath = "games/Ryujinx";
-      versioning = staggeredVersioning 90;
-    };
-    "games-ryujinx-save-meta" = {
-      label = "games/Ryujinx-saveMeta";
-      relativePath = "games/Ryujinx-saveMeta";
-      versioning = staggeredVersioning 90;
-    };
-    "games-ryujinx-save-data-indexer" = {
-      label = "games/Ryujinx-saveDataIndexer";
-      relativePath = "games/Ryujinx-saveDataIndexer";
-      versioning = staggeredVersioning 90;
-    };
   };
 
   moviesFolders = {
@@ -325,7 +254,6 @@ let
   folderCatalog = {
     emulation-azahar = azaharFolders;
     emulation-dolphin = dolphinFolders;
-    emulation-eden = edenFolders;
     emulation-melonds = melondsFolders;
     emulation-n64 = n64Folders;
     emulation-retroarch = retroarchFolders;
@@ -338,70 +266,20 @@ let
     ebooks = ebooksFolders;
   } // filebrowserUserFolderSets;
 
-  azaharLinks = {
-    "${azaharLocalSdmcBase}/title" = {
-      relativePath = "${azaharSdmcRelativeBase}/title";
-    };
-    "${azaharLocalSdmcBase}/extdata" = {
-      relativePath = "${azaharSdmcRelativeBase}/extdata";
-    };
-    "${azaharLocalNandBase}/extdata" = {
-      relativePath = "${azaharNandRelativeBase}/extdata";
-    };
-  };
-
   dolphinLinks = {
-    ".local/share/dolphin-emu/GC" = {
-      relativePath = "games/dolphin-emu/GC";
-    };
-    ".local/share/dolphin-emu/Wii/title" = {
-      relativePath = "games/dolphin-emu/Wii/title";
-    };
     ".local/share/dolphin-emu/Load/Riivolution" = {
       relativePath = "games/dolphin-emu/Load/Riivolution";
     };
   };
 
-  melondsLinks = {
-    ".local/share/melonDS/saves" = {
-      relativePath = "games/melonDS/saves";
-    };
-  };
-
-  edenLinks = {
-    ".local/share/eden/nand/user/save" = {
-      relativePath = "games/Eden";
-    };
-    ".local/share/eden/nand/system/save/8000000000000010" = {
-      relativePath = "games/Eden-profile";
-    };
-  };
-
-  ryujinxLinks = {
-    ".config/Ryujinx/bis/user/save" = {
-      relativePath = "games/Ryujinx";
-    };
-    ".config/Ryujinx/bis/user/saveMeta" = {
-      relativePath = "games/Ryujinx-saveMeta";
-    };
-    ".config/Ryujinx/bis/system/save/8000000000000000" = {
-      relativePath = "games/Ryujinx-saveDataIndexer";
-    };
-  };
-
   linkCatalog = {
-    emulation-azahar = azaharLinks;
     emulation-dolphin = dolphinLinks;
-    emulation-eden = edenLinks;
-    emulation-melonds = melondsLinks;
-    emulation-ryujinx = ryujinxLinks;
   };
 
   folderSetAliases = {
     emulation = [
       "emulation-azahar"
       "emulation-dolphin"
-      "emulation-eden"
       "emulation-melonds"
       "emulation-n64"
       "emulation-retroarch"
@@ -411,7 +289,7 @@ let
   };
 
   linkFolderSetAliases = {
-    emulation = [ "emulation-azahar" "emulation-dolphin" "emulation-eden" "emulation-melonds" "emulation-ryujinx" ];
+    emulation = [ "emulation-dolphin" ];
   };
 
   validFolderSets = lib.unique ((builtins.attrNames folderCatalog) ++ (builtins.attrNames folderSetAliases));
@@ -629,29 +507,9 @@ let
   staleManagedLinkParents =
     lib.optionals
       (
-        (selectedLinkAttrs ? "${azaharLocalSdmcBase}/title")
-        || (selectedLinkAttrs ? "${azaharLocalSdmcBase}/extdata")
-        || (selectedLinkAttrs ? "${azaharLocalNandBase}/extdata")
+        selectedLinkAttrs ? ".local/share/dolphin-emu/Load/Riivolution"
       )
-      [ ".local/share/azahar-emu" ]
-    ++ lib.optionals
-      (
-        (selectedLinkAttrs ? ".local/share/dolphin-emu/GC")
-        || (selectedLinkAttrs ? ".local/share/dolphin-emu/Wii/title")
-        || (selectedLinkAttrs ? ".local/share/dolphin-emu/Load/Riivolution")
-      )
-      [ ".local/share/dolphin-emu" ]
-    ++ lib.optionals
-      (
-        (selectedLinkAttrs ? ".local/share/melonDS/saves")
-      )
-      [ ".local/share/melonDS" ]
-    ++ lib.optionals
-      (
-        (selectedLinkAttrs ? ".local/share/eden/nand/user/save")
-        || (selectedLinkAttrs ? ".local/share/eden/nand/system/save/8000000000000010")
-      )
-      [ ".local/share/eden" ];
+      [ ".local/share/dolphin-emu" ];
 
   staleManagedLinkCleanupScript =
     lib.concatMapStringsSep "\n"

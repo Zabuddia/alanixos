@@ -76,8 +76,8 @@ in
 
     dataDir = lib.mkOption {
       type = lib.types.str;
-      default = "${syncRoot}/games/retroarch";
-      description = "Synced RetroArch data directory for saves, states, remaps, screenshots, and system files.";
+      default = "${config.home.directory}/.local/share/retroarch";
+      description = "Local RetroArch data directory for saves, states, remaps, screenshots, and system files.";
     };
 
     menuDriver = lib.mkOption {
