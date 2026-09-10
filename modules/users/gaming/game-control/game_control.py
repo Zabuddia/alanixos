@@ -382,7 +382,7 @@ def is_running(game, ids=None):
 
 def command_for(game, args):
     if game["platform"] == "steam":
-        return ["steam", f"steam://rungameid/{game['appid']}"]
+        return ["steam", "-gamepadui", f"steam://rungameid/{game['appid']}"]
     if game["platform"] == "heroic":
         query = urlencode({
             "appName": game["_heroic_app_name"],
@@ -438,6 +438,16 @@ def launch(game, args):
         fail(f"Configured launcher is unavailable: {command[0]}", 69)
     import shlex
     existing_windows = {window["id"] for window in open_windows()}
+    if game["platform"] == "steam":
+        existing_steam_state = state.get("Steam")
+        started_launcher = not process_running(["steam"])
+        if isinstance(existing_steam_state, dict) and existing_steam_state.get("startedLauncher") is True:
+            started_launcher = True
+        state["Steam"] = {
+            "game": game["id"],
+            "startedLauncher": started_launcher,
+        }
+        save_state(state)
     result = subprocess.run(["swaymsg", "exec", "--", shlex.join(command)], capture_output=True, text=True)
     if result.returncode != 0:
         fail(result.stderr.strip() or "Sway rejected the game launch", 69)
@@ -473,6 +483,27 @@ def launch(game, args):
 
 def close_game(game):
     state = load_state()
+
+    def report_closed():
+        response = {"ok": True, "verified": True, "game": public(game)}
+        if game["platform"] == "steam":
+            steam_state = state.get("Steam")
+            started_launcher = (
+                isinstance(steam_state, dict)
+                and steam_state.get("game") == game["id"]
+                and steam_state.get("startedLauncher") is True
+            )
+            if started_launcher:
+                subprocess.run(["steam", "-shutdown"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                for _ in range(15):
+                    time.sleep(1)
+                    if not process_running(["steam"]):
+                        break
+                response["launcherClosed"] = not process_running(["steam"])
+            state.pop("Steam", None)
+            save_state(state)
+        print(json.dumps(response, separators=(",", ":")))
+
     if game["platform"] == "heroic":
         game_process_ids = heroic_process_ids(game)
         if not game_process_ids:
@@ -500,7 +531,7 @@ def close_game(game):
         for _ in range(5):
             time.sleep(1)
             if not is_running(game):
-                print(json.dumps({"ok": True, "verified": True, "game": public(game)}, separators=(",", ":")))
+                report_closed()
                 return
     targets = {value.casefold() for value in expected_ids(game)}
 
@@ -524,7 +555,7 @@ def close_game(game):
                 if game["platform"] != "steam":
                     state.pop(game["launcher"], None)
                     save_state(state)
-                print(json.dumps({"ok": True, "verified": True, "game": public(game)}, separators=(",", ":")))
+                report_closed()
                 return
     fail("The close command was sent, but the game is still running", 69)
 
