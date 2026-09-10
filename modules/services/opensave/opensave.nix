@@ -39,6 +39,11 @@ let
       name = "Ryujinx Saves";
       path = "${userHome}/.config/Ryujinx/bis/user/save";
     }
+    {
+      name = "Eden Profiles";
+      path = "${userHome}/.local/share/eden/nand/system/save/8000000000000010/su/avators/profiles.dat";
+      kind = "file";
+    }
   ];
   effectiveGames = lib.optionals cfg.emulatorSaves.enable emulatorGames ++ cfg.games;
   gameType = lib.types.submodule {
@@ -50,13 +55,32 @@ let
 
       path = lib.mkOption {
         type = lib.types.str;
-        description = "Absolute path to the save directory on this device.";
+        description = "Absolute path to the save data on this device.";
+      };
+
+      kind = lib.mkOption {
+        type = lib.types.enum [
+          "directory"
+          "file"
+        ];
+        default = "directory";
+        description = "Whether the tracked save path is a directory or a single file.";
       };
     };
   };
   provisionGame = game: ''
     save_path=${lib.escapeShellArg game.path}
-    mkdir -p "$save_path"
+    ${
+      if (game.kind or "directory") == "directory" then
+        ''mkdir -p "$save_path"''
+      else
+        ''
+          mkdir -p "$(dirname "$save_path")"
+          if [[ ! -e "$save_path" ]]; then
+            touch "$save_path"
+          fi
+        ''
+    }
 
     if ! ${opensavePackage}/bin/opensave status --json \
       | ${pkgs.jq}/bin/jq -e --arg path "$save_path" '.games[] | select(.savePath == $path)' >/dev/null; then
