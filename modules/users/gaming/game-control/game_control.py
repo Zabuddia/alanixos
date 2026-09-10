@@ -434,6 +434,15 @@ def launch(game, args):
                 and window["app_id"].casefold() not in {"heroic", "com.heroicgameslauncher.hgl"}
             ]
             if new_windows:
+                # Proton games launched by Heroic use game-specific window
+                # classes, so a static Sway rule cannot reliably identify them.
+                # These are the new non-Heroic windows created by this launch.
+                for window in new_windows:
+                    subprocess.run(
+                        ["swaymsg", f"[con_id={window['id']}]", "fullscreen", "enable"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
                 state["Heroic"] = {
                     "game": game["id"],
                     "windowIds": sorted({window["app_id"] for window in new_windows}),

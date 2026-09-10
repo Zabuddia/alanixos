@@ -317,7 +317,7 @@ emulator or launcher off also closes a game currently running through it.
 - [x] **[LLM / OpenClaw]** Say exactly: **"Play/close Mario Kart Wii on alan-tv."**
 - [x] **[LLM / OpenClaw]** Say exactly: **"Play/close New Super Mario Bros. on alan-tv."**
 - [x] **[LLM / OpenClaw]** Say exactly: **"Play/close Mario Kart 7 on alan-tv."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play/close Super Mario Odyssey on alan-tv."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play/close Super Mario Odyssey on alan-tv."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Play/close Hogwarts Legacy on alan-tv."**
 - [ ] **[LLM / OpenClaw]** Say exactly: **"Play/close Rocket League on alan-tv."**
 
@@ -328,7 +328,7 @@ Expected behavior:
 3. Refuse an ambiguous match instead of choosing arbitrarily.
 4. Launch or close the resolved game directly without first powering its
    emulator or launcher through Home Assistant.
-5. Verify that the expected game or emulator process/window appears.
+5. Verify that the expected game or emulator window appears fullscreen.
 
 ## 9.3 Missing and Ambiguous Games
 
