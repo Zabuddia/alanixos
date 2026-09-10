@@ -291,6 +291,11 @@ in
         addresses = [ "tcp://pixel-fold:22000" ];
         folderSets = [ "filebrowser-buddia-files" ];
       };
+      externalDevices.pixel-3axl = {
+        id = "DPIIEWS-4VQRBRR-UKTYH3Z-KAHOF6F-SWIS7TD-3IYPHSM-LI42DNP-IGRQLQZ";
+        addresses = [ "tcp://pixel-3axl:22000" ];
+        folderSets = [ "filebrowser-buddia-files" ];
+      };
     };
 
     alanix.headscale = {
