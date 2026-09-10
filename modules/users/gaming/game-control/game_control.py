@@ -300,6 +300,7 @@ def open_windows():
         {
             "id": node.get("id"),
             "app_id": node.get("app_id") or (node.get("window_properties") or {}).get("class"),
+            "pid": node.get("pid"),
         }
         for node in walk(sway_tree())
         if node.get("id") and (
@@ -314,16 +315,25 @@ def expected_ids(game):
     return APP_IDS[game["launcher"]]
 
 
-def heroic_state_is_running(game, state=None, windows=None):
-    state = load_state() if state is None else state
-    entry = state.get("Heroic")
-    if not isinstance(entry, dict) or entry.get("game") != game["id"]:
-        return False
-    expected = {value.casefold() for value in entry.get("windowIds", [])}
-    if not expected:
-        return False
-    windows = open_windows() if windows is None else windows
-    return any(window["app_id"].casefold() in expected for window in windows)
+def heroic_process_ids(game):
+    expected = {
+        b"HEROIC_APP_NAME": os.fsencode(game["_heroic_app_name"]),
+        b"HEROIC_APP_RUNNER": os.fsencode(game["_heroic_runner"]),
+    }
+    matches = set()
+    for process_dir in Path("/proc").glob("[0-9]*"):
+        try:
+            entries = (process_dir / "environ").read_bytes().split(b"\0")
+        except OSError:
+            continue
+        environment = dict(entry.split(b"=", 1) for entry in entries if b"=" in entry)
+        if all(environment.get(key) == value for key, value in expected.items()):
+            matches.add(int(process_dir.name))
+    return matches
+
+
+def heroic_is_running(game):
+    return bool(heroic_process_ids(game))
 
 
 def process_running(names):
@@ -363,7 +373,7 @@ def launcher_is_running(game, ids=None):
 
 def is_running(game, ids=None):
     if game["platform"] == "heroic":
-        return heroic_state_is_running(game)
+        return heroic_is_running(game)
     if game["platform"] != "steam":
         return command_line_contains(game["_path"]) and launcher_is_running(game, ids)
     ids = open_app_ids() if ids is None else ids
@@ -410,11 +420,17 @@ def launch(game, args):
     if game["platform"] not in {"steam", "heroic"} and launcher_is_running(game):
         fail(f"{game['launcher']} is already running without the selected game; close it before launching this title", 69)
     if game["platform"] == "heroic":
-        active_heroic = state.get("Heroic")
-        if isinstance(active_heroic, dict):
-            active_game = find_id(inventory(args), active_heroic.get("game"))
-            if active_game and heroic_state_is_running(active_game, state=state):
-                fail("Another Heroic game is already running; close it before launching this title", 69)
+        active_game = next(
+            (
+                candidate for candidate in inventory(args)
+                if candidate["platform"] == "heroic"
+                and candidate["id"] != game["id"]
+                and heroic_is_running(candidate)
+            ),
+            None,
+        )
+        if active_game:
+            fail("Another Heroic game is already running; close it before launching this title", 69)
 
     command = command_for(game, args)
     missing = shutil.which(command[0]) is None
@@ -428,10 +444,11 @@ def launch(game, args):
     for _ in range(60 if game["platform"] == "heroic" else 30):
         time.sleep(1)
         if game["platform"] == "heroic":
+            game_process_ids = heroic_process_ids(game)
             new_windows = [
                 window for window in open_windows()
                 if window["id"] not in existing_windows
-                and window["app_id"].casefold() not in {"heroic", "com.heroicgameslauncher.hgl"}
+                and window["pid"] in game_process_ids
             ]
             if new_windows:
                 # Proton games launched by Heroic use game-specific window
@@ -443,11 +460,6 @@ def launch(game, args):
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                     )
-                state["Heroic"] = {
-                    "game": game["id"],
-                    "windowIds": sorted({window["app_id"] for window in new_windows}),
-                }
-                save_state(state)
                 print(json.dumps({"ok": True, "verified": True, "game": public(game)}, separators=(",", ":")))
                 return
         if is_running(game):
@@ -462,21 +474,19 @@ def launch(game, args):
 def close_game(game):
     state = load_state()
     if game["platform"] == "heroic":
-        entry = state.get("Heroic")
-        if not isinstance(entry, dict) or entry.get("game") != game["id"]:
-            fail("That Heroic game was not launched by game-control", 66)
-        targets = {value.casefold() for value in entry.get("windowIds", [])}
+        game_process_ids = heroic_process_ids(game)
+        if not game_process_ids:
+            fail("The selected Heroic game is not running", 66)
         closed = False
         for node in walk(sway_tree()):
-            app_id = node.get("app_id") or (node.get("window_properties") or {}).get("class")
-            if app_id and app_id.casefold() in targets and node.get("id"):
+            if node.get("pid") in game_process_ids and node.get("id"):
                 subprocess.run(["swaymsg", f"[con_id={node['id']}]", "kill"], stdout=subprocess.DEVNULL)
                 closed = True
         if not closed:
             fail("The selected Heroic game is not running", 66)
         for _ in range(15):
             time.sleep(1)
-            if not heroic_state_is_running(game, state=state):
+            if not heroic_is_running(game):
                 state.pop("Heroic", None)
                 save_state(state)
                 print(json.dumps({"ok": True, "verified": True, "game": public(game)}, separators=(",", ":")))
@@ -536,13 +546,12 @@ def main():
         print(json.dumps({"matches": [public(game) for game in matches], "total": len(matches)}, separators=(",", ":")))
     elif args.action == "running":
         ids = open_app_ids()
-        state = load_state()
         running = [
             public(game) for game in games
             if (
                 game["platform"] == "steam" and is_running(game, ids)
             ) or (
-                game["platform"] == "heroic" and heroic_state_is_running(game, state=state)
+                game["platform"] == "heroic" and heroic_is_running(game)
             ) or (
                 game["platform"] not in {"steam", "heroic"}
                 and is_running(game, ids)
