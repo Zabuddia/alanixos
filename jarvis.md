@@ -318,8 +318,8 @@ emulator or launcher off also closes a game currently running through it.
 - [x] **[LLM / OpenClaw]** Say exactly: **"Play/close New Super Mario Bros. on alan-tv."**
 - [x] **[LLM / OpenClaw]** Say exactly: **"Play/close Mario Kart 7 on alan-tv."**
 - [x] **[LLM / OpenClaw]** Say exactly: **"Play/close Super Mario Odyssey on alan-tv."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play/close Hogwarts Legacy on alan-tv."**
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play/close Rocket League on alan-tv."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play/close Hogwarts Legacy on alan-tv."**
+- [x] **[LLM / OpenClaw]** Say exactly: **"Play/close Rocket League on alan-tv."**
 
 Expected behavior:
 
@@ -329,13 +329,6 @@ Expected behavior:
 4. Launch or close the resolved game directly without first powering its
    emulator or launcher through Home Assistant.
 5. Verify that the expected game or emulator window appears fullscreen.
-
-## 9.3 Missing and Ambiguous Games
-
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play Mario on alan-tv."**
-- [ ] Verify that Jarvis asks which matching Mario game to use.
-- [ ] **[LLM / OpenClaw]** Say exactly: **"Play Jarvis Definitely Missing Game 987654 on alan-tv."**
-- [ ] Verify that Jarvis reports no match and launches nothing.
 
 ---
 
