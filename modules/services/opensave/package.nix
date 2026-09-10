@@ -3,6 +3,10 @@
   lib,
   fetchurl,
   autoPatchelfHook,
+  wrapGAppsHook3,
+  gtk3,
+  webkitgtk_4_1,
+  libsoup_3,
 }:
 
 stdenv.mkDerivation (finalAttrs: {
@@ -15,7 +19,15 @@ stdenv.mkDerivation (finalAttrs: {
   };
 
   sourceRoot = "opensave-linux";
-  nativeBuildInputs = [ autoPatchelfHook ];
+  nativeBuildInputs = [
+    autoPatchelfHook
+    wrapGAppsHook3
+  ];
+  buildInputs = [
+    gtk3
+    webkitgtk_4_1
+    libsoup_3
+  ];
 
   dontBuild = true;
 
@@ -24,6 +36,8 @@ stdenv.mkDerivation (finalAttrs: {
 
     install -Dm755 opensave-cli "$out/bin/opensave"
     ln -s opensave "$out/bin/opensave-cli"
+    install -Dm755 opensave "$out/bin/opensave-gui"
+    install -Dm644 opensave.png "$out/share/icons/hicolor/512x512/apps/opensave.png"
     install -Dm644 man/opensave.1 "$out/share/man/man1/opensave.1"
     install -Dm644 completions/opensave.bash "$out/share/bash-completion/completions/opensave"
     install -Dm644 completions/opensave.fish "$out/share/fish/vendor_completions.d/opensave.fish"
