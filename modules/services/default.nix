@@ -24,6 +24,7 @@
     ./nextcloud
     ./owntracks
     ./openclaw
+    ./opensave
     ./openwebrx
     ./openwebui
     ./radio-streams
