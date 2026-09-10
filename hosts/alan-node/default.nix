@@ -7,12 +7,11 @@
     imports = [
       ./hardware-configuration.nix
       ./secrets.nix
-      ../../modules/services/bitcoin
     ];
 
-    # The nix-bitcoin secure-node preset defaults to doas. Keep this host
-    # consistent with the rest of the cluster so non-interactive SSH and the
-    # shared `nrs` alias can use the same passwordless sudo interface.
+    # The secure Bitcoin defaults select doas. Keep this host consistent with
+    # the rest of the cluster so non-interactive SSH and the shared `nrs` alias
+    # can use the same passwordless sudo interface.
     security.doas.enable = lib.mkForce false;
     security.sudo.enable = lib.mkForce true;
     # Use the root-owned setuid wrapper created by NixOS. The sudo binary in
@@ -143,6 +142,37 @@
     };
 
     alanix.wifi.radio.enable = false;
+
+    alanix.bitcoin = {
+      enable = true;
+      configVersion = "0.0.85";
+      generateSecrets = true;
+      operatorName = "operator";
+      txIndex = true;
+
+      fulcrum.enable = true;
+
+      mempool = {
+        enable = true;
+        electrumServer = "fulcrum";
+        onionService = true;
+        frontend = {
+          listenAddress = "0.0.0.0";
+          port = 4080;
+        };
+      };
+
+      # Enable after upgrading this host's RAM.
+      lightning = {
+        enable = false;
+        announceOnion = true;
+        rtl = {
+          enable = true;
+          listenAddress = "127.0.0.1";
+          port = 3000;
+        };
+      };
+    };
 
     alanix.remote-desktop = {
       enable = true;

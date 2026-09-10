@@ -3,6 +3,7 @@
     ./actual
     ./adguardhome
     ./audiobookshelf
+    ./bitcoin
     ./firefly-iii
     ./filebrowser
     ./forgejo
