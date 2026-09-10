@@ -245,6 +245,15 @@ class Dashboard:
         favicon_path = self.dashboard.get("faviconPath")
         self.favicon_path = Path(favicon_path) if favicon_path else None
         self.favicon_bytes = self._load_favicon_bytes()
+        self.pwa = self.dashboard.get("pwa", {})
+        self.pwa_enabled = bool(self.pwa.get("enable"))
+        pwa_icon_dir = self.pwa.get("iconDir")
+        self.pwa_icon_dir = Path(pwa_icon_dir) if pwa_icon_dir else None
+        self.pwa_icons = {
+            size: self._load_asset_bytes(f"icon-{size}.png")
+            for size in (192, 512)
+        }
+        self.apple_touch_icon_bytes = self._load_asset_bytes("apple-touch-icon.png")
         self.restic_password_file = self.cluster["backup"]["passwordFile"]
         self.snapshot_size_probes_per_collect = 2
         self.snapshot_size_retry_seconds = 300.0
@@ -266,6 +275,67 @@ class Dashboard:
             return self.favicon_path.read_bytes()
         except OSError:
             return None
+
+    def _load_asset_bytes(self, filename: str) -> bytes | None:
+        if not self.pwa_enabled or self.pwa_icon_dir is None:
+            return None
+        try:
+            return (self.pwa_icon_dir / filename).read_bytes()
+        except OSError:
+            return None
+
+    def pwa_manifest_bytes(self) -> bytes:
+        icons = [
+            {
+                "src": f"/pwa-icon-{size}.png",
+                "sizes": f"{size}x{size}",
+                "type": "image/png",
+                "purpose": "any",
+            }
+            for size, payload in self.pwa_icons.items()
+            if payload is not None
+        ]
+        payload = {
+            "id": "/",
+            "name": self.pwa.get("name") or "Alanix Cluster Dashboard",
+            "short_name": self.pwa.get("shortName") or "Alanix",
+            "start_url": "/",
+            "scope": "/",
+            "display": "standalone",
+            "theme_color": self.pwa.get("themeColor") or "#24452d",
+            "background_color": self.pwa.get("backgroundColor") or "#f5f0e8",
+            "icons": icons,
+        }
+        return (json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8")
+
+    def pwa_head_html(self) -> str:
+        if not self.pwa_enabled:
+            return ""
+        theme_color = html.escape(self.pwa.get("themeColor") or "#24452d", quote=True)
+        app_name = html.escape(self.pwa.get("name") or "Alanix Cluster Dashboard", quote=True)
+        touch_icon = (
+            '<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">'
+            if self.apple_touch_icon_bytes is not None
+            else ""
+        )
+        return (
+            '<link rel="manifest" href="/manifest.webmanifest">\n'
+            f'  <meta name="theme-color" content="{theme_color}">\n'
+            '  <meta name="apple-mobile-web-app-capable" content="yes">\n'
+            f'  <meta name="apple-mobile-web-app-title" content="{app_name}">\n'
+            f'  {touch_icon}'
+        )
+
+    def pwa_registration_html(self) -> str:
+        if not self.pwa_enabled:
+            return ""
+        return """<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/service-worker.js").catch(() => {});
+    });
+  }
+</script>"""
 
     def _state_collector_loop(self) -> None:
         last_mtime: int | None = None
@@ -1924,6 +1994,8 @@ class Dashboard:
 
         # ── page ──────────────────────────────────────────────────────────────
         favicon_link = '<link rel="icon" href="/favicon.ico" sizes="any">' if self.favicon_bytes else ""
+        pwa_head = self.pwa_head_html()
+        pwa_registration = self.pwa_registration_html()
         return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -1931,6 +2003,7 @@ class Dashboard:
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Alanix · {html.escape(self.cluster["name"])} · {html.escape(self.hostname)}</title>
   {favicon_link}
+  {pwa_head}
   <style>
     :root {{
       --bg: #f5f0e8; --panel: #fffdf8; --border: #d4c8b4;
@@ -2361,6 +2434,7 @@ class Dashboard:
       connect();
     }})();
   </script>
+  {pwa_registration}
 </body>
 </html>
 """
@@ -2549,6 +2623,8 @@ class Dashboard:
         admin_bar = self.render_admin_bar(session, login_error=login_error, return_to=return_to)
         role = state.get("cluster", {}).get("role") or {"label": "unknown", "kind": "warn"}
         favicon_link = '<link rel="icon" href="/favicon.ico" sizes="any">' if self.favicon_bytes else ""
+        pwa_head = self.pwa_head_html()
+        pwa_registration = self.pwa_registration_html()
         return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -2556,6 +2632,7 @@ class Dashboard:
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Alanix · {html.escape(page_title)}</title>
   {favicon_link}
+  {pwa_head}
   <style>
     :root {{
       --bg: #f5f0e8; --panel: #fffdf8; --border: #d4c8b4;
@@ -2626,6 +2703,7 @@ class Dashboard:
     {admin_bar}
     {content}
   </main>
+  {pwa_registration}
 </body>
 </html>
 """
@@ -2725,6 +2803,52 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.dashboard.favicon_bytes,
                 "image/x-icon",
                 headers=[("Cache-Control", "public, max-age=3600")],
+            )
+            return
+        if self.dashboard.pwa_enabled and path == "/manifest.webmanifest":
+            self.respond_bytes(
+                200,
+                self.dashboard.pwa_manifest_bytes(),
+                "application/manifest+json; charset=utf-8",
+                headers=[("Cache-Control", "public, max-age=3600")],
+            )
+            return
+        if self.dashboard.pwa_enabled and path in {"/pwa-icon-192.png", "/pwa-icon-512.png"}:
+            size = int(path.removeprefix("/pwa-icon-").removesuffix(".png"))
+            payload = self.dashboard.pwa_icons.get(size)
+            if payload is None:
+                self.send_response(404)
+                self.end_headers()
+                return
+            self.respond_bytes(
+                200,
+                payload,
+                "image/png",
+                headers=[("Cache-Control", "public, max-age=604800")],
+            )
+            return
+        if self.dashboard.pwa_enabled and path == "/apple-touch-icon.png":
+            if self.dashboard.apple_touch_icon_bytes is None:
+                self.send_response(404)
+                self.end_headers()
+                return
+            self.respond_bytes(
+                200,
+                self.dashboard.apple_touch_icon_bytes,
+                "image/png",
+                headers=[("Cache-Control", "public, max-age=604800")],
+            )
+            return
+        if self.dashboard.pwa_enabled and path == "/service-worker.js":
+            payload = b'''"use strict";\nself.addEventListener("install", () => self.skipWaiting());\nself.addEventListener("activate", event => event.waitUntil(self.clients.claim()));\nself.addEventListener("fetch", event => event.respondWith(fetch(event.request)));\n'''
+            self.respond_bytes(
+                200,
+                payload,
+                "text/javascript; charset=utf-8",
+                headers=[
+                    ("Cache-Control", "no-cache"),
+                    ("Service-Worker-Allowed", "/"),
+                ],
             )
             return
         if path == "/api/events":

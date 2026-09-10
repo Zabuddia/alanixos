@@ -65,6 +65,12 @@ in
         recentEvents = 40;
         admin.passwordFile = config.sops.secrets."cluster/dashboard-password".path;
 
+        pwa = {
+          enable = true;
+          name = "Alanix Dashboard";
+          shortName = "Alanix";
+        };
+
         expose = {
           wan = {
             enable = true;

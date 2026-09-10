@@ -177,6 +177,34 @@ in
         description = "Number of recent controller events to show in the dashboard.";
       };
 
+      pwa = {
+        enable = lib.mkEnableOption "installable Progressive Web App metadata for the cluster dashboard";
+
+        name = lib.mkOption {
+          type = types.str;
+          default = "Alanix Cluster Dashboard";
+          description = "Full application name shown when installing the dashboard.";
+        };
+
+        shortName = lib.mkOption {
+          type = types.str;
+          default = "Alanix";
+          description = "Short application name shown below the installed dashboard icon.";
+        };
+
+        themeColor = lib.mkOption {
+          type = types.str;
+          default = "#24452d";
+          description = "Browser chrome color used by the installed dashboard.";
+        };
+
+        backgroundColor = lib.mkOption {
+          type = types.str;
+          default = "#f5f0e8";
+          description = "Launch background color used by the installed dashboard.";
+        };
+      };
+
       admin = {
         enable = lib.mkOption {
           type = types.bool;
@@ -610,6 +638,19 @@ in
         else
           null;
 
+      dashboardPwaIconDir =
+        if dashboardCfg.pwa.enable && dashboardFaviconPath != null then
+          pkgs.runCommand "alanix-cluster-dashboard-pwa-icons" {
+            nativeBuildInputs = [ pkgs.imagemagick ];
+          } ''
+            mkdir -p "$out"
+            magick '${dashboardFaviconPath}[0]' -resize 192x192 "$out/icon-192.png"
+            magick '${dashboardFaviconPath}[0]' -resize 512x512 "$out/icon-512.png"
+            magick '${dashboardFaviconPath}[0]' -resize 180x180 "$out/apple-touch-icon.png"
+          ''
+        else
+          null;
+
       dashboardModeProbeUrlsByHost =
         lib.listToAttrs (
           map
@@ -675,6 +716,14 @@ in
           port = dashboardCfg.port;
           recentEvents = dashboardCfg.recentEvents;
           faviconPath = dashboardFaviconPath;
+          pwa = {
+            enable = dashboardCfg.pwa.enable;
+            name = dashboardCfg.pwa.name;
+            shortName = dashboardCfg.pwa.shortName;
+            themeColor = dashboardCfg.pwa.themeColor;
+            backgroundColor = dashboardCfg.pwa.backgroundColor;
+            iconDir = dashboardPwaIconDir;
+          };
           links = dashboardLinks;
           admin = {
             enable = dashboardCfg.admin.enable;
@@ -970,6 +1019,10 @@ in
               {
                 assertion = lib.hasAttrByPath [ "users" "users" cfg.backup.repoUser ] config;
                 message = "alanix.cluster.backup.repoUser must reference a declared local user.";
+              }
+              {
+                assertion = !dashboardCfg.pwa.enable || dashboardFaviconPath != null;
+                message = "alanix.cluster.dashboard.pwa.enable requires modules/cluster/favicon.ico.";
               }
             ]
             ++ map
