@@ -113,16 +113,6 @@ let
           ${opensavePackage}/bin/opensave pair approve "$peer_id" >/dev/null 2>&1 || true
         done
   '';
-  daemonAddrFile = "${userHome}/.opensave/daemon.addr";
-  repairDaemonAddrScript = pkgs.writeShellScript "alanix-opensave-repair-daemon-addr" ''
-    set -euo pipefail
-
-    desired=${lib.escapeShellArg "127.0.0.1:${toString cfg.port}"}
-    current="$(cat ${lib.escapeShellArg daemonAddrFile} 2>/dev/null || true)"
-    if [ "$current" != "$desired" ]; then
-      printf '%s' "$desired" > ${lib.escapeShellArg daemonAddrFile}
-    fi
-  '';
 in
 {
   options.alanix.opensave = {
@@ -238,22 +228,6 @@ in
         };
 
         Install.WantedBy = [ "timers.target" ];
-      };
-
-      services.opensave-repair-daemon-addr = {
-        Unit.Description = "Restore OpenSave's daemon address pointer after it is overwritten";
-        Service = {
-          Type = "oneshot";
-          Environment = [ "HOME=${userHome}" ];
-          ExecStart = "${repairDaemonAddrScript}";
-        };
-      };
-
-      paths.opensave-repair-daemon-addr = {
-        Unit.Description = "Watch OpenSave's daemon address pointer for external overwrites";
-        Unit.After = [ "opensave-daemon.service" ];
-        Path.PathModified = daemonAddrFile;
-        Install.WantedBy = [ "paths.target" ];
       };
     };
   };
