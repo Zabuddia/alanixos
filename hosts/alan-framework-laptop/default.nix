@@ -356,14 +356,7 @@
       externalDevices.pixel-fold = {
         id = "BT23SPJ-ICTEBQ7-GJTDRQT-LCUQ773-U63QFZR-472O3YA-2KRJ4KY-AMPZ7AF";
         addresses = [ "tcp://pixel-fold:22000" ];
-        folderSets = [
-          "filebrowser-buddia-files"
-          "emulation-azahar"
-          "emulation-dolphin"
-          "emulation-melonds"
-          "emulation-n64"
-          "emulation-retroarch"
-        ];
+        folderSets = [ "filebrowser-buddia-files" ];
       };
       externalDevices.pixel-3axl = {
         id = "DPIIEWS-4VQRBRR-UKTYH3Z-KAHOF6F-SWIS7TD-3IYPHSM-LI42DNP-IGRQLQZ";
