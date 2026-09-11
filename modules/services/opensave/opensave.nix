@@ -39,6 +39,14 @@ let
       name = "Ryujinx Saves";
       path = "${userHome}/.config/Ryujinx/bis/user/save";
     }
+    {
+      name = "Ryujinx Save Meta";
+      path = "${userHome}/.config/Ryujinx/bis/user/saveMeta";
+    }
+    {
+      name = "Ryujinx Save Data Indexer";
+      path = "${userHome}/.config/Ryujinx/bis/system/save/8000000000000000";
+    }
   ];
   effectiveGames = lib.optionals cfg.emulatorSaves.enable emulatorGames ++ cfg.games;
   gameType = lib.types.submodule {
