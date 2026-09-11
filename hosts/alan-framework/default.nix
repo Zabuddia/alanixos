@@ -113,6 +113,10 @@
             "${config.alanix.syncthing.syncRoot}/games/roms/wii"
           ];
         };
+        eden = {
+          enable = true;
+          gameDirs = [ "${config.alanix.syncthing.syncRoot}/games/roms/switch" ];
+        };
         melonds.enable = true;
         retroarch.enable = true;
         ryubing = {
@@ -556,6 +560,17 @@
           "emulation-retroarch"
         ];
       };
+    };
+
+    alanix.opensave = {
+      enable = true;
+      emulatorSaves.enable = true;
+      games = [
+        {
+          name = "Eden Super Mario Odyssey";
+          path = "/home/buddia/.local/share/eden/nand/user/save/0000000000000000/A69A8E9F17EC540D685FF32B9E77687A/0100000000010000";
+        }
+      ];
     };
 
     alanix.llm = {
