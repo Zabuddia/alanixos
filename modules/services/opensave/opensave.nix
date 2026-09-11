@@ -39,11 +39,6 @@ let
       name = "Ryujinx Saves";
       path = "${userHome}/.config/Ryujinx/bis/user/save";
     }
-    {
-      name = "Eden Profiles";
-      path = "${userHome}/.local/share/eden/nand/system/save/8000000000000010/su/avators/profiles.dat";
-      kind = "file";
-    }
   ];
   effectiveGames = lib.optionals cfg.emulatorSaves.enable emulatorGames ++ cfg.games;
   gameType = lib.types.submodule {
@@ -96,6 +91,28 @@ let
 
     ${lib.concatMapStringsSep "\n" provisionGame effectiveGames}
   '';
+  autopairScript = pkgs.writeShellScript "alanix-opensave-autopair" ''
+    set -euo pipefail
+
+    export HOME=${lib.escapeShellArg userHome}
+    peers_json="$(${opensavePackage}/bin/opensave peers --json 2>/dev/null || echo '{}')"
+
+    ${lib.concatMapStringsSep "\n" (peer: ''
+      if ! printf '%s' "$peers_json" \
+        | ${pkgs.jq}/bin/jq -e --arg name ${lib.escapeShellArg peer} \
+          '.peers[]? | select(.name == $name)' >/dev/null; then
+        ${opensavePackage}/bin/opensave pair ${lib.escapeShellArg "${peer}:${toString cfg.port}"} >/dev/null 2>&1 || true
+      fi
+    '') cfg.peers}
+
+    printf '%s' "$peers_json" \
+      | ${pkgs.jq}/bin/jq -r --argjson names ${lib.escapeShellArg (builtins.toJSON cfg.peers)} \
+        '.pairingRequests[]? | select(.deviceName as $n | $names | index($n) != null) | .peerId' \
+      | while IFS= read -r peer_id; do
+          [ -n "$peer_id" ] || continue
+          ${opensavePackage}/bin/opensave pair approve "$peer_id" >/dev/null 2>&1 || true
+        done
+  '';
 in
 {
   options.alanix.opensave = {
@@ -126,6 +143,19 @@ in
       default = [ ];
       description = "Save sets provisioned idempotently before the OpenSave daemon starts.";
     };
+
+    peers = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = ''
+        Other OpenSave devices (by Tailscale/Headscale hostname) to pair
+        with automatically. Pairing is mutual: each side must send a
+        request and have the other approve it, so every host in the mesh
+        should list the others here. A periodic timer sends and approves
+        pairing requests until both directions converge, so no manual
+        `opensave pair`/`opensave pair approve` is ever needed.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -151,27 +181,54 @@ in
       allowedUDPPorts = lib.optionals cfg.openFirewallOnTailscale [ 8385 ];
     };
 
-    home-manager.users.${cfg.user}.systemd.user.services.opensave-daemon = {
-      Unit = {
-        Description = "OpenSave game-save synchronization daemon";
-        Documentation = "https://github.com/Liquid-co/OpenSave";
-        After = [ "network-online.target" ];
-        Wants = [ "network-online.target" ];
+    home-manager.users.${cfg.user}.systemd.user = {
+      services.opensave-daemon = {
+        Unit = {
+          Description = "OpenSave game-save synchronization daemon";
+          Documentation = "https://github.com/Liquid-co/OpenSave";
+          After = [ "network-online.target" ];
+          Wants = [ "network-online.target" ];
+        };
+
+        Service = {
+          Type = "simple";
+          Environment = [ "HOME=${userHome}" ];
+          ExecStartPre = provisionScript;
+          ExecStart = "${opensavePackage}/bin/opensave daemon start";
+          Restart = "on-failure";
+          RestartSec = 10;
+          Nice = 10;
+          IOSchedulingClass = "best-effort";
+          IOSchedulingPriority = 6;
+        };
+
+        Install.WantedBy = [ "default.target" ];
       };
 
-      Service = {
-        Type = "simple";
-        Environment = [ "HOME=${userHome}" ];
-        ExecStartPre = provisionScript;
-        ExecStart = "${opensavePackage}/bin/opensave daemon start";
-        Restart = "on-failure";
-        RestartSec = 10;
-        Nice = 10;
-        IOSchedulingClass = "best-effort";
-        IOSchedulingPriority = 6;
+      services.opensave-autopair = lib.mkIf (cfg.peers != [ ]) {
+        Unit = {
+          Description = "Converge OpenSave pairing with configured peers";
+          After = [ "opensave-daemon.service" ];
+          Requisite = [ "opensave-daemon.service" ];
+        };
+
+        Service = {
+          Type = "oneshot";
+          Environment = [ "HOME=${userHome}" ];
+          ExecStart = "${autopairScript}";
+        };
       };
 
-      Install.WantedBy = [ "default.target" ];
+      timers.opensave-autopair = lib.mkIf (cfg.peers != [ ]) {
+        Unit.Description = "Periodic OpenSave pairing convergence";
+
+        Timer = {
+          OnStartupSec = "30s";
+          OnUnitActiveSec = "2min";
+        };
+
+        Install.WantedBy = [ "timers.target" ];
+      };
     };
   };
 }
