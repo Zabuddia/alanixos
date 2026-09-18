@@ -734,6 +734,9 @@
           extraArgs = [
             "--fit"
             "off"
+            "--cache-prompt"
+            "--cache-ram"
+            "16384"
             "--cache-type-k"
             "f16"
             "--cache-type-v"
