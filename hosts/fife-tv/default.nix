@@ -142,7 +142,7 @@
             rightTrigger = "openKodi";
           };
           controllerGuids = [
-            "0300f6b6c82d00000b310000140100001172012555DC2A52A67D"
+            "0300f6b6c82d00000b31000014010000117201255556A17200C8"
           ];
         };
         chromium.enable = true;
