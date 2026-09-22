@@ -363,6 +363,11 @@
         addresses = [ "tcp://pixel-3axl:22000" ];
         folderSets = [ "filebrowser-buddia-files" ];
       };
+      externalDevices.alan-fairphone = {
+        id = "IGJU2V3-P3TJNZ6-G3OU5VB-S7NKBOL-NJNCACQ-ALA3NRL-E24UXAL-NGZ7LAY";
+        addresses = [ "tcp://alan-fairphone:22000" ];
+        folderSets = [ "filebrowser-buddia-files" ];
+      };
     };
 
     alanix.opensave = {
