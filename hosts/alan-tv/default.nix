@@ -197,7 +197,10 @@
             "0300f6b6c82d00000b310000140100001172012555B92A5226DA"
           ];
         };
-        chromium.enable = true;
+        chromium = {
+          enable = true;
+          widevine.enable = true;
+        };
         makemkv = {
           enable = true;
           betaKey = "T-vwvnrmF87JuRPLYYO8HnIrZR_LCAF7JXs9iJEm10moGpjEgkvmPTsf6Ox4BI@N5rPp";
