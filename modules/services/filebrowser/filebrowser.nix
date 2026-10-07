@@ -65,6 +65,12 @@ in
       description = "Mode applied to the File Browser root tree and managed scope directories.";
     };
 
+    umask = lib.mkOption {
+      type = lib.types.strMatching "[0-7]{4}";
+      default = "0027";
+      description = "UMask applied to the File Browser systemd service when it creates files and directories.";
+    };
+
     database = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -207,7 +213,7 @@ in
         };
       };
 
-      systemd.services.filebrowser.serviceConfig.UMask = lib.mkIf baseConfigReady (lib.mkForce "0027");
+      systemd.services.filebrowser.serviceConfig.UMask = lib.mkIf baseConfigReady (lib.mkForce cfg.umask);
 
       users.groups.filebrowser = {};
       users.users.filebrowser = {

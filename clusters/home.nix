@@ -499,6 +499,9 @@ in
       rootUser = "buddia";
       rootGroup = "users";
       rootMode = "2775";
+      # Keep File Browser writes compatible with Syncthing's shared `users`
+      # group permission model.
+      umask = "0002";
       database = "/var/lib/filebrowser/filebrowser.db";
       backupDir = "/var/backup/filebrowser";
 
