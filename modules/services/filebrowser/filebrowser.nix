@@ -65,6 +65,18 @@ in
       description = "Mode applied to the File Browser root tree and managed scope directories.";
     };
 
+    fileMode = lib.mkOption {
+      type = lib.types.strMatching "[0-7]{4}";
+      default = "0640";
+      description = "Mode File Browser applies when it creates files.";
+    };
+
+    dirMode = lib.mkOption {
+      type = lib.types.strMatching "[0-7]{4}";
+      default = "0750";
+      description = "Mode File Browser applies when it creates directories.";
+    };
+
     umask = lib.mkOption {
       type = lib.types.strMatching "[0-7]{4}";
       default = "0027";
@@ -304,6 +316,8 @@ in
             ADDRESS=${lib.escapeShellArg cfg.listenAddress}
             PORT=${lib.escapeShellArg (toString cfg.port)}
             ROOT=${lib.escapeShellArg cfg.root}
+            FILE_MODE=${lib.escapeShellArg cfg.fileMode}
+            DIR_MODE=${lib.escapeShellArg cfg.dirMode}
 
             ensure_database_initialized() {
               if [ -f "$DB" ]; then
@@ -316,7 +330,9 @@ in
                 --database "$DB" \
                 --address "$ADDRESS" \
                 --port "$PORT" \
-                --root "$ROOT"
+                --root "$ROOT" \
+                --fileMode "$FILE_MODE" \
+                --dirMode "$DIR_MODE"
             }
 
             have_user() {
@@ -369,6 +385,11 @@ in
 
             ensure_database_initialized
 
+            filebrowser config set \
+              --database "$DB" \
+              --fileMode "$FILE_MODE" \
+              --dirMode "$DIR_MODE"
+
             ${ensureLines}
 
             if [ "$PRUNE" = "1" ]; then
@@ -389,7 +410,10 @@ in
       };
 
       systemd.services.filebrowser.restartTriggers = [
-        (builtins.toJSON sanitizedUsersForRestart)
+        (builtins.toJSON {
+          users = sanitizedUsersForRestart;
+          inherit (cfg) fileMode dirMode;
+        })
       ];
     }
 
