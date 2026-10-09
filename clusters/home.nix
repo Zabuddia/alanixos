@@ -134,6 +134,55 @@ in
       };
     };
 
+    # The cluster transport is provided by Headscale, but Headscale is itself a
+    # cluster-managed service.  After a cold start with no cached network map,
+    # bring it up temporarily on the preferred leader and wait for Tailscale
+    # before allowing the controller to run.  The controller will then either
+    # adopt Headscale as part of the active target or stop the temporary
+    # instance if another host already owns the lease.
+    systemd.services = lib.mkIf (hostname == lib.head members) {
+      alanix-headscale-transport-bootstrap = {
+        description = "Bootstrap Headscale for the Alanix cluster transport";
+        wantedBy = [ "multi-user.target" ];
+        wants = [
+          "network-online.target"
+          "caddy.service"
+          "headscale.service"
+          "tailscaled.service"
+        ];
+        after = [
+          "network-online.target"
+          "caddy.service"
+          "headscale.service"
+          "tailscaled.service"
+        ];
+        before = [ "alanix-cluster-controller.service" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          TimeoutStartSec = "5min";
+        };
+        script = ''
+          for attempt in $(seq 1 60); do
+            state="$(${config.services.tailscale.package}/bin/tailscale status --json 2>/dev/null \
+              | ${pkgs.jq}/bin/jq -r '.BackendState // empty' || true)"
+            if [ "$state" = "Running" ]; then
+              exit 0
+            fi
+            sleep 5
+          done
+
+          echo "Tailscale did not become ready after bootstrapping Headscale" >&2
+          exit 1
+        '';
+      };
+
+      alanix-cluster-controller = {
+        wants = [ "alanix-headscale-transport-bootstrap.service" ];
+        after = [ "alanix-headscale-transport-bootstrap.service" ];
+      };
+    };
+
     alanix.cloudflare.dns = {
       enable = true;
       credentialsFile = config.sops.templates."cloudflare-env-cluster".path;
