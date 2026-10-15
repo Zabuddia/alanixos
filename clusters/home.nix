@@ -1265,6 +1265,7 @@ in
       collabora = {
         enable = true;
         rootUrl = "https://collabora.fifefin.com";
+        callbackUrl = "http://127.0.0.1:8080";
 
         expose = {
           wan = {
