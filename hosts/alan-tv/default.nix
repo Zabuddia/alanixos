@@ -382,6 +382,24 @@
 
     services.avahi.enable = true;
 
+    # Advertise this machine as an AirPlay receiver. UxPlay runs inside the
+    # graphical session so mirrored video opens fullscreen in Sway and audio
+    # follows the session's current PipeWire output (normally HDMI).
+    networking.firewall.allowedTCPPorts = [ 7000 7001 7002 ];
+    networking.firewall.allowedUDPPorts = [ 7000 7001 7002 ];
+
+    systemd.user.services.uxplay = {
+      description = "AirPlay receiver";
+      wantedBy = [ "graphical-session.target" ];
+      partOf = [ "graphical-session.target" ];
+      after = [ "graphical-session.target" "pipewire.service" "pipewire-pulse.service" ];
+      serviceConfig = {
+        ExecStart = "${pkgs.uxplay}/bin/uxplay -n 'Alan TV' -nh -p 7000 -avdec -vs waylandsink -as pulsesink";
+        Restart = "on-failure";
+        RestartSec = 2;
+      };
+    };
+
     # The Mayflash DolphinBar exposes paired Wii Remotes as hidraw devices in
     # mode 4.  Dolphin needs direct access to those endpoints for "Real Wii
     # Remote" input.
